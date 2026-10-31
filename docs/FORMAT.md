@@ -72,6 +72,11 @@ stored records are not learned from, on either side. A frame whose sequence
 number is not the next expected one fails with `SessionOutOfSync`; a frame
 that fails its CRC is rejected and its updates are rolled back.
 
+Both sides bound the history with the same window `W` (a session
+parameter, default 32 MiB, never sent): right after a record is learned, if
+the history exceeds `2W` bytes, its oldest `len - W` bytes are dropped and
+the match model's pointers shifted accordingly.
+
 ## Primed-model files (`.sedgem`)
 
 A saved `PrimedModel`: the model state after reading a dictionary. It is a

@@ -816,13 +816,18 @@ impl PrimedModel {
 /// both cases the receiver is left unchanged (its updates are journaled and
 /// rolled back), so the session continues once the right message arrives.
 ///
-/// Memory: the model is fixed-size, but the history the match model refers
-/// to grows with the traffic (one byte per byte sent).
+/// Memory: the model is fixed-size; the history the match model copies
+/// from is bounded by a sliding window ([`Session::with_history_limit`],
+/// default [`DEFAULT_SESSION_HISTORY`]), so a session can run forever.
 #[derive(Clone)]
 pub struct Session {
     model: PrimedModel,
     seq: u64,
+    limit: usize,
 }
+
+/// Default session history window: 32 MiB (at most 64 MiB held).
+pub const DEFAULT_SESSION_HISTORY: usize = 32 << 20;
 
 fn put_varint(out: &mut Vec<u8>, mut v: u64) {
     while v >= 0x80 {
@@ -849,7 +854,31 @@ impl Session {
     /// A session that starts from a primed model (shared knowledge). Both
     /// sides must start from the same dictionary and memory level.
     pub fn from_model(model: PrimedModel) -> Self {
-        Self { model, seq: 0 }
+        Self {
+            model,
+            seq: 0,
+            limit: DEFAULT_SESSION_HISTORY,
+        }
+    }
+
+    /// Bound the history to a window of `bytes` (at least 64 KiB): once it
+    /// holds more than twice that, the oldest half is dropped. Older content
+    /// is still remembered statistically by the model, just no longer
+    /// copied verbatim. **Both sides must use the same limit.**
+    pub fn with_history_limit(mut self, bytes: usize) -> Self {
+        self.limit = bytes.max(64 << 10);
+        self
+    }
+
+    /// Slide the window if the history outgrew it. Runs at the same point
+    /// of the stream on both sides, after a record has been learned.
+    fn trim_history(&mut self) {
+        let len = self.model.dict.len();
+        if len > 2 * self.limit {
+            let drop = len - self.limit;
+            self.model.pred.rebase_history(drop);
+            self.model.dict.drain(..drop);
+        }
     }
 
     /// A session that starts from an empty model at memory level
@@ -865,6 +894,7 @@ impl Session {
                 pred,
             },
             seq: 0,
+            limit: DEFAULT_SESSION_HISTORY,
         }
     }
 
@@ -902,6 +932,7 @@ impl Session {
                 self.model.pred.commit(guard);
                 let mut out = self.frame(SESSION_CM, data);
                 out.extend_from_slice(&p);
+                self.trim_history();
                 out
             }
             _ => {
@@ -968,6 +999,7 @@ impl Session {
                 });
             }
             self.model.pred.commit(guard);
+            self.trim_history();
             out
         };
         self.seq += 1;

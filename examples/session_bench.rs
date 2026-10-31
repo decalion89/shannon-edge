@@ -1,6 +1,6 @@
 //! Benchmark a sedge session over a stream of records (one per line).
 //!
-//!     cargo run --release --example session_bench -- RECORDS.jsonl [N] [DICT]
+//!     cargo run --release --example session_bench -- RECORDS.jsonl [N] [DICT|-] [HISTORY_KIB]
 //!
 //! Sends the first N records through a sender session and a receiver
 //! session, verifies every record, and prints the total framed size and time.
@@ -21,7 +21,7 @@ fn main() {
         .take(n)
         .collect();
     let opts = Options::default();
-    let (mut tx, mut rx) = match args.get(2) {
+    let (tx, rx) = match args.get(2).filter(|d| *d != "-") {
         Some(d) => {
             let dict = std::fs::read(d).expect("read dictionary");
             let model = PrimedModel::new(&dict, &opts);
@@ -31,6 +31,13 @@ fn main() {
             )
         }
         None => (Session::new(&opts), Session::new(&opts)),
+    };
+    let (mut tx, mut rx) = match args.get(3) {
+        Some(kib) => {
+            let limit = kib.parse::<usize>().expect("HISTORY_KIB") << 10;
+            (tx.with_history_limit(limit), rx.with_history_limit(limit))
+        }
+        None => (tx, rx),
     };
     let t = Instant::now();
     let (mut raw, mut packed) = (0usize, 0usize);

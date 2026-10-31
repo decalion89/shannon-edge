@@ -85,8 +85,10 @@ v0.1 single core: ~0.5 MiB/s. Target: 10× without losing ratio, then more.
       sequence numbers, rollback of corrupt records. On 1,000 consecutive
       GitHub events: 27% smaller than zstd's streaming mode with context
       takeover, 29% with a trained starting dictionary
-- [ ] Sessions: bounded history (sliding window) for unbounded streams, and
-      an optional shorter checksum for links that already have one
+- [x] Sessions: bounded history (sliding window, default 32 MiB) for
+      unbounded streams; even a 64 KiB window stays 20% below zstd
+      streaming with its 8 MiB window
+- [ ] Sessions: optional shorter checksum for links that already have one
 - [ ] Measure `H(X | K)` gains per pack on public datasets
 
 ## Phase 4 — Production

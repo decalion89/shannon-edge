@@ -1022,6 +1022,23 @@ impl Predictor {
 }
 
 impl Predictor {
+    /// The caller is dropping the oldest `drop` bytes of the history: shift
+    /// every match-model pointer accordingly (pointers into the dropped part
+    /// are forgotten). Must not be called while a journal is open.
+    pub fn rebase_history(&mut self, drop: usize) {
+        let d = drop as u32;
+        for v in &mut self.mm.table {
+            *v = v.saturating_sub(d);
+        }
+        if self.mm.ptr < drop {
+            self.mm.ptr = 0;
+            self.mm.len = 0;
+            self.mm.active = false;
+        } else {
+            self.mm.ptr -= drop;
+        }
+    }
+
     /// Keep everything since [`Self::begin_journal`] and close the journal.
     pub fn commit(&mut self, guard: JournalGuard) {
         drop(guard);

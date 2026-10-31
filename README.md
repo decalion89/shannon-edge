@@ -194,9 +194,19 @@ record verified for every method:
 zstd's streaming mode with context takeover (as in WebSocket compression) is
 the standard answer for streams; a learning session beats it by 27%, even
 though every sedge frame carries a CRC-32 and the zstd frames carry none.
-Cost: ~15 ms per record for both directions together (zstd: microseconds),
-and the session history grows with the traffic. Reproduce with
-`bench/streams.py`.
+Cost: ~15 ms per record for both directions together (zstd: microseconds).
+
+Sessions can run forever: the history the model copies from is a sliding
+window (default 32 MiB, `Session::with_history_limit`; both sides must use
+the same). Forgetting old text costs little, because the model keeps what
+it learned as statistics. Same 1,000 events:
+
+| History window | 32 MiB (default) | 1 MiB | 256 KiB | 64 KiB | zstd streaming (8 MiB window) |
+|---|---:|---:|---:|---:|---:|
+| Total bytes | 240,606 | 243,394 | 254,691 | 263,686 | 328,162 |
+
+Reproduce with `bench/streams.py` and
+`examples/session_bench.rs RECORDS N - HISTORY_KIB`.
 
 ```rust
 let mut tx = shannon_edge::Session::new(&opts);   // or Session::from_model(primed)

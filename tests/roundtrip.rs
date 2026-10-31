@@ -696,3 +696,26 @@ fn sessions_with_different_origins_do_not_mix() {
         Err(Error::NotThisSession)
     ));
 }
+
+#[test]
+fn session_history_is_bounded_and_stays_in_sync() {
+    let opts = Options {
+        mem_bits: 18,
+        ..Options::default()
+    };
+    let limit = 64 << 10;
+    let mut tx = Session::new(&opts).with_history_limit(limit);
+    let mut rx = Session::new(&opts).with_history_limit(limit);
+    let text = sample_text();
+    let mut rng = Rng(77);
+    // ~400 KiB of records: the window slides several times.
+    for i in 0..800 {
+        let start = (rng.next() as usize) % (text.len() - 600);
+        let mut rec = text[start..start + 500].to_vec();
+        rec.extend_from_slice(format!(" #{i}").as_bytes());
+        let frame = tx.compress(&rec);
+        assert_eq!(rx.decompress(&frame).unwrap(), rec, "record {i}");
+        assert!(tx.history_len() <= 2 * limit + 600);
+        assert_eq!(tx.history_len(), rx.history_len());
+    }
+}
