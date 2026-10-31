@@ -258,6 +258,32 @@ pip install zstandard brotli   # optional competitors
 python3 bench/compare.py path/to/canterbury/*
 ```
 
+## Use it from Python, C or any language
+
+The library exports a C ABI (`include/shannon_edge.h`), so anything with a C
+FFI can use it. A dependency-free Python binding ships in `python/`:
+
+```python
+import shannon_edge as se          # after `cargo build --release`
+
+packed = se.compress(data)
+assert se.decompress(packed) == data
+
+model = se.PrimedModel(samples)    # shared knowledge, read once
+frame = model.compress(msg)
+assert model.decompress(frame) == msg
+
+tx, rx = se.Session(), se.Session()  # a learning stream, one per side
+for record in records:
+    assert rx.decompress(tx.compress(record)) == record
+```
+
+C: see `examples/c/demo.c`
+(`cc examples/c/demo.c -Iinclude -Ltarget/release -lshannon_edge`). Errors
+are negative codes (`sedge_error_message` describes them); invalid input is
+reported, never aborts the host process. CI runs the Python tests on Linux,
+macOS and Windows.
+
 ## How it works
 
 ```
@@ -297,6 +323,8 @@ The file format is specified in [`docs/FORMAT.md`](docs/FORMAT.md).
 | `src/lib.rs` | Public API and `.sedge` container |
 | `src/train.rs` | Dictionary trainer (`sedge train`) |
 | `src/main.rs` | `sedge` command-line tool |
+| `src/ffi.rs`, `include/shannon_edge.h` | C ABI |
+| `python/` | Python binding (ctypes) and its tests |
 | `tests/` | Round-trip, adversarial, corruption and golden-format tests |
 | `bench/compare.py` | Benchmark against gzip, bzip2, xz, zstd and brotli |
 | `bench/shared_knowledge.py` | Compression with vs. without a shared dictionary |

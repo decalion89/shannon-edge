@@ -13,6 +13,8 @@ categories = ["compression", "command-line-utilities"]
 [lib]
 name = "shannon_edge"
 path = "src/lib.rs"
+# rlib for Rust users, cdylib for the C ABI (Python, Go, Java, ...).
+crate-type = ["rlib", "cdylib"]
 
 [[bin]]
 name = "sedge"

@@ -92,7 +92,9 @@ v0.1 single core: ~0.5 MiB/s. Target: 10× without losing ratio, then more.
 ## Phase 4 — Production
 
 - [ ] Streaming API and bounded memory for files of any size (> 4 GiB)
-- [ ] Library bindings (C ABI, Python)
+- [x] Library bindings: C ABI (`include/shannon_edge.h`) and a
+      dependency-free Python binding, tested on Linux, macOS and Windows
+- [ ] Python wheels on PyPI (`pip install shannon-edge`)
 - [ ] Fuzzing (cargo-fuzz) of the decoder
 - [ ] Published releases and binaries
 

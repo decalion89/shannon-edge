@@ -17,6 +17,7 @@
 
 pub mod coder;
 mod crc32;
+pub mod ffi;
 mod math;
 mod model;
 pub mod train;
@@ -870,6 +871,12 @@ impl Session {
     /// Number of messages processed so far.
     pub fn messages(&self) -> u64 {
         self.seq
+    }
+
+    /// Bytes of history the session holds (starting dictionary plus every
+    /// learned record).
+    pub fn history_len(&self) -> usize {
+        self.model.dict.len()
     }
 
     fn frame(&self, kind: u8, data: &[u8]) -> Vec<u8> {

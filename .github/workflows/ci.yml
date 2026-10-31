@@ -48,3 +48,25 @@ jobs:
           ./target/release/sedge compress src/model.rs -o /tmp/model.sedge
           ./target/release/sedge decompress /tmp/model.sedge -o /tmp/model.rs
           cmp src/model.rs /tmp/model.rs
+
+  bindings:
+    # The C ABI and the Python binding, on all three platforms.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: cargo build --release
+      - name: Python binding tests
+        run: python -m unittest discover -s python -v
+      - name: C example
+        if: runner.os == 'Linux'
+        run: |
+          cc -Wall -Wextra -Werror examples/c/demo.c -Iinclude -Ltarget/release -lshannon_edge -o demo
+          LD_LIBRARY_PATH=target/release ./demo
