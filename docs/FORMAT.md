@@ -1,0 +1,42 @@
+# `.sedge` container format — version 1
+
+All integers are little-endian.
+
+| Offset | Size | Field | Description |
+|---:|---:|---|---|
+| 0 | 4 | `magic` | ASCII `SEDG` |
+| 4 | 1 | `version` | Format version, currently `1` |
+| 5 | 1 | `method` | `0` = stored, `1` = context mixing (CM) |
+| 6 | 1 | `mem_bits` | Model memory level, `16..=24` for CM, `0` for stored |
+| 7 | 1 | `reserved` | Must be `0` |
+| 8 | 8 | `length` | Original size in bytes (v1: below 2^32 − 1) |
+| 16 | 4 | `crc32` | CRC-32 (IEEE, as in gzip/zip/PNG) of the original data |
+| 20 | … | `payload` | Stored bytes, or the arithmetic-coded CM stream |
+
+## Methods
+
+* **Stored (`0`)** — the payload is the original data. The compressor uses it
+  whenever CM would not make the file smaller, so no input ever grows by more
+  than the 20-byte header.
+* **CM (`1`)** — the payload is the output of a 32-bit binary arithmetic coder
+  driven by the model in `src/model.rs`, with hashed context tables of
+  `2^mem_bits` slots. The decoder must allocate the same tables, so
+  `mem_bits` also sets the decoder's memory use (≈140 MiB at 22).
+
+## Integrity
+
+The decoder always recomputes the CRC-32 of its output and rejects the stream
+(`ChecksumMismatch`) if it differs. Corrupted or truncated payloads never
+cause a panic: the arithmetic decoder reads missing bytes as zeros and the
+checksum catches the result.
+
+## Determinism and versioning
+
+The CM payload is defined by the exact model arithmetic. The model therefore
+uses integer arithmetic only, so every platform produces and accepts the same
+bytes. The test `golden_v1_stream_is_reproduced_exactly` pins a reference
+stream (`tests/fixtures/golden-v1.sedge`) in CI on Linux, macOS and Windows.
+
+**Any change to the model that changes its output is a format change.** It
+must bump `FORMAT_VERSION`, and the decoder must keep supporting every
+earlier version, so files compressed today stay readable.

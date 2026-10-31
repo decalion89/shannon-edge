@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+
+  test:
+    # The golden-stream test runs on all three platforms: a file compressed
+    # anywhere must decompress identically everywhere.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Tests (debug, overflow checks on)
+        run: cargo test
+      - name: Tests (release)
+        run: cargo test --release
+
+  cli-roundtrip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --release
+      - name: Compress and verify the repository's own files
+        run: ./target/release/sedge bench README.md docs/THEORY.md src/model.rs Cargo.lock
+      - name: File round-trip through the CLI
+        run: |
+          ./target/release/sedge compress src/model.rs -o /tmp/model.sedge
+          ./target/release/sedge decompress /tmp/model.sedge -o /tmp/model.rs
+          cmp src/model.rs /tmp/model.rs
