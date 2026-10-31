@@ -135,6 +135,35 @@ sedge decompress msg.json.sedge -D samples.json   # either works
 
 Reproduce the first table with `bench/shared_knowledge.py`.
 
+### Small messages vs. the industry standard (zstd + trained dictionary)
+
+For small records (API payloads, events, logs) the standard answer is zstd
+with a dictionary trained on samples. Test: 1,000 real GitHub events from
+GH Archive (2024-01-15, 16:00 UTC), each compressed **separately**; knowledge
+comes only from the previous hour (15:00 UTC). All results verified.
+
+| Compressor (1,000 records, one by one) | Total bytes | % of original | vs zstd + dict |
+|---|---:|---:|---:|
+| zstd -19 | 833,210 | 23.77% | +106.1% |
+| zstd -19 + trained dictionary (110 KiB) | 404,285 | 11.54% | — |
+| brotli -11 | 727,176 | 20.75% | +79.9% |
+| sedge | 726,386 | 20.73% | +79.7% |
+| sedge -M, 93 KiB of the most recent raw records | 468,924 | 13.38% | +16.0% |
+| **sedge -M, zstd's own trained dictionary (110 KiB)** | **334,447** | **9.54%** | **−17.3%** |
+
+Two lessons:
+
+* **Same knowledge, better engine:** given the exact same 110 KiB that zstd's
+  trainer distilled from 5,000 samples, `sedge` produces 17% less data.
+* **What goes into the dictionary matters as much as the engine.** A raw
+  slice of recent records loses to zstd's distilled dictionary. A trainer of
+  our own is now on the [roadmap](ROADMAP.md); until then, any dictionary
+  file works with `-D`/`-M`, including one made by `zstd --train`.
+
+The price is speed: ~60 ms per record for compress + decompress + verify
+(copying the primed model dominates), where zstd takes microseconds.
+Reproduce with `bench/small_messages.py`.
+
 ### What it cannot do (and nothing can)
 
 Random, encrypted or already-compressed data (JPEG, H.265 video, ZIP) does
@@ -225,6 +254,7 @@ The file format is specified in [`docs/FORMAT.md`](docs/FORMAT.md).
 | `tests/` | Round-trip, adversarial, corruption and golden-format tests |
 | `bench/compare.py` | Benchmark against gzip, bzip2, xz, zstd and brotli |
 | `bench/shared_knowledge.py` | Compression with vs. without a shared dictionary |
+| `bench/small_messages.py` | Many small records: sedge vs zstd with a trained dictionary |
 | `docs/THEORY.md` | The limits, with proofs, and how to move them honestly |
 | `docs/FORMAT.md` | `.sedge` format specification |
 | `ROADMAP.md` | Where this goes next |

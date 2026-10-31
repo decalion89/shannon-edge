@@ -66,7 +66,11 @@ v0.1 single core: ~0.5 MiB/s. Target: 10× without losing ratio, then more.
       memory-mapped loading
 - [ ] Pre-trained model "packs" shipped with the decoder (logs, JSON, source
       code, natural language), honestly reporting pack size separately
-- [ ] User-trainable dictionaries for many small similar files
+- [ ] `sedge train`: our own dictionary trainer. On GitHub events, sedge
+      with zstd's trained dictionary beats zstd by 17%, but with raw recent
+      records it loses by 16% — distilling the knowledge is half the game
+- [ ] Fast start for small messages: copy-on-write or smaller primed models
+      instead of copying the full model per record (~60 ms today)
 - [ ] Measure `H(X | K)` gains per pack on public datasets
 
 ## Phase 4 — Production
