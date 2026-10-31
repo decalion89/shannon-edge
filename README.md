@@ -170,6 +170,43 @@ without any knowledge (before the journal: 63 s and 130 s). zstd takes microseco
 files are large (here 162 MB). Reproduce with
 `bench/small_messages.py`.
 
+### Streams: sessions that keep learning
+
+A device talking to a server, a webhook feed, telemetry: records arrive one
+after another over one connection. A `Session` codes record *n* with
+everything learned from records *0..n-1*; sender and receiver make the same
+updates, so the model is never sent. Each record is a compact frame
+(≈8 bytes: kind, length, 16-bit sequence number, CRC-32), lost or reordered
+records are detected, and a corrupt record leaves the receiver unchanged.
+
+1,000 consecutive GitHub events (GH Archive, 2024-01-15 16:00 UTC), every
+record verified for every method:
+
+| Method (records sent one by one, in order) | Total bytes | % of original | vs best zstd |
+|---|---:|---:|---:|
+| zstd -19, each record alone | 827,032 | 24.26% | +152.0% |
+| zstd -19, each record alone + trained dictionary (110 KiB) | 398,229 | 11.68% | +21.4% |
+| zstd -19, streaming with context kept across records | 328,162 | 9.63% | — |
+| zstd -19, streaming with context + trained dictionary | 329,931 | 9.68% | +0.5% |
+| **sedge `Session`** | **240,606** | **7.06%** | **−26.7%** |
+| **sedge `Session` from a sedge-trained dictionary (110 KiB)** | **232,946** | **6.83%** | **−29.0%** |
+
+zstd's streaming mode with context takeover (as in WebSocket compression) is
+the standard answer for streams; a learning session beats it by 27%, even
+though every sedge frame carries a CRC-32 and the zstd frames carry none.
+Cost: ~15 ms per record for both directions together (zstd: microseconds),
+and the session history grows with the traffic. Reproduce with
+`bench/streams.py`.
+
+```rust
+let mut tx = shannon_edge::Session::new(&opts);   // or Session::from_model(primed)
+let mut rx = shannon_edge::Session::new(&opts);
+for record in records {
+    let frame = tx.compress(record);
+    assert_eq!(rx.decompress(&frame)?, record);
+}
+```
+
 ### What it cannot do (and nothing can)
 
 Random, encrypted or already-compressed data (JPEG, H.265 video, ZIP) does
@@ -264,6 +301,7 @@ The file format is specified in [`docs/FORMAT.md`](docs/FORMAT.md).
 | `bench/compare.py` | Benchmark against gzip, bzip2, xz, zstd and brotli |
 | `bench/shared_knowledge.py` | Compression with vs. without a shared dictionary |
 | `bench/small_messages.py` | Many small records: sedge vs zstd with a trained dictionary |
+| `bench/streams.py`, `examples/session_bench.rs` | Record streams: sedge sessions vs zstd streaming |
 | `docs/THEORY.md` | The limits, with proofs, and how to move them honestly |
 | `docs/FORMAT.md` | `.sedge` format specification |
 | `ROADMAP.md` | Where this goes next |

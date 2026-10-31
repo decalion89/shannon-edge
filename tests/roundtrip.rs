@@ -4,7 +4,7 @@
 use shannon_edge::{
     compress, compress_with_dictionary, compress_with_model, decompress,
     decompress_with_dictionary, decompress_with_model, decompress_with_threads, Error, Options,
-    PrimedModel, HEADER_LEN,
+    PrimedModel, Session, HEADER_LEN,
 };
 
 /// Small deterministic PRNG (xorshift64*) so tests need no dependencies.
@@ -579,4 +579,120 @@ fn decompress_message_falls_back_for_other_streams() {
     let big = sample_text();
     let blocks = compress_with_model(&big, &model, &blocked(8192, 0));
     assert_eq!(model.decompress_message(&blocks).unwrap(), big);
+}
+
+// ---------------------------------------------------------------------------
+// Sessions: both sides keep learning, and stay in step
+// ---------------------------------------------------------------------------
+
+/// A stream of similar records, like events from one device.
+fn event_stream(n: usize) -> Vec<Vec<u8>> {
+    let mut rng = Rng(31);
+    (0..n)
+        .map(|i| {
+            format!(
+                "{{\"device\":\"sensor-{}\",\"seq\":{},\"temp\":{}.{},\"status\":\"{}\"}}",
+                rng.next() % 4,
+                i,
+                15 + rng.next() % 10,
+                rng.next() % 10,
+                if rng.next() % 5 == 0 { "warn" } else { "ok" }
+            )
+            .into_bytes()
+        })
+        .collect()
+}
+
+#[test]
+fn session_roundtrips_and_learns() {
+    let opts = Options {
+        mem_bits: 18,
+        ..Options::default()
+    };
+    let (mut tx, mut rx) = (Session::new(&opts), Session::new(&opts));
+    let events = event_stream(300);
+    let mut sizes = Vec::new();
+    for e in &events {
+        let packed = tx.compress(e);
+        sizes.push(packed.len());
+        assert_eq!(&rx.decompress(&packed).unwrap(), e);
+    }
+    assert_eq!(rx.messages(), 300);
+    // Compare payloads: every frame carries ~8 fixed bytes (kind, length,
+    // sequence, CRC-32) whatever the model knows.
+    let payload = |s: &[usize]| s.iter().map(|n| n - 8).sum::<usize>();
+    let (early, late) = (payload(&sizes[..20]), payload(&sizes[280..]));
+    assert!(
+        late * 2 < early,
+        "later payloads should be much smaller: {early} vs {late} bytes"
+    );
+    assert!(sizes[280..].iter().all(|&n| n < 16), "{:?}", &sizes[280..]);
+}
+
+#[test]
+fn session_detects_loss_reordering_and_corruption_without_desync() {
+    let opts = Options {
+        mem_bits: 18,
+        ..Options::default()
+    };
+    let (mut tx, mut rx) = (Session::new(&opts), Session::new(&opts));
+    let events = event_stream(40);
+    let packed: Vec<Vec<u8>> = events.iter().map(|e| tx.compress(e)).collect();
+    for (i, p) in packed.iter().enumerate() {
+        if i + 1 < packed.len() {
+            assert!(matches!(
+                rx.decompress(&packed[i + 1]),
+                Err(Error::SessionOutOfSync { .. })
+            ));
+        }
+        // Corrupt a payload byte: rejected (and the receiver unchanged), or,
+        // if that byte happened not to matter, decoded correctly.
+        let mut bad = p.clone();
+        let at = 8 + (i % (bad.len() - 8));
+        bad[at] ^= 0x10;
+        match rx.decompress(&bad) {
+            Ok(out) => assert_eq!(out, events[i], "message {i}"),
+            Err(_) => assert_eq!(rx.decompress(p).unwrap(), events[i], "message {i}"),
+        }
+    }
+}
+
+#[test]
+fn session_handles_incompressible_and_empty_messages() {
+    let opts = Options {
+        mem_bits: 16,
+        ..Options::default()
+    };
+    let (mut tx, mut rx) = (Session::new(&opts), Session::new(&opts));
+    let mut rng = Rng(9);
+    let msgs = vec![
+        b"hello hello hello".to_vec(),
+        rng.bytes(500),
+        Vec::new(),
+        b"hello again hello".to_vec(),
+    ];
+    for m in &msgs {
+        assert_eq!(&rx.decompress(&tx.compress(m)).unwrap(), m);
+    }
+}
+
+#[test]
+fn sessions_with_different_origins_do_not_mix() {
+    let (dict, msg) = dict_and_message();
+    let model = PrimedModel::new(&dict, &Options::default());
+    let mut primed = Session::from_model(model.clone());
+    let packed = primed.compress(&msg);
+    // A receiver that started without the dictionary cannot decode it, and
+    // stays usable.
+    let mut fresh = Session::from_model(PrimedModel::new(&dict[..1000], &Options::default()));
+    assert!(fresh.decompress(&packed).is_err());
+    assert_eq!(fresh.messages(), 0);
+    let mut rx = Session::from_model(model);
+    assert_eq!(rx.decompress(&packed).unwrap(), msg);
+    // A session message is not a plain stream, and vice versa.
+    assert!(decompress(&packed).is_err());
+    assert!(matches!(
+        rx.decompress(&compress(&msg, &Options::default())),
+        Err(Error::NotThisSession)
+    ));
 }

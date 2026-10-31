@@ -86,6 +86,15 @@ impl<T: Copy> UndoLog<T> {
         }
     }
 
+    /// Keep every change and close the journal.
+    fn commit(&mut self) {
+        for &(i, _) in &self.entries {
+            self.seen[i as usize >> 6] = 0;
+        }
+        self.entries.clear();
+        self.on = false;
+    }
+
     /// Restore every recorded slot of `t` and close the journal.
     fn undo(&mut self, t: &mut [T]) {
         for &(i, v) in &self.entries {
@@ -1012,5 +1021,22 @@ impl Predictor {
     }
 }
 
-/// Proof that a journal is open; hand it back to [`Predictor::rollback`].
+impl Predictor {
+    /// Keep everything since [`Self::begin_journal`] and close the journal.
+    pub fn commit(&mut self, guard: JournalGuard) {
+        drop(guard);
+        self.o0.log.commit();
+        self.o1.log.commit();
+        for h in &mut self.hashed {
+            h.log.commit();
+        }
+        self.mm.log.commit();
+        for a in [&mut self.a1, &mut self.a2, &mut self.a3] {
+            a.log.commit();
+        }
+    }
+}
+
+/// Proof that a journal is open; hand it back to [`Predictor::rollback`] or
+/// [`Predictor::commit`].
 pub struct JournalGuard(Box<Saved>);

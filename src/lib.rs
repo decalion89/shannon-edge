@@ -43,6 +43,11 @@ const METHOD_CM: u8 = 1;
 const METHOD_BLOCKS: u8 = 2;
 const METHOD_CM_DICT: u8 = 3;
 
+/// First byte of a session message: marker in the high bits, kind below.
+const SESSION_MARK: u8 = 0xE0;
+const SESSION_STORED: u8 = 0;
+const SESSION_CM: u8 = 1;
+
 /// Default block size for parallel compression.
 pub const DEFAULT_BLOCK_SIZE: usize = 8 << 20;
 
@@ -102,6 +107,10 @@ pub enum Error {
     DictionaryMismatch { crc: u32, len: usize },
     /// A saved [`PrimedModel`] is damaged or not a model file.
     BadModel,
+    /// A session message arrived out of order (or one was lost).
+    SessionOutOfSync { expected: u64, got: u64 },
+    /// Not a session message.
+    NotThisSession,
 }
 
 impl fmt::Display for Error {
@@ -119,6 +128,12 @@ impl fmt::Display for Error {
                 "compressed with a dictionary ({len} bytes, crc {crc:08x}); pass it with -D"
             ),
             Error::BadModel => write!(f, "not a valid primed-model (.sedgem) file"),
+            Error::SessionOutOfSync { expected, got } => write!(
+                f,
+                "session message {got} (mod 65536) received, expected {expected}: \
+                 a message was lost or reordered"
+            ),
+            Error::NotThisSession => write!(f, "not a message of this session"),
             Error::DictionaryMismatch { crc, len } => write!(
                 f,
                 "wrong dictionary: stream needs {len} bytes with crc {crc:08x}"
@@ -358,6 +373,16 @@ fn compress_single(data: &[u8], mem_bits: u8, prior: Prior) -> Vec<u8> {
 /// Code `data` with `pred`, appending it to `hist`. `None` if the output
 /// would not be smaller than the input (the caller then stores it).
 fn encode_payload(pred: &mut Predictor, hist: &mut Vec<u8>, data: &[u8]) -> Option<Vec<u8>> {
+    encode_payload_with(pred, hist, data, false)
+}
+
+/// Like [`encode_payload`]; `short` selects the minimal coder flush.
+fn encode_payload_with(
+    pred: &mut Predictor,
+    hist: &mut Vec<u8>,
+    data: &[u8],
+    short: bool,
+) -> Option<Vec<u8>> {
     let mut enc = Encoder::new(data.len() / 2 + 16);
     for &byte in data {
         for k in (0..8).rev() {
@@ -371,7 +396,11 @@ fn encode_payload(pred: &mut Predictor, hist: &mut Vec<u8>, data: &[u8]) -> Opti
             return None;
         }
     }
-    Some(enc.finish())
+    Some(if short {
+        enc.finish_short()
+    } else {
+        enc.finish()
+    })
 }
 
 /// Wrap a CM payload in its container, or store `data` if that is smaller.
@@ -756,6 +785,193 @@ impl PrimedModel {
             pred,
         })
     }
+}
+
+// ---------------------------------------------------------------------------
+// Sessions: both sides keep learning from every message
+// ---------------------------------------------------------------------------
+
+/// A compression session between one sender and one receiver. Unlike
+/// [`PrimedModel::compress_message`], which starts every message from the
+/// same frozen state, a session **keeps learning**: message *n* is coded
+/// with everything learned from messages *0..n-1* (plus the dictionary the
+/// session started from, if any). Both sides make the same updates in the
+/// same order, so they stay in step without ever exchanging the model.
+///
+/// Session messages use a compact frame (typically 8 bytes of overhead
+/// instead of the 20-byte file header), because they are meant for small
+/// records:
+///
+/// | Size | Field |
+/// |---:|---|
+/// | 1 | `0xE0` + kind (`0` stored, `1` coded) |
+/// | 1–5 | original length (LEB128) |
+/// | 2 | sequence number, low 16 bits |
+/// | 4 | CRC-32 of the original |
+/// | … | payload (coded with a minimal flush, or stored) |
+///
+/// Messages must be decompressed in order. A lost or reordered message is
+/// reported as [`Error::SessionOutOfSync`]; a corrupt one fails its CRC. In
+/// both cases the receiver is left unchanged (its updates are journaled and
+/// rolled back), so the session continues once the right message arrives.
+///
+/// Memory: the model is fixed-size, but the history the match model refers
+/// to grows with the traffic (one byte per byte sent).
+#[derive(Clone)]
+pub struct Session {
+    model: PrimedModel,
+    seq: u64,
+}
+
+fn put_varint(out: &mut Vec<u8>, mut v: u64) {
+    while v >= 0x80 {
+        out.push((v as u8) | 0x80);
+        v >>= 7;
+    }
+    out.push(v as u8);
+}
+
+fn get_varint(b: &[u8], pos: &mut usize) -> Result<u64, Error> {
+    let mut v = 0u64;
+    for shift in (0..35).step_by(7) {
+        let byte = *b.get(*pos).ok_or(Error::Truncated)?;
+        *pos += 1;
+        v |= ((byte & 0x7f) as u64) << shift;
+        if byte < 0x80 {
+            return Ok(v);
+        }
+    }
+    Err(Error::TooLarge(v))
+}
+
+impl Session {
+    /// A session that starts from a primed model (shared knowledge). Both
+    /// sides must start from the same dictionary and memory level.
+    pub fn from_model(model: PrimedModel) -> Self {
+        Self { model, seq: 0 }
+    }
+
+    /// A session that starts from an empty model at memory level
+    /// `opts.mem_bits`.
+    pub fn new(opts: &Options) -> Self {
+        let bits = opts.mem_bits.clamp(MIN_MEM_BITS, MAX_MEM_BITS);
+        let (pred, hist) = start_model(bits, &[], None, 0);
+        Self {
+            model: PrimedModel {
+                bits,
+                dict: hist,
+                dict_crc: 0,
+                pred,
+            },
+            seq: 0,
+        }
+    }
+
+    /// Number of messages processed so far.
+    pub fn messages(&self) -> u64 {
+        self.seq
+    }
+
+    fn frame(&self, kind: u8, data: &[u8]) -> Vec<u8> {
+        let mut out = Vec::with_capacity(12 + data.len() / 2);
+        out.push(SESSION_MARK | kind);
+        put_varint(&mut out, data.len() as u64);
+        out.extend_from_slice(&(self.seq as u16).to_le_bytes());
+        out.extend_from_slice(&crc32::crc32(data).to_le_bytes());
+        out
+    }
+
+    /// Compress the next message and learn from it.
+    pub fn compress(&mut self, data: &[u8]) -> Vec<u8> {
+        assert!(
+            ((self.model.dict.len() + data.len()) as u64) < u32::MAX as u64,
+            "session history must stay below 4 GiB"
+        );
+        let hist_len = self.model.dict.len();
+        let guard = self.model.pred.begin_journal();
+        let payload = encode_payload_with(&mut self.model.pred, &mut self.model.dict, data, true);
+        let out = match payload {
+            Some(p) if p.len() < data.len() => {
+                self.model.pred.commit(guard);
+                let mut out = self.frame(SESSION_CM, data);
+                out.extend_from_slice(&p);
+                out
+            }
+            _ => {
+                // Incompressible: send it stored and do not learn from it
+                // (the receiver does the same).
+                self.model.pred.rollback(guard);
+                self.model.dict.truncate(hist_len);
+                let mut out = self.frame(SESSION_STORED, data);
+                out.extend_from_slice(data);
+                out
+            }
+        };
+        self.seq += 1;
+        out
+    }
+
+    /// Decompress the next message and learn from it. On any error the
+    /// session is left exactly as it was.
+    pub fn decompress(&mut self, input: &[u8]) -> Result<Vec<u8>, Error> {
+        let first = *input.first().ok_or(Error::Truncated)?;
+        if first & !1 != SESSION_MARK {
+            return Err(Error::NotThisSession);
+        }
+        let mut pos = 1;
+        let len = get_varint(input, &mut pos)?;
+        if len >= u32::MAX as u64 {
+            return Err(Error::TooLarge(len));
+        }
+        let len = len as usize;
+        let seq = read_u16(input, pos)?;
+        let crc = read_u32(input, pos + 2)? as u32;
+        let payload = &input[pos + 6..];
+        if seq != self.seq as u16 {
+            return Err(Error::SessionOutOfSync {
+                expected: self.seq,
+                got: seq as u64,
+            });
+        }
+        let out = if first & 1 == SESSION_STORED {
+            let out = payload.get(..len).ok_or(Error::Truncated)?.to_vec();
+            let actual = crc32::crc32(&out);
+            if actual != crc {
+                return Err(Error::ChecksumMismatch {
+                    expected: crc,
+                    actual,
+                });
+            }
+            out
+        } else {
+            if payload.is_empty() && len > 0 {
+                return Err(Error::Truncated);
+            }
+            let hist_len = self.model.dict.len();
+            let guard = self.model.pred.begin_journal();
+            decode_payload(&mut self.model.pred, &mut self.model.dict, payload, len);
+            let out = self.model.dict[hist_len..].to_vec();
+            let actual = crc32::crc32(&out);
+            if actual != crc {
+                self.model.pred.rollback(guard);
+                self.model.dict.truncate(hist_len);
+                return Err(Error::ChecksumMismatch {
+                    expected: crc,
+                    actual,
+                });
+            }
+            self.model.pred.commit(guard);
+            out
+        };
+        self.seq += 1;
+        Ok(out)
+    }
+}
+
+fn read_u16(b: &[u8], at: usize) -> Result<u16, Error> {
+    b.get(at..at + 2)
+        .map(|s| u16::from_le_bytes(s.try_into().unwrap()))
+        .ok_or(Error::Truncated)
 }
 
 impl fmt::Debug for PrimedModel {

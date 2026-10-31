@@ -45,6 +45,30 @@ impl Encoder {
         self.out
     }
 
+    /// Flush with as few bytes as possible: the shortest byte string that,
+    /// padded with zeros (as [`Decoder`] does), still lies in `[x1, x2]`.
+    /// Saves 2-3 bytes per stream, which matters for tiny messages.
+    pub fn finish_short(mut self) -> Vec<u8> {
+        for k in 1..=4u32 {
+            let shift = 32 - 8 * k;
+            let unit: u64 = 1 << shift;
+            // Round x1 up to the next multiple of 2^shift.
+            let v = (self.x1 as u64).div_ceil(unit) * unit;
+            if v <= self.x2 as u64 {
+                let v = v as u32;
+                for i in 0..k {
+                    self.out.push((v >> (24 - 8 * i)) as u8);
+                }
+                break;
+            }
+        }
+        // Trailing zero bytes are implied by the decoder's zero padding.
+        while self.out.last() == Some(&0) {
+            self.out.pop();
+        }
+        self.out
+    }
+
     /// Bytes written so far (used to abandon hopeless inputs early).
     #[inline]
     pub fn bytes_written(&self) -> usize {

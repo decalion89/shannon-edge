@@ -51,6 +51,27 @@ All integers are little-endian.
   blocked result would not be smaller than the input, the whole input is
   stored instead.
 
+## Session frames
+
+Messages of a `Session` (a sender and a receiver that both keep learning)
+use a compact frame instead of the 20-byte header, because they are meant
+for small records:
+
+| Size | Field |
+|---:|---|
+| 1 | `0xE0` + kind: `0` stored, `1` coded |
+| 1–5 | original length, LEB128 varint |
+| 2 | sequence number, low 16 bits, little-endian |
+| 4 | CRC-32 of the original record |
+| … | payload: the record itself (stored), or the coded record |
+
+Coded payloads use a minimal arithmetic-coder flush: trailing bytes the
+decoder would pad with zeros anyway are omitted. Record *n* is coded with
+the model after records *0..n-1* (and the starting dictionary, if any);
+stored records are not learned from, on either side. A frame whose sequence
+number is not the next expected one fails with `SessionOutOfSync`; a frame
+that fails its CRC is rejected and its updates are rolled back.
+
 ## Primed-model files (`.sedgem`)
 
 A saved `PrimedModel`: the model state after reading a dictionary. It is a

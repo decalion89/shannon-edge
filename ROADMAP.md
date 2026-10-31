@@ -81,6 +81,12 @@ v0.1 single core: ~0.5 MiB/s. Target: 10× without losing ratio, then more.
       on Canterbury + 4 MB of enwik8: two of the three SSE stages are free
       to drop (≤ +0.05%, ~10% faster); the rest each cost 0.2–3.7% if
       removed, so the next 10× needs a different architecture, not pruning
+- [x] Sessions that keep learning (`Session`): compact ≈8-byte frames,
+      sequence numbers, rollback of corrupt records. On 1,000 consecutive
+      GitHub events: 27% smaller than zstd's streaming mode with context
+      takeover, 29% with a trained starting dictionary
+- [ ] Sessions: bounded history (sliding window) for unbounded streams, and
+      an optional shorter checksum for links that already have one
 - [ ] Measure `H(X | K)` gains per pack on public datasets
 
 ## Phase 4 — Production
