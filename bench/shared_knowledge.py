@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
-"""Preliminary experiment: how much does shared knowledge lower the cost?
+"""Shared knowledge in practice: compress files with and without a dictionary.
 
-If sender and receiver already share some data K, the cost of sending X is
-the conditional information H(X | K), which can be far below H(X). We estimate
-it with sedge itself:
+If sender and receiver already share some data K, the cost of sending X drops
+from H(X) towards the conditional information H(X | K). `sedge -D K` makes
+that real: the model reads K before coding X, and K is never stored.
 
-    cost(X | K)  ≈  size(sedge(K + X)) - size(sedge(K))
-
-This is an upper-bound style estimate from an adaptive model primed on K, not
-a finished feature: real "knowledge packs" are Phase 3 of the roadmap.
+All sizes are real .sedge files (including the 8-byte dictionary id), and
+every one is decompressed with the dictionary and verified bit-for-bit.
 
 Usage:
     python3 bench/shared_knowledge.py --knowledge K1 [K2 ...] --targets X1 [X2 ...]
@@ -28,15 +26,13 @@ except ImportError:  # pragma: no cover
     brotli = None
 
 
-def sedge_size(binary: str, data: bytes, tmp: Path) -> int:
-    src, dst = tmp / "in", tmp / "out.sedge"
-    src.write_bytes(data)
-    subprocess.run([binary, "compress", str(src), "-o", str(dst), "-f"], check=True, capture_output=True)
-    # Verify the round trip as everywhere else in this project.
-    back = tmp / "back"
-    subprocess.run([binary, "decompress", str(dst), "-o", str(back), "-f"], check=True, capture_output=True)
-    if back.read_bytes() != data:
-        sys.exit("ROUND-TRIP MISMATCH")
+def sedge_size(binary: str, src: Path, tmp: Path, dict_path: Path | None) -> int:
+    dst, back = tmp / "out.sedge", tmp / "back"
+    extra = ["-D", str(dict_path)] if dict_path else []
+    subprocess.run([binary, "compress", str(src), "-o", str(dst), "-f", *extra], check=True, capture_output=True)
+    subprocess.run([binary, "decompress", str(dst), "-o", str(back), "-f", *extra], check=True, capture_output=True)
+    if back.read_bytes() != src.read_bytes():
+        sys.exit(f"ROUND-TRIP MISMATCH on {src}")
     return dst.stat().st_size
 
 
@@ -47,23 +43,23 @@ def main() -> None:
     ap.add_argument("--sedge", default=str(Path(__file__).resolve().parent.parent / "target/release/sedge"))
     args = ap.parse_args()
 
-    knowledge = b"".join(p.read_bytes() for p in args.knowledge)
     with tempfile.TemporaryDirectory() as t:
         tmp = Path(t)
-        base = sedge_size(args.sedge, knowledge, tmp)
-        print(f"Shared knowledge K: {len(knowledge):,} bytes ({', '.join(p.name for p in args.knowledge)})\n")
-        cols = ["File", "Original"] + (["brotli -11"] if brotli else []) + ["sedge", "sedge given K"]
+        dict_path = tmp / "dict"
+        dict_path.write_bytes(b"".join(p.read_bytes() for p in args.knowledge))
+        size = dict_path.stat().st_size
+        print(f"Dictionary: {size:,} bytes ({', '.join(p.name for p in args.knowledge)})\n")
+        cols = ["File", "Original"] + (["brotli -11"] if brotli else []) + ["sedge", "sedge -D"]
         print("| " + " | ".join(cols) + " |")
         print("|---|" + "---:|" * (len(cols) - 1))
         for p in args.targets:
-            x = p.read_bytes()
-            alone = sedge_size(args.sedge, x, tmp)
-            given = sedge_size(args.sedge, knowledge + x, tmp) - base
-            row = [p.name, f"{len(x):,}"]
+            row = [p.name, f"{p.stat().st_size:,}"]
             if brotli:
-                row.append(f"{len(brotli.compress(x, quality=11)):,}")
-            row += [f"{alone:,}", f"**{given:,}**"]
+                row.append(f"{len(brotli.compress(p.read_bytes(), quality=11)):,}")
+            row.append(f"{sedge_size(args.sedge, p, tmp, None):,}")
+            row.append(f"**{sedge_size(args.sedge, p, tmp, dict_path):,}**")
             print("| " + " | ".join(row) + " |")
+        print("\nEvery sedge result was decompressed and verified bit-for-bit.")
 
 
 if __name__ == "__main__":

@@ -1,7 +1,10 @@
 //! End-to-end guarantees: every input comes back bit-for-bit, random data
 //! never grows by more than the header, and corruption is always detected.
 
-use shannon_edge::{compress, decompress, decompress_with_threads, Error, Options, HEADER_LEN};
+use shannon_edge::{
+    compress, compress_with_dictionary, decompress, decompress_with_dictionary,
+    decompress_with_threads, Error, Options, HEADER_LEN,
+};
 
 /// Small deterministic PRNG (xorshift64*) so tests need no dependencies.
 struct Rng(u64);
@@ -295,4 +298,107 @@ fn golden_v1_block_stream_is_stable() {
     }
     assert_eq!(packed, GOLDEN_V1_BLOCKS, "multi-block format is not stable");
     assert_eq!(decompress(GOLDEN_V1_BLOCKS).unwrap(), sample_text());
+}
+
+// ---------------------------------------------------------------------------
+// Shared-knowledge dictionaries
+// ---------------------------------------------------------------------------
+
+/// A dictionary and a "message" drawn from the same kind of text.
+fn dict_and_message() -> (Vec<u8>, Vec<u8>) {
+    let text = sample_text();
+    (text[..40_000].to_vec(), text[40_000..42_000].to_vec())
+}
+
+#[test]
+fn dictionary_roundtrips_and_helps() {
+    let (dict, msg) = dict_and_message();
+    let plain = compress(&msg, &Options::default());
+    let primed = compress_with_dictionary(&msg, &dict, &Options::default());
+    assert_eq!(decompress_with_dictionary(&primed, &dict, 0).unwrap(), msg);
+    assert!(
+        primed.len() * 10 < plain.len() * 8,
+        "dictionary should save >20%: {} vs {}",
+        primed.len(),
+        plain.len()
+    );
+}
+
+#[test]
+fn empty_dictionary_is_plain_compression() {
+    let (_, msg) = dict_and_message();
+    assert_eq!(
+        compress_with_dictionary(&msg, &[], &Options::default()),
+        compress(&msg, &Options::default())
+    );
+}
+
+#[test]
+fn missing_or_wrong_dictionary_is_rejected() {
+    let (dict, msg) = dict_and_message();
+    let primed = compress_with_dictionary(&msg, &dict, &Options::default());
+    assert!(matches!(
+        decompress(&primed),
+        Err(Error::DictionaryRequired { len: 40_000, .. })
+    ));
+    let mut wrong = dict.clone();
+    wrong[123] ^= 1;
+    assert!(matches!(
+        decompress_with_dictionary(&primed, &wrong, 0),
+        Err(Error::DictionaryMismatch { .. })
+    ));
+    assert!(matches!(
+        decompress_with_dictionary(&primed, &dict[1..], 0),
+        Err(Error::DictionaryMismatch { .. })
+    ));
+}
+
+#[test]
+fn dictionary_is_ignored_by_plain_streams() {
+    let (dict, msg) = dict_and_message();
+    let plain = compress(&msg, &Options::default());
+    assert_eq!(decompress_with_dictionary(&plain, &dict, 0).unwrap(), msg);
+}
+
+#[test]
+fn dictionary_with_random_data_still_never_expands_beyond_header() {
+    let (dict, _) = dict_and_message();
+    let data = Rng(3).bytes(5_000);
+    let packed = compress_with_dictionary(&data, &dict, &Options::default());
+    assert!(packed.len() <= data.len() + HEADER_LEN);
+    assert_eq!(decompress_with_dictionary(&packed, &dict, 0).unwrap(), data);
+}
+
+#[test]
+fn dictionary_in_block_mode() {
+    let text = sample_text();
+    let (dict, data) = (&text[..10_000], &text[10_000..]);
+    let reference = compress_with_dictionary(data, dict, &blocked(8192, 1));
+    assert_eq!(reference[5], 2);
+    assert_eq!(
+        compress_with_dictionary(data, dict, &blocked(8192, 3)),
+        reference
+    );
+    assert_eq!(
+        decompress_with_dictionary(&reference, dict, 0).unwrap(),
+        data
+    );
+    assert!(decompress(&reference).is_err());
+}
+
+const GOLDEN_V1_DICT: &[u8] = include_bytes!("fixtures/golden-v1-dict.sedge");
+
+#[test]
+fn golden_v1_dictionary_stream_is_stable() {
+    let (dict, msg) = dict_and_message();
+    let packed = compress_with_dictionary(&msg, &dict, &Options::default());
+    if std::env::var_os("SEDGE_BLESS").is_some() {
+        std::fs::write("tests/fixtures/golden-v1-dict.sedge", &packed).unwrap();
+        return;
+    }
+    assert_eq!(packed, GOLDEN_V1_DICT, "dictionary format is not stable");
+    assert_eq!(
+        decompress_with_dictionary(GOLDEN_V1_DICT, &dict, 0).unwrap(),
+        msg
+    );
 }

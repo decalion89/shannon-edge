@@ -1,7 +1,8 @@
 //! `sedge` — command-line front end for shannon-edge.
 
 use shannon_edge::{
-    compress, decompress_with_threads, Options, DEFAULT_BLOCK_SIZE, MAX_MEM_BITS, MIN_MEM_BITS,
+    compress_with_dictionary, decompress_with_dictionary, Options, DEFAULT_BLOCK_SIZE,
+    MAX_MEM_BITS, MIN_MEM_BITS,
 };
 use std::fs;
 use std::io::{self, Read, Write};
@@ -13,9 +14,9 @@ const USAGE: &str = "\
 sedge — lossless compression by prediction (shannon-edge)
 
 USAGE:
-    sedge compress   <input> [-o <output>] [-m <level>] [-b <MiB>] [-t <n>] [-f]
-    sedge decompress <input> [-o <output>] [-t <n>] [-f]
-    sedge bench      <file>... [-m <level>] [-b <MiB>] [-t <n>]
+    sedge compress   <input> [-o <output>] [-D <dict>] [-m <level>] [-b <MiB>] [-t <n>] [-f]
+    sedge decompress <input> [-o <output>] [-D <dict>] [-t <n>] [-f]
+    sedge bench      <file>... [-D <dict>] [-m <level>] [-b <MiB>] [-t <n>]
 
 COMMANDS:
     compress, c      Compress <input> (default output: <input>.sedge)
@@ -24,6 +25,10 @@ COMMANDS:
 
 OPTIONS:
     -o <output>      Output path ('-' for stdout). Input '-' reads stdin.
+    -D <dict>        Shared-knowledge dictionary: any file both sides have
+                     (e.g. typical samples of the data). The model reads it
+                     before coding, so similar data costs far fewer bits.
+                     Decompression needs the exact same file.
     -m <level>       Memory level 16..24 (default 22, ~140 MiB; 24 = ~480 MiB).
                      Higher = more memory, better compression on large inputs.
                      Decompression needs the same memory as compression.
@@ -45,6 +50,7 @@ struct Args {
     mem_bits: u8,
     block_size: usize,
     threads: usize,
+    dict: Option<String>,
     force: bool,
 }
 
@@ -56,6 +62,7 @@ fn parse_args() -> Result<Option<Args>, String> {
     let mut mem_bits = Options::default().mem_bits;
     let mut block_size = DEFAULT_BLOCK_SIZE;
     let mut threads = 0;
+    let mut dict = None;
     let mut force = false;
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -87,6 +94,7 @@ fn parse_args() -> Result<Option<Args>, String> {
                 let v = it.next().ok_or("-t needs a value")?;
                 threads = v.parse().map_err(|_| "-t must be a number")?;
             }
+            "-D" => dict = Some(it.next().ok_or("-D needs a file")?),
             "-f" => force = true,
             _ if command.is_none() => command = Some(a),
             _ => inputs.push(a),
@@ -102,6 +110,7 @@ fn parse_args() -> Result<Option<Args>, String> {
         mem_bits,
         block_size,
         threads,
+        dict,
         force,
     }))
 }
@@ -146,12 +155,16 @@ fn run(args: Args) -> Result<(), String> {
         block_size: args.block_size,
         threads: args.threads,
     };
+    let dict = match &args.dict {
+        Some(path) => fs::read(path).map_err(|e| format!("{path}: {e}"))?,
+        None => Vec::new(),
+    };
     match args.command.as_str() {
         "compress" | "c" => {
             let input = single_input(&args)?;
             let data = read_input(input).map_err(|e| format!("{input}: {e}"))?;
             let t = Instant::now();
-            let packed = compress(&data, &opts);
+            let packed = compress_with_dictionary(&data, &dict, &opts);
             let secs = t.elapsed().as_secs_f64();
             let out = args.output.clone().unwrap_or_else(|| {
                 if input == "-" {
@@ -176,7 +189,7 @@ fn run(args: Args) -> Result<(), String> {
         "decompress" | "d" => {
             let input = single_input(&args)?;
             let packed = read_input(input).map_err(|e| format!("{input}: {e}"))?;
-            let data = decompress_with_threads(&packed, args.threads)
+            let data = decompress_with_dictionary(&packed, &dict, args.threads)
                 .map_err(|e| format!("{input}: {e}"))?;
             let out = args.output.clone().unwrap_or_else(|| {
                 if input == "-" {
@@ -201,10 +214,10 @@ fn run(args: Args) -> Result<(), String> {
             for path in &args.inputs {
                 let data = fs::read(path).map_err(|e| format!("{path}: {e}"))?;
                 let t = Instant::now();
-                let packed = compress(&data, &opts);
+                let packed = compress_with_dictionary(&data, &dict, &opts);
                 let tc = t.elapsed().as_secs_f64();
                 let t = Instant::now();
-                let back = decompress_with_threads(&packed, args.threads)
+                let back = decompress_with_dictionary(&packed, &dict, args.threads)
                     .map_err(|e| format!("{path}: {e}"))?;
                 let td = t.elapsed().as_secs_f64();
                 if back != data {

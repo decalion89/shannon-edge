@@ -79,24 +79,42 @@ machine) and still 8.6% smaller. zstd remains in another league for speed
 grows with the thread count; `-t` limits threads. Closing the rest of the gap
 is [Phase 1](ROADMAP.md#phase-1--speed-the-main-frontier).
 
-### Preliminary: shared knowledge
+### Shared knowledge: dictionaries (`-D`)
 
 If sender and receiver already share some data `K`, the true cost of a new
-file `X` is the conditional information `H(X | K)`. A first measurement, with
-`K` = just two English books from the Canterbury corpus (~900 KB) and cost
-estimated as `size(K + X) − size(K)`:
+file `X` is the conditional information `H(X | K)`, which can be far below
+`H(X)`. With `-D K`, the model reads `K` before coding (`K` is never stored;
+the stream records only its CRC and length, and decoding requires the same
+file).
 
-| File | Original | brotli -11 | sedge | **sedge given K** |
+**Small messages.** Dictionary = two English books from the Canterbury corpus
+(908,615 bytes). Real `.sedge` sizes, all verified:
+
+| File | Original | brotli -11 | sedge | **sedge -D** |
 |---|---:|---:|---:|---:|
-| xargs.1 | 4,227 | 1,464 | 1,483 | **1,290** |
-| grammar.lsp | 3,721 | 1,124 | 1,019 | **935** |
-| cp.html | 24,603 | 6,894 | 6,485 | **6,123** |
-| fields.c | 11,150 | 2,717 | 2,461 | **2,410** |
-| 3 KB of *Alice in Wonderland* (bytes 1,000–4,000 of `alice29.txt`) | 3,000 | 1,217 | 1,278 | **930** |
+| xargs.1 | 4,227 | 1,464 | 1,483 | **1,322** |
+| grammar.lsp | 3,721 | 1,124 | 1,019 | **965** |
+| cp.html | 24,603 | 6,894 | 6,485 | **6,152** |
+| fields.c | 11,150 | 2,717 | 2,461 | **2,442** |
+| 3 KB of *Alice in Wonderland* (bytes 1,000–4,000 of `alice29.txt`) | 3,000 | 1,217 | 1,278 | **962** |
 
-Small messages gain the most — and small messages are most of what networks
-carry. Reproduce with `bench/shared_knowledge.py`. Turning this into real
-knowledge packs is Phase 3 of the [roadmap](ROADMAP.md).
+**Block mode.** Every block is primed with the same dictionary, so blocks stay
+independent (parallel) yet none starts from zero. enwik8 minus its first
+4 MiB (95.8 MB), with dictionaries cut from that first 4 MiB (no overlap with
+the data), 4 cores:
+
+| Mode | Size (bytes) | Speed | Block-mode loss recovered |
+|---|---:|---:|---:|
+| one block (`-b 0`) | 20,896,796 | 0.53 MiB/s | — |
+| 8 MiB blocks | 21,758,838 | 2.06 MiB/s | 0% |
+| 8 MiB blocks + 1 MiB dictionary | 21,502,540 | 1.87 MiB/s | 30% |
+| 8 MiB blocks + 4 MiB dictionary | 21,261,762 | 1.28 MiB/s | 58% |
+
+The price today is time: the model re-reads the dictionary at its own speed
+(~0.5 MiB/s) for every block or message, so a 3 KB message with a 900 KB
+dictionary takes ~1 s. Saving the primed model as a snapshot (load instead of
+re-read) is next on the [roadmap](ROADMAP.md). Reproduce the table with
+`bench/shared_knowledge.py`.
 
 ### What it cannot do (and nothing can)
 
@@ -117,14 +135,21 @@ cargo build --release
 ./target/release/sedge bench      file1 file2 ...    # ratio + speed, verified
 ./target/release/sedge compress   big.log -b 0 -m 24 # max ratio: one block, more memory
 ./target/release/sedge compress   big.log -t 2       # limit to 2 threads
+./target/release/sedge compress   msg.json -D samples.json   # shared-knowledge dictionary
+./target/release/sedge decompress msg.json.sedge -D samples.json
 ```
 
 As a library:
 
 ```rust
-let packed = shannon_edge::compress(&data, &shannon_edge::Options::default());
+let opts = shannon_edge::Options::default();
+let packed = shannon_edge::compress(&data, &opts);
 let back = shannon_edge::decompress(&packed)?; // CRC-32 verified
 assert_eq!(back, data);
+
+// With shared knowledge both sides hold:
+let packed = shannon_edge::compress_with_dictionary(&data, &dict, &opts);
+let back = shannon_edge::decompress_with_dictionary(&packed, &dict, 0)?;
 ```
 
 Reproduce the benchmark tables:
@@ -174,7 +199,7 @@ The file format is specified in [`docs/FORMAT.md`](docs/FORMAT.md).
 | `src/main.rs` | `sedge` command-line tool |
 | `tests/` | Round-trip, adversarial, corruption and golden-format tests |
 | `bench/compare.py` | Benchmark against gzip, bzip2, xz, zstd and brotli |
-| `bench/shared_knowledge.py` | Shared-knowledge (conditional cost) experiment |
+| `bench/shared_knowledge.py` | Compression with vs. without a shared dictionary |
 | `docs/THEORY.md` | The limits, with proofs, and how to move them honestly |
 | `docs/FORMAT.md` | `.sedge` format specification |
 | `ROADMAP.md` | Where this goes next |

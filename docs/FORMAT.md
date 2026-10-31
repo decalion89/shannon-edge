@@ -6,7 +6,7 @@ All integers are little-endian.
 |---:|---:|---|---|
 | 0 | 4 | `magic` | ASCII `SEDG` |
 | 4 | 1 | `version` | Format version, currently `1` |
-| 5 | 1 | `method` | `0` = stored, `1` = context mixing (CM), `2` = parallel blocks |
+| 5 | 1 | `method` | `0` = stored, `1` = context mixing (CM), `2` = parallel blocks, `3` = CM with dictionary |
 | 6 | 1 | `mem_bits` | Model memory level, `16..=24` for CM, `0` otherwise |
 | 7 | 1 | `reserved` | Must be `0` |
 | 8 | 8 | `length` | Original size in bytes (v1: below 2^32 − 1) |
@@ -22,6 +22,14 @@ All integers are little-endian.
   driven by the model in `src/model.rs`, with hashed context tables of
   `2^mem_bits` slots. The decoder must allocate the same tables, so
   `mem_bits` also sets the decoder's memory use (≈140 MiB at 22).
+* **CM with dictionary (`3`)** — like CM, but before coding, the model reads
+  a dictionary that both sides hold (it is never stored in the stream), so
+  it starts out knowing that kind of data. The payload starts with the
+  dictionary's CRC-32 (4 bytes) and length (4 bytes), followed by the CM
+  stream. Decoding without the dictionary fails with `DictionaryRequired`;
+  with a different one, with `DictionaryMismatch`. Priming means the model
+  processes `dict + data` and only `data` is coded, so its match model can
+  also copy straight from the dictionary.
 
 * **Parallel blocks (`2`)** — the input was split into fixed-size blocks,
   each compressed independently so that blocks can be encoded and decoded on
@@ -34,11 +42,12 @@ All integers are little-endian.
   | 4 × n | byte length of each block stream |
   | … | the `n` block streams, back to back |
 
-  Each block stream is a complete method-0 or method-1 stream with its own
+  Each block stream is a complete method-0, 1 or 3 stream with its own
   20-byte header and CRC (nesting method 2 is invalid). The decoded blocks,
   concatenated, must have exactly `length` bytes and match the outer CRC.
   The compressed bytes depend only on the data, `mem_bits` and `block_size`,
-  never on how many threads were used. If the blocked result would not be
+  never on how many threads were used. With a dictionary, every block is
+  primed with the same dictionary, so blocks stay independent. If the blocked result would not be
   smaller than the input, the whole input is stored instead.
 
 ## Integrity

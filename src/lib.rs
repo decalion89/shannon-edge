@@ -40,6 +40,7 @@ pub const MAX_MEM_BITS: u8 = 24;
 const METHOD_STORED: u8 = 0;
 const METHOD_CM: u8 = 1;
 const METHOD_BLOCKS: u8 = 2;
+const METHOD_CM_DICT: u8 = 3;
 
 /// Default block size for parallel compression.
 pub const DEFAULT_BLOCK_SIZE: usize = 8 << 20;
@@ -93,6 +94,11 @@ pub enum Error {
     ChecksumMismatch { expected: u32, actual: u32 },
     /// The block table of a multi-block stream is inconsistent.
     BadBlockTable,
+    /// The stream was compressed with a dictionary; pass the same one to
+    /// [`decompress_with_dictionary`].
+    DictionaryRequired { crc: u32, len: usize },
+    /// The dictionary given is not the one the stream was compressed with.
+    DictionaryMismatch { crc: u32, len: usize },
 }
 
 impl fmt::Display for Error {
@@ -105,6 +111,14 @@ impl fmt::Display for Error {
             Error::BadMemBits(b) => write!(f, "invalid memory level {b}"),
             Error::TooLarge(n) => write!(f, "declared size {n} is too large"),
             Error::BadBlockTable => write!(f, "inconsistent block table: data is corrupt"),
+            Error::DictionaryRequired { crc, len } => write!(
+                f,
+                "compressed with a dictionary ({len} bytes, crc {crc:08x}); pass it with -D"
+            ),
+            Error::DictionaryMismatch { crc, len } => write!(
+                f,
+                "wrong dictionary: stream needs {len} bytes with crc {crc:08x}"
+            ),
             Error::ChecksumMismatch { expected, actual } => write!(
                 f,
                 "checksum mismatch (expected {expected:08x}, got {actual:08x}): data is corrupt"
@@ -182,16 +196,35 @@ fn parallel_map<T: Sync, R: Send>(
 /// # Panics
 /// Inputs of 4 GiB or more are not supported by format version 1.
 pub fn compress(data: &[u8], opts: &Options) -> Vec<u8> {
+    compress_with_dictionary(data, &[], opts)
+}
+
+/// Compress `data` given a dictionary: data that the decompressor will also
+/// have. Before coding, the model reads the dictionary (in every block), so
+/// it starts out already knowing its vocabulary, phrases and structure. The
+/// cost of a message then approaches `H(data | dictionary)`, which for small
+/// messages similar to the dictionary is far below `H(data)`.
+///
+/// Decompression requires exactly the same dictionary
+/// ([`decompress_with_dictionary`]); the stream records its CRC-32 and
+/// length. Priming costs time proportional to the dictionary size, per block.
+/// An empty dictionary is the same as [`compress`].
+///
+/// # Panics
+/// If `dictionary` plus one block reaches 4 GiB.
+pub fn compress_with_dictionary(data: &[u8], dictionary: &[u8], opts: &Options) -> Vec<u8> {
     assert!(
         (data.len() as u64) < u32::MAX as u64,
         "format v1 supports inputs below 4 GiB"
     );
     if opts.block_size == 0 || data.len() <= opts.block_size {
-        return compress_single(data, opts.mem_bits);
+        return compress_single(data, opts.mem_bits, dictionary);
     }
 
     let blocks: Vec<&[u8]> = data.chunks(opts.block_size).collect();
-    let streams = parallel_map(&blocks, opts.threads, |b| compress_single(b, opts.mem_bits));
+    let streams = parallel_map(&blocks, opts.threads, |b| {
+        compress_single(b, opts.mem_bits, dictionary)
+    });
 
     let total: usize = streams.iter().map(Vec::len).sum();
     let table_len = 8 + 4 * streams.len();
@@ -216,22 +249,41 @@ fn stored(data: &[u8]) -> Vec<u8> {
     out
 }
 
-/// Compress one block as a self-contained stored or CM stream.
-fn compress_single(data: &[u8], mem_bits: u8) -> Vec<u8> {
-    let bits = effective_mem_bits(data.len(), mem_bits);
+/// Feed `dict` through the model without coding anything, leaving `hist`
+/// holding it. Encoder and decoder run this identically.
+fn prime(pred: &mut Predictor, hist: &mut Vec<u8>, dict: &[u8]) {
+    for &byte in dict {
+        for k in (0..8).rev() {
+            pred.update(((byte >> k) & 1) as u32);
+        }
+        hist.push(byte);
+        pred.byte_update(hist);
+    }
+}
+
+/// Compress one block as a self-contained stored, CM or CM+dictionary stream.
+fn compress_single(data: &[u8], mem_bits: u8, dict: &[u8]) -> Vec<u8> {
+    assert!(
+        ((dict.len() + data.len()) as u64) < u32::MAX as u64,
+        "dictionary plus block must stay below 4 GiB"
+    );
+    let bits = effective_mem_bits(dict.len() + data.len(), mem_bits);
     if !data.is_empty() {
         let mut enc = Encoder::new(data.len() / 2 + 16);
         let mut pred = Predictor::new(bits as u32);
         pred.start();
+        let mut hist = Vec::with_capacity(dict.len() + data.len());
+        prime(&mut pred, &mut hist, dict);
         let limit = data.len();
         let mut gave_up = false;
-        for (i, &byte) in data.iter().enumerate() {
+        for &byte in data {
             for k in (0..8).rev() {
                 let bit = ((byte >> k) & 1) as u32;
                 enc.encode(bit, pred.p());
                 pred.update(bit);
             }
-            pred.byte_update(&data[..=i]);
+            hist.push(byte);
+            pred.byte_update(&hist);
             if enc.bytes_written() >= limit {
                 gave_up = true;
                 break;
@@ -239,8 +291,17 @@ fn compress_single(data: &[u8], mem_bits: u8) -> Vec<u8> {
         }
         if !gave_up {
             let payload = enc.finish();
-            if payload.len() < data.len() {
-                let mut out = header(METHOD_CM, bits, data.len() as u64, crc32::crc32(data));
+            let dict_tag = if dict.is_empty() { 0 } else { 8 };
+            if payload.len() + dict_tag < data.len() {
+                let crc = crc32::crc32(data);
+                let mut out = if dict.is_empty() {
+                    header(METHOD_CM, bits, data.len() as u64, crc)
+                } else {
+                    let mut h = header(METHOD_CM_DICT, bits, data.len() as u64, crc);
+                    h.extend_from_slice(&crc32::crc32(dict).to_le_bytes());
+                    h.extend_from_slice(&(dict.len() as u32).to_le_bytes());
+                    h
+                };
                 out.extend_from_slice(&payload);
                 return out;
             }
@@ -297,9 +358,19 @@ pub fn decompress(input: &[u8]) -> Result<Vec<u8>, Error> {
 
 /// Like [`decompress`], with an explicit worker-thread count (`0` = all cores).
 pub fn decompress_with_threads(input: &[u8], threads: usize) -> Result<Vec<u8>, Error> {
+    decompress_with_dictionary(input, &[], threads)
+}
+
+/// Decompress a stream that may have been compressed with a dictionary
+/// ([`compress_with_dictionary`]). Streams compressed without one ignore it.
+pub fn decompress_with_dictionary(
+    input: &[u8],
+    dictionary: &[u8],
+    threads: usize,
+) -> Result<Vec<u8>, Error> {
     let h = parse_header(input)?;
     if h.method != METHOD_BLOCKS {
-        return decompress_single(input);
+        return decompress_single(input, dictionary);
     }
     let p = &input[HEADER_LEN..];
     let _block_size = read_u32(p, 0)?;
@@ -326,7 +397,7 @@ pub fn decompress_with_threads(input: &[u8], threads: usize) -> Result<Vec<u8>, 
     if declared != h.len {
         return Err(Error::BadBlockTable);
     }
-    let parts = parallel_map(&streams, threads, |s| decompress_single(s));
+    let parts = parallel_map(&streams, threads, |s| decompress_single(s, dictionary));
     let mut out = Vec::with_capacity(h.len);
     for part in parts {
         out.extend_from_slice(&part?);
@@ -341,15 +412,28 @@ pub fn decompress_with_threads(input: &[u8], threads: usize) -> Result<Vec<u8>, 
     Ok(out)
 }
 
-/// Decode a single stored or CM stream.
-fn decompress_single(input: &[u8]) -> Result<Vec<u8>, Error> {
+/// Decode a single stored, CM or CM+dictionary stream.
+fn decompress_single(input: &[u8], dictionary: &[u8]) -> Result<Vec<u8>, Error> {
     let Header {
         method,
         bits,
         len,
         crc: expected,
     } = parse_header(input)?;
-    let payload = &input[HEADER_LEN..];
+    let mut payload = &input[HEADER_LEN..];
+    let mut dict: &[u8] = &[];
+    if method == METHOD_CM_DICT {
+        let crc = read_u32(payload, 0)? as u32;
+        let dlen = read_u32(payload, 4)?;
+        payload = &payload[8..];
+        if dictionary.is_empty() {
+            return Err(Error::DictionaryRequired { crc, len: dlen });
+        }
+        if dictionary.len() != dlen || crc32::crc32(dictionary) != crc {
+            return Err(Error::DictionaryMismatch { crc, len: dlen });
+        }
+        dict = dictionary;
+    }
 
     let out = match method {
         METHOD_STORED => {
@@ -358,7 +442,7 @@ fn decompress_single(input: &[u8]) -> Result<Vec<u8>, Error> {
             }
             payload[..len].to_vec()
         }
-        METHOD_CM => {
+        METHOD_CM | METHOD_CM_DICT => {
             if !(MIN_MEM_BITS..=MAX_MEM_BITS).contains(&bits) {
                 return Err(Error::BadMemBits(bits));
             }
@@ -367,21 +451,24 @@ fn decompress_single(input: &[u8]) -> Result<Vec<u8>, Error> {
             if payload.is_empty() && len > 0 {
                 return Err(Error::Truncated);
             }
-            let mut out = Vec::with_capacity(len);
-            let mut dec = Decoder::new(payload);
+            let mut hist = Vec::with_capacity(dict.len() + len);
             let mut pred = Predictor::new(bits as u32);
             pred.start();
-            while out.len() < len {
+            prime(&mut pred, &mut hist, dict);
+            let mut dec = Decoder::new(payload);
+            let end = dict.len() + len;
+            while hist.len() < end {
                 loop {
                     let bit = dec.decode(pred.p());
                     if let Some(byte) = pred.update(bit) {
-                        out.push(byte);
+                        hist.push(byte);
                         break;
                     }
                 }
-                pred.byte_update(&out);
+                pred.byte_update(&hist);
             }
-            out
+            hist.drain(..dict.len());
+            hist
         }
         m => return Err(Error::UnknownMethod(m)),
     };

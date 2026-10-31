@@ -32,8 +32,11 @@ v0.1 single core: ~0.5 MiB/s. Target: 10× without losing ratio, then more.
       cores (4.2× on 4 cores for +4% size on enwik8; output independent of
       the thread count)
 - [ ] Explicit SIMD mixers (AVX2 / NEON) with runtime dispatch
-- [ ] Shared warm-up between blocks (prime each block's model on the end of
-      the previous block) to recover most of the block-mode ratio loss
+- [x] Shared-knowledge dictionaries (`-D`): every block is primed with the
+      same dictionary, which recovers part of the block-mode loss without
+      breaking parallel decoding. (Priming each block on the end of the
+      *previous* block, the original idea here, would make block N wait for
+      block N−1 to decode — no longer parallel.)
 - [ ] Model pruning: measure each model's contribution per data type and skip
       the useless ones
 - [ ] Fast "analysis" pass that detects data type and picks a model set
@@ -54,6 +57,11 @@ v0.1 single core: ~0.5 MiB/s. Target: 10× without losing ratio, then more.
 
 ## Phase 3 — Shared knowledge (moving the edge itself)
 
+- [x] Dictionary priming in the format and CLI (`-D`), with CRC-checked
+      dictionary identity
+- [ ] Model-state snapshots: save the model after priming so a dictionary
+      costs a memory copy instead of re-reading it (today priming runs at
+      model speed, ~0.5 MiB/s, per block)
 - [ ] Pre-trained model "packs" shipped with the decoder (logs, JSON, source
       code, natural language), honestly reporting pack size separately
 - [ ] User-trainable dictionaries for many small similar files
