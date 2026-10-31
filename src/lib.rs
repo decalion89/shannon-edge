@@ -340,47 +340,77 @@ fn compress_single(data: &[u8], mem_bits: u8, prior: Prior) -> Vec<u8> {
         Prior::Model(m) => (m.bits, Some(m)),
         _ => (effective_mem_bits(dict.len() + data.len(), mem_bits), None),
     };
-    if !data.is_empty() {
-        let mut enc = Encoder::new(data.len() / 2 + 16);
-        let (mut pred, mut hist) = start_model(bits, dict, model, data.len());
-        let limit = data.len();
-        let mut gave_up = false;
-        for &byte in data {
-            for k in (0..8).rev() {
-                let bit = ((byte >> k) & 1) as u32;
-                enc.encode(bit, pred.p());
-                pred.update(bit);
-            }
-            hist.push(byte);
-            pred.byte_update(&hist);
-            if enc.bytes_written() >= limit {
-                gave_up = true;
+    if data.is_empty() {
+        return stored(data);
+    }
+    let (mut pred, mut hist) = start_model(bits, dict, model, data.len());
+    let payload = encode_payload(&mut pred, &mut hist, data);
+    let dict_id = (!dict.is_empty()).then(|| {
+        let crc = match prior {
+            Prior::Model(m) => m.dict_crc,
+            _ => crc32::crc32(dict),
+        };
+        (crc, dict.len())
+    });
+    wrap_cm(data, bits, dict_id, payload)
+}
+
+/// Code `data` with `pred`, appending it to `hist`. `None` if the output
+/// would not be smaller than the input (the caller then stores it).
+fn encode_payload(pred: &mut Predictor, hist: &mut Vec<u8>, data: &[u8]) -> Option<Vec<u8>> {
+    let mut enc = Encoder::new(data.len() / 2 + 16);
+    for &byte in data {
+        for k in (0..8).rev() {
+            let bit = ((byte >> k) & 1) as u32;
+            enc.encode(bit, pred.p());
+            pred.update(bit);
+        }
+        hist.push(byte);
+        pred.byte_update(hist);
+        if enc.bytes_written() >= data.len() {
+            return None;
+        }
+    }
+    Some(enc.finish())
+}
+
+/// Wrap a CM payload in its container, or store `data` if that is smaller.
+fn wrap_cm(data: &[u8], bits: u8, dict: Option<(u32, usize)>, payload: Option<Vec<u8>>) -> Vec<u8> {
+    let Some(payload) = payload else {
+        return stored(data);
+    };
+    let tag = if dict.is_some() { 8 } else { 0 };
+    if payload.len() + tag >= data.len() {
+        return stored(data);
+    }
+    let crc = crc32::crc32(data);
+    let mut out = match dict {
+        None => header(METHOD_CM, bits, data.len() as u64, crc),
+        Some((dict_crc, dict_len)) => {
+            let mut h = header(METHOD_CM_DICT, bits, data.len() as u64, crc);
+            h.extend_from_slice(&dict_crc.to_le_bytes());
+            h.extend_from_slice(&(dict_len as u32).to_le_bytes());
+            h
+        }
+    };
+    out.extend_from_slice(&payload);
+    out
+}
+
+/// Decode `len` bytes from `payload` with `pred`, appending them to `hist`.
+fn decode_payload(pred: &mut Predictor, hist: &mut Vec<u8>, payload: &[u8], len: usize) {
+    let mut dec = Decoder::new(payload);
+    let end = hist.len() + len;
+    while hist.len() < end {
+        loop {
+            let bit = dec.decode(pred.p());
+            if let Some(byte) = pred.update(bit) {
+                hist.push(byte);
                 break;
             }
         }
-        if !gave_up {
-            let payload = enc.finish();
-            let dict_tag = if dict.is_empty() { 0 } else { 8 };
-            if payload.len() + dict_tag < data.len() {
-                let crc = crc32::crc32(data);
-                let mut out = if dict.is_empty() {
-                    header(METHOD_CM, bits, data.len() as u64, crc)
-                } else {
-                    let dict_crc = match prior {
-                        Prior::Model(m) => m.dict_crc,
-                        _ => crc32::crc32(dict),
-                    };
-                    let mut h = header(METHOD_CM_DICT, bits, data.len() as u64, crc);
-                    h.extend_from_slice(&dict_crc.to_le_bytes());
-                    h.extend_from_slice(&(dict.len() as u32).to_le_bytes());
-                    h
-                };
-                out.extend_from_slice(&payload);
-                return out;
-            }
-        }
+        pred.byte_update(hist);
     }
-    stored(data)
 }
 
 struct Header {
@@ -551,18 +581,7 @@ fn decompress_single(input: &[u8], prior: Prior) -> Result<Vec<u8>, Error> {
                 return Err(Error::Truncated);
             }
             let (mut pred, mut hist) = start_model(bits, dict, model, len);
-            let mut dec = Decoder::new(payload);
-            let end = dict.len() + len;
-            while hist.len() < end {
-                loop {
-                    let bit = dec.decode(pred.p());
-                    if let Some(byte) = pred.update(bit) {
-                        hist.push(byte);
-                        break;
-                    }
-                }
-                pred.byte_update(&hist);
-            }
+            decode_payload(&mut pred, &mut hist, payload, len);
             hist.drain(..dict.len());
             hist
         }
@@ -629,6 +648,60 @@ impl PrimedModel {
     /// Memory level of the model's tables.
     pub fn mem_bits(&self) -> u8 {
         self.bits
+    }
+
+    /// Compress one message from the primed state, working on the model in
+    /// place and then restoring it exactly (a journal records every change).
+    /// Same bytes as [`compress_with_model`], but the cost is proportional to
+    /// the message instead of copying the whole model, which makes it the
+    /// fast path for many small messages. Inputs larger than one block fall
+    /// back to [`compress_with_model`].
+    pub fn compress_message(&mut self, data: &[u8], opts: &Options) -> Vec<u8> {
+        if data.is_empty() || (opts.block_size != 0 && data.len() > opts.block_size) {
+            return compress_with_model(data, self, opts);
+        }
+        assert!(
+            ((self.dict.len() + data.len()) as u64) < u32::MAX as u64,
+            "dictionary plus message must stay below 4 GiB"
+        );
+        let dict_len = self.dict.len();
+        let guard = self.pred.begin_journal();
+        let payload = encode_payload(&mut self.pred, &mut self.dict, data);
+        self.pred.rollback(guard);
+        self.dict.truncate(dict_len);
+        wrap_cm(data, self.bits, Some((self.dict_crc, dict_len)), payload)
+    }
+
+    /// Decompress one message with the model in place (see
+    /// [`PrimedModel::compress_message`]); any stream [`decompress_with_model`]
+    /// accepts is accepted, using the fast path whenever it applies.
+    pub fn decompress_message(&mut self, input: &[u8]) -> Result<Vec<u8>, Error> {
+        let h = parse_header(input)?;
+        if h.method != METHOD_CM_DICT || h.bits != self.bits {
+            return decompress_with_model(input, self, 0);
+        }
+        let payload = &input[HEADER_LEN..];
+        let crc = read_u32(payload, 0)? as u32;
+        let dlen = read_u32(payload, 4)?;
+        if dlen != self.dict.len() || crc != self.dict_crc {
+            return Err(Error::DictionaryMismatch { crc, len: dlen });
+        }
+        let payload = &payload[8..];
+        if payload.is_empty() && h.len > 0 {
+            return Err(Error::Truncated);
+        }
+        let guard = self.pred.begin_journal();
+        decode_payload(&mut self.pred, &mut self.dict, payload, h.len);
+        self.pred.rollback(guard);
+        let out = self.dict.split_off(dlen);
+        let actual = crc32::crc32(&out);
+        if actual != h.crc {
+            return Err(Error::ChecksumMismatch {
+                expected: h.crc,
+                actual,
+            });
+        }
+        Ok(out)
     }
 
     /// Serialise the model (dictionary included) so it can be loaded later

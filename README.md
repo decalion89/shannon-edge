@@ -160,9 +160,13 @@ At **equal knowledge**, sedge wins at both budgets: −19% with 110 KiB
 knowledge because a predictive model turns every sample into statistics,
 while a copy-based dictionary can only reuse literal strings.
 
-The price is speed: ~60 ms per record for compress + decompress + verify
-(copying the primed model dominates), where zstd takes microseconds; and
-`.sedgem` model files are large (here 162 MB). Reproduce with
+The price is speed. `PrimedModel::compress_message` (used by `sedge -M`)
+works on the primed model in place and undoes its changes from a journal,
+so a record costs time proportional to the record, not to the model:
+~14 ms per record per direction (1,000 records compress + decompress +
+verify in 28 s, whether the model was primed on 110 KiB or on 18 MB; before
+the journal: 63 s and 130 s). zstd takes microseconds. `.sedgem` model
+files are large (here 162 MB). Reproduce with
 `bench/small_messages.py`.
 
 ### What it cannot do (and nothing can)
@@ -201,10 +205,11 @@ assert_eq!(back, data);
 let packed = shannon_edge::compress_with_dictionary(&data, &dict, &opts);
 let back = shannon_edge::decompress_with_dictionary(&packed, &dict, 0)?;
 
-// Prime once, compress many messages from the primed state:
-let model = shannon_edge::PrimedModel::new(&dict, &opts);
-let packed = shannon_edge::compress_with_model(&msg, &model, &opts);
-let back = shannon_edge::decompress_with_model(&packed, &model, 0)?;
+// Prime once, then compress many messages from the primed state
+// (in place, journaled: cost proportional to the message):
+let mut model = shannon_edge::PrimedModel::new(&dict, &opts);
+let packed = model.compress_message(&msg, &opts);
+let back = model.decompress_message(&packed)?;
 std::fs::write("dict.sedgem", model.to_bytes())?; // PrimedModel::from_bytes to load
 ```
 

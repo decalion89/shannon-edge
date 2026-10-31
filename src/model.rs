@@ -54,6 +54,8 @@ const FRESH: u32 = 1 << 31;
 struct DirectMap {
     t: Vec<u32>,
     limit: u32,
+    /// Undo log (index, old value) while a journal is open.
+    log: Option<Vec<(u32, u32)>>,
 }
 
 impl DirectMap {
@@ -61,6 +63,7 @@ impl DirectMap {
         Self {
             t: vec![FRESH; size],
             limit,
+            log: None,
         }
     }
 
@@ -71,7 +74,18 @@ impl DirectMap {
 
     #[inline]
     fn update(&mut self, i: usize, bit: u32) {
+        if let Some(log) = &mut self.log {
+            log.push((i as u32, self.t[i]));
+        }
         update_slot(&mut self.t[i], bit, self.limit);
+    }
+
+    fn rollback(&mut self) {
+        if let Some(log) = self.log.take() {
+            for &(i, v) in log.iter().rev() {
+                self.t[i as usize] = v;
+            }
+        }
     }
 }
 
@@ -90,6 +104,8 @@ struct HashedMap {
     t: Vec<Bucket>,
     shift: u32,
     limit: u32,
+    /// Undo log of whole buckets, saved when first claimed for a nibble.
+    log: Option<Vec<(u32, Bucket)>>,
 }
 
 impl HashedMap {
@@ -101,6 +117,7 @@ impl HashedMap {
             t: vec![b; 1usize << (bits - 4)],
             shift: 32 - (bits - 4),
             limit,
+            log: None,
         }
     }
 
@@ -109,6 +126,11 @@ impl HashedMap {
     fn bucket(&mut self, h: u32) -> usize {
         let i = (h >> self.shift) as usize;
         let tag = (h & 0xffff) | 0x1_0000;
+        // Every write to this bucket during the nibble follows this call,
+        // so saving it here covers both the reset and the updates.
+        if let Some(log) = &mut self.log {
+            log.push((i as u32, self.t[i]));
+        }
         let b = &mut self.t[i].0;
         if b[0] != tag {
             *b = [FRESH; 16];
@@ -125,6 +147,14 @@ impl HashedMap {
     #[inline]
     fn update(&mut self, b: usize, node: usize, bit: u32) {
         update_slot(&mut self.t[b].0[node], bit, self.limit);
+    }
+
+    fn rollback(&mut self) {
+        if let Some(log) = self.log.take() {
+            for &(i, b) in log.iter().rev() {
+                self.t[i as usize] = b;
+            }
+        }
     }
 }
 
@@ -228,6 +258,7 @@ struct Apm {
     t: Vec<u16>,
     idx: usize,
     rate: i32,
+    log: Option<Vec<(u32, u16)>>,
 }
 
 impl Apm {
@@ -239,7 +270,12 @@ impl Apm {
         for _ in 0..contexts {
             t.extend_from_slice(&row);
         }
-        Self { t, idx: 0, rate }
+        Self {
+            t,
+            idx: 0,
+            rate,
+            log: None,
+        }
     }
 
     #[inline]
@@ -257,7 +293,18 @@ impl Apm {
     fn update(&mut self, bit: u32) {
         let g = ((bit as i32) << 16) + ((bit as i32) << self.rate) - 2 * bit as i32;
         let v = self.t[self.idx] as i32;
+        if let Some(log) = &mut self.log {
+            log.push((self.idx as u32, v as u16));
+        }
         self.t[self.idx] = (v + ((g - v) >> self.rate)) as u16;
+    }
+
+    fn rollback(&mut self) {
+        if let Some(log) = self.log.take() {
+            for &(i, v) in log.iter().rev() {
+                self.t[i as usize] = v;
+            }
+        }
     }
 }
 
@@ -278,6 +325,7 @@ struct MatchModel {
     active: bool,
     sm: DirectMap,
     ctx: usize,
+    log: Option<Vec<(u32, u32)>>,
 }
 
 impl MatchModel {
@@ -291,6 +339,7 @@ impl MatchModel {
             active: false,
             sm: DirectMap::new(64, 1023),
             ctx: 0,
+            log: None,
         }
     }
 
@@ -331,6 +380,9 @@ impl MatchModel {
                         self.ptr = cand;
                     }
                 }
+            }
+            if let Some(log) = &mut self.log {
+                log.push((slot as u32, self.table[slot]));
             }
             self.table[slot] = pos as u32;
         }
@@ -818,3 +870,119 @@ impl Predictor {
         Some(p)
     }
 }
+
+// ---------------------------------------------------------------------------
+// Journal: run a message from a primed state, then restore it exactly
+// ---------------------------------------------------------------------------
+
+/// Small, frequently rewritten state saved whole when a journal opens.
+#[derive(Clone)]
+struct Saved {
+    m_byte: MixerBank,
+    m_match: MixerBank,
+    m_last: MixerBank,
+    m_final: FinalMixer,
+    mm_sm: DirectMap,
+    mm: (usize, usize, u32, bool, usize),
+    apm_idx: [usize; 3],
+    ctx: [u32; N_HASHED],
+    buckets: [usize; N_HASHED],
+    node: usize,
+    x: [i16; NI],
+    pr: i32,
+    regs: [u32; 6],
+}
+
+impl Predictor {
+    /// Start recording every change, so [`Self::rollback`] can restore the
+    /// current state exactly. Cost: proportional to what the message touches,
+    /// instead of copying the whole model.
+    pub fn begin_journal(&mut self) -> JournalGuard {
+        self.o0.log = Some(Vec::new());
+        self.o1.log = Some(Vec::new());
+        // The buckets claimed by the last prediction are written by the next
+        // update without passing through `bucket()` again: save them now.
+        for (h, &b) in self.hashed.iter_mut().zip(&self.buckets) {
+            h.log = Some(vec![(b as u32, h.t[b])]);
+        }
+        self.mm.log = Some(Vec::new());
+        for a in [&mut self.a1, &mut self.a2, &mut self.a3] {
+            a.log = Some(Vec::new());
+        }
+        JournalGuard(Box::new(Saved {
+            m_byte: self.m_byte.clone(),
+            m_match: self.m_match.clone(),
+            m_last: self.m_last.clone(),
+            m_final: self.m_final.clone(),
+            mm_sm: self.mm.sm.clone(),
+            mm: (
+                self.mm.ptr,
+                self.mm.len,
+                self.mm.expected,
+                self.mm.active,
+                self.mm.ctx,
+            ),
+            apm_idx: [self.a1.idx, self.a2.idx, self.a3.idx],
+            ctx: self.ctx,
+            buckets: self.buckets,
+            node: self.node,
+            x: self.x,
+            pr: self.pr,
+            regs: [
+                self.c0,
+                self.known,
+                self.c4,
+                self.c8,
+                self.word,
+                self.prev_word,
+            ],
+        }))
+    }
+
+    /// Undo everything since [`Self::begin_journal`].
+    pub fn rollback(&mut self, guard: JournalGuard) {
+        let s = *guard.0;
+        self.o0.rollback();
+        self.o1.rollback();
+        for h in &mut self.hashed {
+            h.rollback();
+        }
+        if let Some(log) = self.mm.log.take() {
+            for &(i, v) in log.iter().rev() {
+                self.mm.table[i as usize] = v;
+            }
+        }
+        for a in [&mut self.a1, &mut self.a2, &mut self.a3] {
+            a.rollback();
+        }
+        self.m_byte = s.m_byte;
+        self.m_match = s.m_match;
+        self.m_last = s.m_last;
+        self.m_final = s.m_final;
+        self.mm.sm = s.mm_sm;
+        (
+            self.mm.ptr,
+            self.mm.len,
+            self.mm.expected,
+            self.mm.active,
+            self.mm.ctx,
+        ) = s.mm;
+        [self.a1.idx, self.a2.idx, self.a3.idx] = s.apm_idx;
+        self.ctx = s.ctx;
+        self.buckets = s.buckets;
+        self.node = s.node;
+        self.x = s.x;
+        self.pr = s.pr;
+        [
+            self.c0,
+            self.known,
+            self.c4,
+            self.c8,
+            self.word,
+            self.prev_word,
+        ] = s.regs;
+    }
+}
+
+/// Proof that a journal is open; hand it back to [`Predictor::rollback`].
+pub struct JournalGuard(Box<Saved>);

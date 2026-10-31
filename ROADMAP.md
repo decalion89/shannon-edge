@@ -72,8 +72,12 @@ v0.1 single core: ~0.5 MiB/s. Target: 10× without losing ratio, then more.
       in 2 s vs 113 s
 - [ ] Model-aware training: choose dictionary content by how much it
       lowers sedge's actual coding cost on held-out samples
-- [ ] Fast start for small messages: copy-on-write or smaller primed models
-      instead of copying the full model per record (~60 ms today)
+- [x] Fast start for small messages: journaled in-place coding
+      (`PrimedModel::compress_message`) instead of copying the model per
+      record: 63 s -> 28 s per 1,000 records (110 KiB knowledge), 130 s ->
+      29 s (18 MB knowledge); the model is restored bit-for-bit (tested)
+- [ ] Below ~14 ms per record: needs a faster model (Phase 1) and lighter
+      journaling (log each bucket once per message)
 - [ ] Measure `H(X | K)` gains per pack on public datasets
 
 ## Phase 4 — Production

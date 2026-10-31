@@ -1,9 +1,8 @@
 //! `sedge` — command-line front end for shannon-edge.
 
 use shannon_edge::{
-    compress, compress_with_dictionary, compress_with_model, decompress_with_dictionary,
-    decompress_with_model, decompress_with_threads, Error, Options, PrimedModel,
-    DEFAULT_BLOCK_SIZE, MAX_MEM_BITS, MIN_MEM_BITS,
+    compress, compress_with_dictionary, decompress_with_dictionary, decompress_with_threads, Error,
+    Options, PrimedModel, DEFAULT_BLOCK_SIZE, MAX_MEM_BITS, MIN_MEM_BITS,
 };
 use std::fs;
 use std::io::{self, Read, Write};
@@ -185,7 +184,7 @@ fn mib_per_s(bytes: usize, secs: f64) -> f64 {
 enum Knowledge {
     None,
     Dict(Vec<u8>),
-    Model(Box<PrimedModel>),
+    Model(std::cell::RefCell<Box<PrimedModel>>),
 }
 
 fn run(args: Args) -> Result<(), String> {
@@ -205,20 +204,21 @@ fn run(args: Args) -> Result<(), String> {
                 "{path}: primed model loaded in {:.0} ms",
                 t.elapsed().as_secs_f64() * 1e3
             );
-            Knowledge::Model(Box::new(m))
+            Knowledge::Model(std::cell::RefCell::new(Box::new(m)))
         }
         (None, None) => Knowledge::None,
     };
     let pack = |data: &[u8]| match &knowledge {
         Knowledge::None => compress(data, &opts),
         Knowledge::Dict(d) => compress_with_dictionary(data, d, &opts),
-        Knowledge::Model(m) => compress_with_model(data, m, &opts),
+        // In place with a journal: cost proportional to the message.
+        Knowledge::Model(m) => m.borrow_mut().compress_message(data, &opts),
     };
     let unpack = |packed: &[u8]| -> Result<Vec<u8>, Error> {
         match &knowledge {
             Knowledge::None => decompress_with_threads(packed, args.threads),
             Knowledge::Dict(d) => decompress_with_dictionary(packed, d, args.threads),
-            Knowledge::Model(m) => decompress_with_model(packed, m, args.threads),
+            Knowledge::Model(m) => m.borrow_mut().decompress_message(packed),
         }
     };
     match args.command.as_str() {

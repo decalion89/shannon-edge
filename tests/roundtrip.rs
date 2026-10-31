@@ -497,3 +497,86 @@ fn wrong_model_is_rejected() {
         Err(Error::DictionaryMismatch { .. })
     ));
 }
+
+// ---------------------------------------------------------------------------
+// In-place messages with a journal: same bytes, model restored exactly
+// ---------------------------------------------------------------------------
+
+fn messages() -> Vec<Vec<u8>> {
+    let text = sample_text();
+    let mut rng = Rng(21);
+    let mut out: Vec<Vec<u8>> = (0..12)
+        .map(|i| {
+            let start = 40_000 + i * 700;
+            text[start..start + 200 + (rng.next() % 500) as usize].to_vec()
+        })
+        .collect();
+    out.push(Vec::new());
+    out.push(vec![b'x'; 3]);
+    out.push(rng.bytes(800)); // incompressible: stored
+    out
+}
+
+#[test]
+fn compress_message_matches_compress_with_model_and_restores_the_model() {
+    let (dict, _) = dict_and_message();
+    let mut model = PrimedModel::new(&dict, &Options::default());
+    let pristine = model.to_bytes();
+    for msg in messages() {
+        let reference = compress_with_model(&msg, &model, &Options::default());
+        let fast = model.compress_message(&msg, &Options::default());
+        assert_eq!(fast, reference, "message of {} bytes", msg.len());
+        assert!(model.to_bytes() == pristine, "model changed after compress");
+        assert_eq!(model.decompress_message(&fast).unwrap(), msg);
+        assert!(
+            model.to_bytes() == pristine,
+            "model changed after decompress"
+        );
+        assert_eq!(decompress_with_dictionary(&fast, &dict, 0).unwrap(), msg);
+    }
+}
+
+#[test]
+fn decompress_message_rejects_corruption_and_still_restores_the_model() {
+    let (dict, msg) = dict_and_message();
+    let mut model = PrimedModel::new(&dict, &Options::default());
+    let pristine = model.to_bytes();
+    let packed = model.compress_message(&msg, &Options::default());
+    let mut rng = Rng(4);
+    for _ in 0..20 {
+        let mut bad = packed.clone();
+        let i = HEADER_LEN + 8 + (rng.next() as usize % (bad.len() - HEADER_LEN - 8));
+        bad[i] ^= 1 << (rng.next() % 8);
+        if let Ok(out) = model.decompress_message(&bad) {
+            assert_eq!(out, msg);
+        }
+        assert!(model.to_bytes() == pristine);
+    }
+    assert_eq!(model.decompress_message(&packed).unwrap(), msg);
+}
+
+#[test]
+fn decompress_message_falls_back_for_other_streams() {
+    let (dict, msg) = dict_and_message();
+    let mut model = PrimedModel::new(&dict, &Options::default());
+    // Raw-dictionary stream with a different memory level.
+    let other = compress_with_dictionary(
+        &msg,
+        &dict,
+        &Options {
+            mem_bits: 16,
+            ..Options::default()
+        },
+    );
+    assert_eq!(model.decompress_message(&other).unwrap(), msg);
+    // Plain and multi-block streams.
+    assert_eq!(
+        model
+            .decompress_message(&compress(&msg, &Options::default()))
+            .unwrap(),
+        msg
+    );
+    let big = sample_text();
+    let blocks = compress_with_model(&big, &model, &blocked(8192, 0));
+    assert_eq!(model.decompress_message(&blocks).unwrap(), big);
+}
