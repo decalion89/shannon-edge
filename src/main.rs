@@ -19,6 +19,7 @@ USAGE:
     sedge decompress <input> [-o <output>] [-D <dict>] [-t <n>] [-f]
     sedge bench      <file>... [-D <dict>] [-m <level>] [-b <MiB>] [-t <n>]
     sedge prime      <dict> [-o <model>] [-m <level>] [-f]
+    sedge train      <sample>... -o <dict> [--budget <bytes>] [--lines] [-f]
 
     Wherever -D <dict> is accepted, -M <model> (a primed model) works too.
 
@@ -29,6 +30,10 @@ COMMANDS:
     prime, p         Read <dict> once and save the primed model (default output:
                      <dict>.sedgem). Using it with -M skips re-reading the
                      dictionary; streams stay compatible with -D <dict>.
+    train, t         Distil many samples into a dictionary of --budget bytes
+                     (default 112640): keeps what recurs across samples,
+                     most valuable content last. Each file is one sample, or
+                     with --lines each line of each file is one.
 
 OPTIONS:
     -o <output>      Output path ('-' for stdout). Input '-' reads stdin.
@@ -47,6 +52,8 @@ OPTIONS:
                      more speed, slightly worse ratio. 0 = never split.
     -t <n>           Worker threads (default: all cores). Each thread holds
                      its own model, so memory grows with the thread count.
+    --budget <bytes> Dictionary size for 'train'.
+    --lines          'train': treat every line as a separate sample.
     -f               Overwrite the output if it exists.
     -h, --help       Show this help.
     -V, --version    Show the version.
@@ -61,6 +68,8 @@ struct Args {
     threads: usize,
     dict: Option<String>,
     model: Option<String>,
+    budget: usize,
+    lines: bool,
     force: bool,
 }
 
@@ -74,6 +83,8 @@ fn parse_args() -> Result<Option<Args>, String> {
     let mut threads = 0;
     let mut dict = None;
     let mut model = None;
+    let mut budget = shannon_edge::train::TrainOptions::default().budget;
+    let mut lines = false;
     let mut force = false;
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -107,6 +118,13 @@ fn parse_args() -> Result<Option<Args>, String> {
             }
             "-D" => dict = Some(it.next().ok_or("-D needs a file")?),
             "-M" => model = Some(it.next().ok_or("-M needs a file")?),
+            "--budget" => {
+                let v = it.next().ok_or("--budget needs a value")?;
+                budget = v
+                    .parse()
+                    .map_err(|_| "--budget must be a number of bytes")?;
+            }
+            "--lines" => lines = true,
             "-f" => force = true,
             _ if command.is_none() => command = Some(a),
             _ => inputs.push(a),
@@ -124,6 +142,8 @@ fn parse_args() -> Result<Option<Args>, String> {
         threads,
         dict,
         model,
+        budget,
+        lines,
         force,
     }))
 }
@@ -202,6 +222,40 @@ fn run(args: Args) -> Result<(), String> {
         }
     };
     match args.command.as_str() {
+        "train" | "t" => {
+            if args.inputs.is_empty() {
+                return Err("train needs sample files".into());
+            }
+            let out = args.output.clone().ok_or("train needs -o <dict>")?;
+            let mut owned = Vec::new();
+            for path in &args.inputs {
+                owned.push(fs::read(path).map_err(|e| format!("{path}: {e}"))?);
+            }
+            let samples: Vec<&[u8]> = if args.lines {
+                owned
+                    .iter()
+                    .flat_map(|f| f.split(|&b| b == b'\n'))
+                    .filter(|l| !l.is_empty())
+                    .collect()
+            } else {
+                owned.iter().map(|f| &f[..]).collect()
+            };
+            let t = Instant::now();
+            let topts = shannon_edge::train::TrainOptions {
+                budget: args.budget,
+                ..Default::default()
+            };
+            let dict = shannon_edge::train::train_dictionary(&samples, &topts);
+            write_output(&out, &dict, args.force)?;
+            eprintln!(
+                "trained on {} samples ({} bytes) in {:.1}s -> {out} ({} bytes)",
+                samples.len(),
+                samples.iter().map(|s| s.len()).sum::<usize>(),
+                t.elapsed().as_secs_f64(),
+                dict.len()
+            );
+            Ok(())
+        }
         "prime" | "p" => {
             let input = single_input(&args)?;
             if !matches!(knowledge, Knowledge::None) {

@@ -95,6 +95,20 @@ def main() -> None:
         total += len(c)
     rows.append((f"zstd -19 + trained dict ({args.budget // 1024} KiB)", total))
 
+    # zstd holding the same raw 5,000 samples as a raw-content dictionary
+    # (what the receiver keeps is then comparable to what sedge -M reads).
+    raw_dict = zstandard.ZstdCompressionDict(b"".join(r + b"\n" for r in samples),
+                                             dict_type=zstandard.DICT_TYPE_RAWCONTENT)
+    params = zstandard.ZstdCompressionParameters.from_level(19, window_log=27)
+    zc_raw = zstandard.ZstdCompressor(compression_params=params, dict_data=raw_dict)
+    zd_raw = zstandard.ZstdDecompressor(dict_data=raw_dict, max_window_size=1 << 27)
+    total = 0
+    for r in test:
+        c = zc_raw.compress(r)
+        assert zd_raw.decompress(c) == r
+        total += len(c)
+    rows.append((f"zstd -19 + all {len(samples):,} samples as raw dictionary", total))
+
     if brotli is not None:
         rows.append(("brotli -11", sum(len(brotli.compress(r, quality=11)) for r in test)))
 
@@ -108,6 +122,8 @@ def main() -> None:
         size, secs = sedge_total(args.sedge, files, [])
         rows.append(("sedge", size))
         print(f"sedge (no knowledge): {secs:.1f}s", file=sys.stderr)
+
+        (tmp / "samples.jsonl").write_bytes(b"".join(r + b"\n" for r in samples))
 
         # Knowledge for sedge: the most recent training records, same budget.
         know = bytearray()
@@ -132,8 +148,35 @@ def main() -> None:
         subprocess.run([args.sedge, "prime", str(zpath), "-o", str(zmodel), "-m", str(args.mem)], check=True,
                        capture_output=True)
         size, secs = sedge_total(args.sedge, files, ["-M", str(zmodel)])
-        rows.append((f"**sedge -M (zstd's trained dict, {args.budget // 1024} KiB)**", size))
+        rows.append((f"sedge -M (zstd's trained dict, {args.budget // 1024} KiB)", size))
         print(f"sedge -M zstd-dict: {secs:.1f}s", file=sys.stderr)
+
+        # sedge's own trainer, same budget and same samples as zstd's.
+        tpath = tmp / "sedge.dict"
+        t0 = time.perf_counter()
+        subprocess.run([args.sedge, "train", str(tmp / "samples.jsonl"), "--lines",
+                        "--budget", str(args.budget), "-o", str(tpath), "-f"], check=True, capture_output=True)
+        print(f"sedge train: {time.perf_counter() - t0:.1f}s", file=sys.stderr)
+        tmodel = tmp / "sedge-trained.sedgem"
+        subprocess.run([args.sedge, "prime", str(tpath), "-o", str(tmodel), "-m", str(args.mem)], check=True,
+                       capture_output=True)
+        size, secs = sedge_total(args.sedge, files, ["-M", str(tmodel)])
+        rows.append((f"**sedge -M (sedge's own trained dict, {args.budget // 1024} KiB)**", size))
+        print(f"sedge -M own trained dict: {secs:.1f}s", file=sys.stderr)
+
+        # Same training data as zstd's trainer: prime on all the samples.
+        # The model keeps statistics, not literal copies, so it can learn
+        # from far more data than a dictionary budget holds.
+        spath = tmp / "samples.jsonl"
+        smodel = tmp / "samples.sedgem"
+        t0 = time.perf_counter()
+        subprocess.run([args.sedge, "prime", str(spath), "-o", str(smodel), "-m", str(args.mem)], check=True,
+                       capture_output=True)
+        print(f"sedge prime on {len(samples):,} samples ({spath.stat().st_size:,} bytes): "
+              f"{time.perf_counter() - t0:.1f}s, model {smodel.stat().st_size:,} bytes", file=sys.stderr)
+        size, secs = sedge_total(args.sedge, files, ["-M", str(smodel)])
+        rows.append((f"**sedge -M (primed on all {len(samples):,} samples)**", size))
+        print(f"sedge -M all samples: {secs:.1f}s", file=sys.stderr)
 
     best_zstd = rows[1][1]
     print(f"| Compressor ({len(test):,} records compressed one by one) | Total bytes | % of original | vs zstd+dict |")

@@ -139,30 +139,31 @@ Reproduce the first table with `bench/shared_knowledge.py`.
 
 For small records (API payloads, events, logs) the standard answer is zstd
 with a dictionary trained on samples. Test: 1,000 real GitHub events from
-GH Archive (2024-01-15, 16:00 UTC), each compressed **separately**; knowledge
-comes only from the previous hour (15:00 UTC). All results verified.
+GH Archive (2024-01-15, 16:00 UTC), each compressed **separately**. All
+knowledge comes from 5,000 events of the previous hour (15:00 UTC); no test
+record was ever seen. All sedge results verified bit-for-bit.
 
-| Compressor (1,000 records, one by one) | Total bytes | % of original | vs zstd + dict |
-|---|---:|---:|---:|
-| zstd -19 | 833,210 | 23.77% | +106.1% |
-| zstd -19 + trained dictionary (110 KiB) | 404,285 | 11.54% | — |
-| brotli -11 | 727,176 | 20.75% | +79.9% |
-| sedge | 726,386 | 20.73% | +79.7% |
-| sedge -M, 93 KiB of the most recent raw records | 468,924 | 13.38% | +16.0% |
-| **sedge -M, zstd's own trained dictionary (110 KiB)** | **334,447** | **9.54%** | **−17.3%** |
+| Compressor (1,000 records, one by one) | Knowledge the receiver holds | Total bytes | vs zstd + dict |
+|---|---|---:|---:|
+| zstd -19 | none | 833,210 | +106.1% |
+| brotli -11 | built-in | 727,176 | +79.9% |
+| sedge | none | 726,386 | +79.7% |
+| zstd -19 + its trained dictionary | 110 KiB | 404,285 | — |
+| sedge -M, zstd's trained dictionary | 110 KiB | 334,447 | −17.3% |
+| **sedge -M, sedge's own trained dictionary** | **110 KiB** | **327,667** | **−19.0%** |
+| zstd -19, all 5,000 samples as raw dictionary | 18 MB | 376,960 | −6.8% |
+| **sedge -M, primed on all 5,000 samples** | **18 MB** | **290,450** | **−28.2%** |
 
-Two lessons:
-
-* **Same knowledge, better engine:** given the exact same 110 KiB that zstd's
-  trainer distilled from 5,000 samples, `sedge` produces 17% less data.
-* **What goes into the dictionary matters as much as the engine.** A raw
-  slice of recent records loses to zstd's distilled dictionary. A trainer of
-  our own is now on the [roadmap](ROADMAP.md); until then, any dictionary
-  file works with `-D`/`-M`, including one made by `zstd --train`.
+At **equal knowledge**, sedge wins at both budgets: −19% with 110 KiB
+(and `sedge train` builds its dictionary in 2 s where zstd's trainer takes
+113 s), −23% against zstd with the same 18 MB. The difference grows with
+knowledge because a predictive model turns every sample into statistics,
+while a copy-based dictionary can only reuse literal strings.
 
 The price is speed: ~60 ms per record for compress + decompress + verify
-(copying the primed model dominates), where zstd takes microseconds.
-Reproduce with `bench/small_messages.py`.
+(copying the primed model dominates), where zstd takes microseconds; and
+`.sedgem` model files are large (here 162 MB). Reproduce with
+`bench/small_messages.py`.
 
 ### What it cannot do (and nothing can)
 
@@ -183,8 +184,9 @@ cargo build --release
 ./target/release/sedge bench      file1 file2 ...    # ratio + speed, verified
 ./target/release/sedge compress   big.log -b 0 -m 24 # max ratio: one block, more memory
 ./target/release/sedge compress   big.log -t 2       # limit to 2 threads
-./target/release/sedge compress   msg.json -D samples.json   # shared-knowledge dictionary
-./target/release/sedge decompress msg.json.sedge -D samples.json
+./target/release/sedge train samples/*.json -o samples.dict    # distil samples into a dictionary
+./target/release/sedge compress   msg.json -D samples.dict   # shared-knowledge dictionary
+./target/release/sedge decompress msg.json.sedge -D samples.dict
 ```
 
 As a library:
@@ -250,6 +252,7 @@ The file format is specified in [`docs/FORMAT.md`](docs/FORMAT.md).
 | `src/coder.rs` | Binary arithmetic coder |
 | `src/math.rs` | Integer logistic functions and hashing |
 | `src/lib.rs` | Public API and `.sedge` container |
+| `src/train.rs` | Dictionary trainer (`sedge train`) |
 | `src/main.rs` | `sedge` command-line tool |
 | `tests/` | Round-trip, adversarial, corruption and golden-format tests |
 | `bench/compare.py` | Benchmark against gzip, bzip2, xz, zstd and brotli |

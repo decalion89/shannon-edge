@@ -19,6 +19,7 @@ pub mod coder;
 mod crc32;
 mod math;
 mod model;
+pub mod train;
 
 use coder::{Decoder, Encoder};
 use model::Predictor;
