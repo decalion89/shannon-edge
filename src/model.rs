@@ -170,10 +170,12 @@ impl MixerBank {
     /// Gradient step on coding cost (cross-entropy).
     #[inline]
     fn update(&mut self, x: &[i16; NI], bit: u32) {
-        let err = (((bit as i32) << 12) - self.pr) * self.lr;
+        // |err| <= 4095 * lr fits in i16 (lr <= 8), so the products below are
+        // i16 x i16 -> i32 multiplies that vectorise on every SIMD target.
+        let err = ((((bit as i32) << 12) - self.pr) * self.lr) as i16;
         let w = &mut self.w[self.sel];
         for i in 0..NI {
-            let d = (((x[i] as i32 * err) >> 15) + 1) >> 1;
+            let d = (((x[i] as i32 * err as i32) >> 15) + 1) >> 1;
             w[i] = (w[i] as i32 + d).clamp(-32768, 32767) as i16;
         }
     }

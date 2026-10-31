@@ -1,6 +1,8 @@
 //! `sedge` — command-line front end for shannon-edge.
 
-use shannon_edge::{compress, decompress, Options, MAX_MEM_BITS, MIN_MEM_BITS};
+use shannon_edge::{
+    compress, decompress_with_threads, Options, DEFAULT_BLOCK_SIZE, MAX_MEM_BITS, MIN_MEM_BITS,
+};
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::Path;
@@ -11,9 +13,9 @@ const USAGE: &str = "\
 sedge — lossless compression by prediction (shannon-edge)
 
 USAGE:
-    sedge compress   <input> [-o <output>] [-m <level>] [-f]
-    sedge decompress <input> [-o <output>] [-f]
-    sedge bench      <file>... [-m <level>]
+    sedge compress   <input> [-o <output>] [-m <level>] [-b <MiB>] [-t <n>] [-f]
+    sedge decompress <input> [-o <output>] [-t <n>] [-f]
+    sedge bench      <file>... [-m <level>] [-b <MiB>] [-t <n>]
 
 COMMANDS:
     compress, c      Compress <input> (default output: <input>.sedge)
@@ -25,6 +27,12 @@ OPTIONS:
     -m <level>       Memory level 16..24 (default 22, ~140 MiB; 24 = ~480 MiB).
                      Higher = more memory, better compression on large inputs.
                      Decompression needs the same memory as compression.
+    -b <MiB>         Block size for parallel compression (default 8). Inputs
+                     larger than this are split into independent blocks that
+                     compress and decompress on all cores. Smaller blocks =
+                     more speed, slightly worse ratio. 0 = never split.
+    -t <n>           Worker threads (default: all cores). Each thread holds
+                     its own model, so memory grows with the thread count.
     -f               Overwrite the output if it exists.
     -h, --help       Show this help.
     -V, --version    Show the version.
@@ -35,6 +43,8 @@ struct Args {
     inputs: Vec<String>,
     output: Option<String>,
     mem_bits: u8,
+    block_size: usize,
+    threads: usize,
     force: bool,
 }
 
@@ -44,6 +54,8 @@ fn parse_args() -> Result<Option<Args>, String> {
     let mut inputs = Vec::new();
     let mut output = None;
     let mut mem_bits = Options::default().mem_bits;
+    let mut block_size = DEFAULT_BLOCK_SIZE;
+    let mut threads = 0;
     let mut force = false;
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -63,6 +75,18 @@ fn parse_args() -> Result<Option<Args>, String> {
                         "-m must be between {MIN_MEM_BITS} and {MAX_MEM_BITS}"
                     ))?;
             }
+            "-b" => {
+                let v = it.next().ok_or("-b needs a value")?;
+                let mib: usize = v.parse().map_err(|_| "-b must be a number of MiB")?;
+                if mib > 4095 {
+                    return Err("-b must be at most 4095 MiB".into());
+                }
+                block_size = mib << 20;
+            }
+            "-t" => {
+                let v = it.next().ok_or("-t needs a value")?;
+                threads = v.parse().map_err(|_| "-t must be a number")?;
+            }
             "-f" => force = true,
             _ if command.is_none() => command = Some(a),
             _ => inputs.push(a),
@@ -76,6 +100,8 @@ fn parse_args() -> Result<Option<Args>, String> {
         inputs,
         output,
         mem_bits,
+        block_size,
+        threads,
         force,
     }))
 }
@@ -117,6 +143,8 @@ fn mib_per_s(bytes: usize, secs: f64) -> f64 {
 fn run(args: Args) -> Result<(), String> {
     let opts = Options {
         mem_bits: args.mem_bits,
+        block_size: args.block_size,
+        threads: args.threads,
     };
     match args.command.as_str() {
         "compress" | "c" => {
@@ -148,7 +176,8 @@ fn run(args: Args) -> Result<(), String> {
         "decompress" | "d" => {
             let input = single_input(&args)?;
             let packed = read_input(input).map_err(|e| format!("{input}: {e}"))?;
-            let data = decompress(&packed).map_err(|e| format!("{input}: {e}"))?;
+            let data = decompress_with_threads(&packed, args.threads)
+                .map_err(|e| format!("{input}: {e}"))?;
             let out = args.output.clone().unwrap_or_else(|| {
                 if input == "-" {
                     "-".into()
@@ -175,7 +204,8 @@ fn run(args: Args) -> Result<(), String> {
                 let packed = compress(&data, &opts);
                 let tc = t.elapsed().as_secs_f64();
                 let t = Instant::now();
-                let back = decompress(&packed).map_err(|e| format!("{path}: {e}"))?;
+                let back = decompress_with_threads(&packed, args.threads)
+                    .map_err(|e| format!("{path}: {e}"))?;
                 let td = t.elapsed().as_secs_f64();
                 if back != data {
                     return Err(format!("{path}: ROUND-TRIP MISMATCH"));

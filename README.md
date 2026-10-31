@@ -51,19 +51,33 @@ knowledge — pays off (Phase 3).
 | zstd -19 | 26,936,936 | 26.94% | 2.155 |
 | brotli -11 | 25,742,001 | 25.74% | 2.059 |
 | xz -9e | 24,831,648 | 24.83% | 1.987 |
-| **sedge** (default, ~140 MiB) | **21,793,239** | **21.79%** | **1.743** |
+| **sedge** `-b 0` (one block) | **21,793,239** | **21.79%** | **1.743** |
+| **sedge** (default: 8 MiB blocks, parallel) | 22,691,880 | 22.69% | 1.815 |
 
-12% smaller than xz -9e, 15% smaller than brotli -11. For perspective, the
+In single-block mode, 12% smaller than xz -9e and 15% smaller than brotli -11. For perspective, the
 best research compressors (cmix, nncp) reach ~15 MB on enwik8 at hundreds of times less
 speed: there is still a lot of edge left to take.
 
 ### Speed — the honest part
 
-Measured on a 2.1 GHz Xeon (one core): **~0.5 MiB/s** compression and
-decompression (enwik8 takes ~3.5 minutes each way). xz -9e runs at ~1.9 MiB/s and zstd at
-hundreds of MiB/s on the same machine. Like every context-mixing compressor,
-`sedge` buys ratio with computation. Making that computation cheap is the
-main goal of [Phase 1](ROADMAP.md#phase-1--speed-the-main-frontier).
+A context-mixing model is expensive: one core runs at **~0.5 MiB/s**. So
+`sedge` splits large inputs into independent 8 MiB blocks and compresses and
+decompresses them on all cores. The output depends only on the block size,
+never on the number of cores, so the same file gives the same bytes on any
+machine. enwik8 on 4 cores of a 2.1 GHz Xeon:
+
+| Mode | Size (bytes) | Compress | Decompress | vs. single block |
+|---|---:|---:|---:|---:|
+| `-b 0` (one block, max ratio) | 21,793,239 | 0.48 MiB/s | 0.48 MiB/s | — |
+| `-b 32` | 22,097,516 | 1.39 MiB/s | 1.47 MiB/s | +1.4% |
+| `-b 16` | 22,354,674 | 1.53 MiB/s | 1.50 MiB/s | +2.6% |
+| **`-b 8` (default)** | **22,691,880** | **2.01 MiB/s** | **2.02 MiB/s** | +4.1% |
+
+With the default, `sedge` is faster than single-threaded `xz -9e` (~1.9 MiB/s on the same
+machine) and still 8.6% smaller. zstd remains in another league for speed
+(hundreds of MiB/s). Each worker holds its own model (~140 MiB), so memory
+grows with the thread count; `-t` limits threads. Closing the rest of the gap
+is [Phase 1](ROADMAP.md#phase-1--speed-the-main-frontier).
 
 ### Preliminary: shared knowledge
 
@@ -101,7 +115,8 @@ cargo build --release
 ./target/release/sedge compress   big.log            # -> big.log.sedge
 ./target/release/sedge decompress big.log.sedge      # -> big.log
 ./target/release/sedge bench      file1 file2 ...    # ratio + speed, verified
-./target/release/sedge compress   big.log -m 24      # more memory, better ratio
+./target/release/sedge compress   big.log -b 0 -m 24 # max ratio: one block, more memory
+./target/release/sedge compress   big.log -t 2       # limit to 2 threads
 ```
 
 As a library:

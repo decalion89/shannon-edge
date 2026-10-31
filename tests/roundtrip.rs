@@ -1,7 +1,7 @@
 //! End-to-end guarantees: every input comes back bit-for-bit, random data
 //! never grows by more than the header, and corruption is always detected.
 
-use shannon_edge::{compress, decompress, Error, Options, HEADER_LEN};
+use shannon_edge::{compress, decompress, decompress_with_threads, Error, Options, HEADER_LEN};
 
 /// Small deterministic PRNG (xorshift64*) so tests need no dependencies.
 struct Rng(u64);
@@ -134,7 +134,13 @@ fn all_byte_values_and_binary_structure() {
 fn every_memory_level_roundtrips() {
     let data = sample_text();
     for m in 16..=24 {
-        let packed = compress(&data, &Options { mem_bits: m });
+        let packed = compress(
+            &data,
+            &Options {
+                mem_bits: m,
+                ..Options::default()
+            },
+        );
         assert_eq!(decompress(&packed).unwrap(), data, "mem level {m}");
     }
 }
@@ -197,4 +203,96 @@ fn golden_v1_stream_is_reproduced_exactly() {
         packed, GOLDEN_V1,
         "compressed bytes changed: the v1 format/model is not stable"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Parallel block mode
+// ---------------------------------------------------------------------------
+
+fn blocked(block_size: usize, threads: usize) -> Options {
+    Options {
+        block_size,
+        threads,
+        ..Options::default()
+    }
+}
+
+#[test]
+fn block_mode_roundtrips_and_ignores_thread_count() {
+    let data = sample_text();
+    let reference = compress(&data, &blocked(8192, 1));
+    assert_eq!(reference[5], 2, "expected the multi-block method");
+    for threads in [0, 2, 3, 8] {
+        assert_eq!(
+            compress(&data, &blocked(8192, threads)),
+            reference,
+            "output must not depend on the thread count ({threads})"
+        );
+    }
+    for threads in [0, 1, 3] {
+        assert_eq!(decompress_with_threads(&reference, threads).unwrap(), data);
+    }
+}
+
+#[test]
+fn block_mode_edge_sizes() {
+    let data = sample_text();
+    for (bs, n) in [
+        (1, 300),
+        (7, 3000),
+        (4096, 20_000),
+        (19_999, 20_000),
+        (20_000, 20_000),
+        (20_001, 20_000),
+    ] {
+        let packed = compress(&data[..n], &blocked(bs, 0));
+        assert_eq!(decompress(&packed).unwrap(), &data[..n], "block size {bs}");
+    }
+}
+
+#[test]
+fn block_mode_random_data_never_expands_beyond_header() {
+    let mut rng = Rng(77);
+    let data = rng.bytes(100_000);
+    let packed = compress(&data, &blocked(10_000, 0));
+    assert!(packed.len() <= data.len() + HEADER_LEN);
+    assert_eq!(decompress(&packed).unwrap(), data);
+}
+
+#[test]
+fn block_mode_corruption_is_detected() {
+    let data = sample_text();
+    let packed = compress(&data, &blocked(8192, 0));
+    let mut rng = Rng(11);
+    for _ in 0..50 {
+        let mut bad = packed.clone();
+        let i = HEADER_LEN + (rng.next() as usize % (bad.len() - HEADER_LEN));
+        bad[i] ^= 1 << (rng.next() % 8);
+        if let Ok(out) = decompress(&bad) {
+            assert_eq!(out, data, "corruption produced wrong output");
+        }
+    }
+    // Truncation anywhere is an error, never a panic or wrong output.
+    for cut in [
+        HEADER_LEN,
+        HEADER_LEN + 3,
+        HEADER_LEN + 9,
+        packed.len() / 2,
+        packed.len() - 1,
+    ] {
+        assert!(decompress(&packed[..cut]).is_err(), "cut at {cut}");
+    }
+}
+
+const GOLDEN_V1_BLOCKS: &[u8] = include_bytes!("fixtures/golden-v1-blocks.sedge");
+
+#[test]
+fn golden_v1_block_stream_is_stable() {
+    let packed = compress(&sample_text(), &blocked(8192, 0));
+    if std::env::var_os("SEDGE_BLESS").is_some() {
+        std::fs::write("tests/fixtures/golden-v1-blocks.sedge", &packed).unwrap();
+        return;
+    }
+    assert_eq!(packed, GOLDEN_V1_BLOCKS, "multi-block format is not stable");
+    assert_eq!(decompress(GOLDEN_V1_BLOCKS).unwrap(), sample_text());
 }

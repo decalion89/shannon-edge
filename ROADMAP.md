@@ -26,11 +26,14 @@ verified bit-for-bit.
 
 ## Phase 1 — Speed (the main frontier)
 
-Today ~0.5 MiB/s. Target: 10× without losing ratio, then more.
+v0.1 single core: ~0.5 MiB/s. Target: 10× without losing ratio, then more.
 
+- [x] Block mode: independent 8 MiB blocks compressed and decompressed on all
+      cores (4.2× on 4 cores for +4% size on enwik8; output independent of
+      the thread count)
 - [ ] Explicit SIMD mixers (AVX2 / NEON) with runtime dispatch
-- [ ] Block mode: independent blocks compressed on all cores in parallel
-      (format v2), trading a little ratio for linear scaling
+- [ ] Shared warm-up between blocks (prime each block's model on the end of
+      the previous block) to recover most of the block-mode ratio loss
 - [ ] Model pruning: measure each model's contribution per data type and skip
       the useless ones
 - [ ] Fast "analysis" pass that detects data type and picks a model set
