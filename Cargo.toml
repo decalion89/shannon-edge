@@ -26,7 +26,6 @@ path = "src/main.rs"
 opt-level = 3
 lto = "fat"
 codegen-units = 1
-panic = "abort"
 debug = false
 
 [profile.test]

@@ -11,7 +11,8 @@
 //!   with their `*_free` function. They are not thread-safe: use one per
 //!   thread, or lock around them.
 //! * Invalid input never aborts the process: sizes and pointers are checked
-//!   and reported as error codes.
+//!   and reported as error codes, before any internal assertion could fire.
+//!   (A panic cannot unwind into C: Rust aborts at an `extern "C"` boundary.)
 
 use crate::{
     compress_with_dictionary, decompress_with_dictionary, Error, Options, PrimedModel, Session,
