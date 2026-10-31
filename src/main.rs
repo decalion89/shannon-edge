@@ -1,8 +1,9 @@
 //! `sedge` — command-line front end for shannon-edge.
 
 use shannon_edge::{
-    compress_with_dictionary, decompress_with_dictionary, Options, DEFAULT_BLOCK_SIZE,
-    MAX_MEM_BITS, MIN_MEM_BITS,
+    compress, compress_with_dictionary, compress_with_model, decompress_with_dictionary,
+    decompress_with_model, decompress_with_threads, Error, Options, PrimedModel,
+    DEFAULT_BLOCK_SIZE, MAX_MEM_BITS, MIN_MEM_BITS,
 };
 use std::fs;
 use std::io::{self, Read, Write};
@@ -17,11 +18,17 @@ USAGE:
     sedge compress   <input> [-o <output>] [-D <dict>] [-m <level>] [-b <MiB>] [-t <n>] [-f]
     sedge decompress <input> [-o <output>] [-D <dict>] [-t <n>] [-f]
     sedge bench      <file>... [-D <dict>] [-m <level>] [-b <MiB>] [-t <n>]
+    sedge prime      <dict> [-o <model>] [-m <level>] [-f]
+
+    Wherever -D <dict> is accepted, -M <model> (a primed model) works too.
 
 COMMANDS:
     compress, c      Compress <input> (default output: <input>.sedge)
     decompress, d    Decompress <input> (default output: <input> without .sedge)
     bench, b         Compress + decompress in memory, verify, report ratio and speed
+    prime, p         Read <dict> once and save the primed model (default output:
+                     <dict>.sedgem). Using it with -M skips re-reading the
+                     dictionary; streams stay compatible with -D <dict>.
 
 OPTIONS:
     -o <output>      Output path ('-' for stdout). Input '-' reads stdin.
@@ -29,6 +36,8 @@ OPTIONS:
                      (e.g. typical samples of the data). The model reads it
                      before coding, so similar data costs far fewer bits.
                      Decompression needs the exact same file.
+    -M <model>       A primed model from 'sedge prime': same effect as -D,
+                     without the time to re-read the dictionary.
     -m <level>       Memory level 16..24 (default 22, ~140 MiB; 24 = ~480 MiB).
                      Higher = more memory, better compression on large inputs.
                      Decompression needs the same memory as compression.
@@ -51,6 +60,7 @@ struct Args {
     block_size: usize,
     threads: usize,
     dict: Option<String>,
+    model: Option<String>,
     force: bool,
 }
 
@@ -63,6 +73,7 @@ fn parse_args() -> Result<Option<Args>, String> {
     let mut block_size = DEFAULT_BLOCK_SIZE;
     let mut threads = 0;
     let mut dict = None;
+    let mut model = None;
     let mut force = false;
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -95,6 +106,7 @@ fn parse_args() -> Result<Option<Args>, String> {
                 threads = v.parse().map_err(|_| "-t must be a number")?;
             }
             "-D" => dict = Some(it.next().ok_or("-D needs a file")?),
+            "-M" => model = Some(it.next().ok_or("-M needs a file")?),
             "-f" => force = true,
             _ if command.is_none() => command = Some(a),
             _ => inputs.push(a),
@@ -111,6 +123,7 @@ fn parse_args() -> Result<Option<Args>, String> {
         block_size,
         threads,
         dict,
+        model,
         force,
     }))
 }
@@ -149,22 +162,76 @@ fn mib_per_s(bytes: usize, secs: f64) -> f64 {
     bytes as f64 / (1024.0 * 1024.0) / secs.max(1e-9)
 }
 
+enum Knowledge {
+    None,
+    Dict(Vec<u8>),
+    Model(Box<PrimedModel>),
+}
+
 fn run(args: Args) -> Result<(), String> {
     let opts = Options {
         mem_bits: args.mem_bits,
         block_size: args.block_size,
         threads: args.threads,
     };
-    let dict = match &args.dict {
-        Some(path) => fs::read(path).map_err(|e| format!("{path}: {e}"))?,
-        None => Vec::new(),
+    let knowledge = match (&args.dict, &args.model) {
+        (Some(_), Some(_)) => return Err("use either -D or -M, not both".into()),
+        (Some(path), None) => Knowledge::Dict(fs::read(path).map_err(|e| format!("{path}: {e}"))?),
+        (None, Some(path)) => {
+            let t = Instant::now();
+            let raw = fs::read(path).map_err(|e| format!("{path}: {e}"))?;
+            let m = PrimedModel::from_bytes(&raw).map_err(|e| format!("{path}: {e}"))?;
+            eprintln!(
+                "{path}: primed model loaded in {:.0} ms",
+                t.elapsed().as_secs_f64() * 1e3
+            );
+            Knowledge::Model(Box::new(m))
+        }
+        (None, None) => Knowledge::None,
+    };
+    let pack = |data: &[u8]| match &knowledge {
+        Knowledge::None => compress(data, &opts),
+        Knowledge::Dict(d) => compress_with_dictionary(data, d, &opts),
+        Knowledge::Model(m) => compress_with_model(data, m, &opts),
+    };
+    let unpack = |packed: &[u8]| -> Result<Vec<u8>, Error> {
+        match &knowledge {
+            Knowledge::None => decompress_with_threads(packed, args.threads),
+            Knowledge::Dict(d) => decompress_with_dictionary(packed, d, args.threads),
+            Knowledge::Model(m) => decompress_with_model(packed, m, args.threads),
+        }
     };
     match args.command.as_str() {
+        "prime" | "p" => {
+            let input = single_input(&args)?;
+            if !matches!(knowledge, Knowledge::None) {
+                return Err("prime takes the dictionary as its input, not -D/-M".into());
+            }
+            let dict = read_input(input).map_err(|e| format!("{input}: {e}"))?;
+            if dict.is_empty() {
+                return Err(format!("{input}: dictionary is empty"));
+            }
+            let t = Instant::now();
+            let m = PrimedModel::new(&dict, &opts);
+            let secs = t.elapsed().as_secs_f64();
+            let bytes = m.to_bytes();
+            let out = args
+                .output
+                .clone()
+                .unwrap_or_else(|| format!("{input}.sedgem"));
+            write_output(&out, &bytes, args.force)?;
+            eprintln!(
+                "{input}: primed in {secs:.2}s (memory level {}), model {} bytes -> {out}",
+                m.mem_bits(),
+                bytes.len()
+            );
+            Ok(())
+        }
         "compress" | "c" => {
             let input = single_input(&args)?;
             let data = read_input(input).map_err(|e| format!("{input}: {e}"))?;
             let t = Instant::now();
-            let packed = compress_with_dictionary(&data, &dict, &opts);
+            let packed = pack(&data);
             let secs = t.elapsed().as_secs_f64();
             let out = args.output.clone().unwrap_or_else(|| {
                 if input == "-" {
@@ -189,8 +256,7 @@ fn run(args: Args) -> Result<(), String> {
         "decompress" | "d" => {
             let input = single_input(&args)?;
             let packed = read_input(input).map_err(|e| format!("{input}: {e}"))?;
-            let data = decompress_with_dictionary(&packed, &dict, args.threads)
-                .map_err(|e| format!("{input}: {e}"))?;
+            let data = unpack(&packed).map_err(|e| format!("{input}: {e}"))?;
             let out = args.output.clone().unwrap_or_else(|| {
                 if input == "-" {
                     "-".into()
@@ -214,11 +280,10 @@ fn run(args: Args) -> Result<(), String> {
             for path in &args.inputs {
                 let data = fs::read(path).map_err(|e| format!("{path}: {e}"))?;
                 let t = Instant::now();
-                let packed = compress_with_dictionary(&data, &dict, &opts);
+                let packed = pack(&data);
                 let tc = t.elapsed().as_secs_f64();
                 let t = Instant::now();
-                let back = decompress_with_dictionary(&packed, &dict, args.threads)
-                    .map_err(|e| format!("{path}: {e}"))?;
+                let back = unpack(&packed).map_err(|e| format!("{path}: {e}"))?;
                 let td = t.elapsed().as_secs_f64();
                 if back != data {
                     return Err(format!("{path}: ROUND-TRIP MISMATCH"));

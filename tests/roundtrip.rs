@@ -2,8 +2,9 @@
 //! never grows by more than the header, and corruption is always detected.
 
 use shannon_edge::{
-    compress, compress_with_dictionary, decompress, decompress_with_dictionary,
-    decompress_with_threads, Error, Options, HEADER_LEN,
+    compress, compress_with_dictionary, compress_with_model, decompress,
+    decompress_with_dictionary, decompress_with_model, decompress_with_threads, Error, Options,
+    PrimedModel, HEADER_LEN,
 };
 
 /// Small deterministic PRNG (xorshift64*) so tests need no dependencies.
@@ -401,4 +402,98 @@ fn golden_v1_dictionary_stream_is_stable() {
         decompress_with_dictionary(GOLDEN_V1_DICT, &dict, 0).unwrap(),
         msg
     );
+}
+
+// ---------------------------------------------------------------------------
+// Primed models (snapshots): a cache, never a different format
+// ---------------------------------------------------------------------------
+
+#[test]
+fn primed_model_streams_interoperate_with_the_raw_dictionary() {
+    let (dict, msg) = dict_and_message();
+    let model = PrimedModel::new(&dict, &Options::default());
+    let via_model = compress_with_model(&msg, &model, &Options::default());
+    let via_dict = compress_with_dictionary(&msg, &dict, &Options::default());
+    assert_eq!(decompress_with_model(&via_model, &model, 0).unwrap(), msg);
+    assert_eq!(
+        decompress_with_dictionary(&via_model, &dict, 0).unwrap(),
+        msg
+    );
+    assert_eq!(decompress_with_model(&via_dict, &model, 0).unwrap(), msg);
+    assert!(matches!(
+        decompress(&via_model),
+        Err(Error::DictionaryRequired { .. })
+    ));
+}
+
+#[test]
+fn primed_model_matches_dictionary_bytes_at_the_same_memory_level() {
+    // When both paths use the same table size, a snapshot must give the very
+    // same stream as re-reading the dictionary. Capping mem_bits at 18 makes
+    // both paths pick 18 here.
+    let (dict, msg) = dict_and_message();
+    let opts = Options {
+        mem_bits: 18,
+        ..Options::default()
+    };
+    let model = PrimedModel::new(&dict, &opts);
+    assert_eq!(model.mem_bits(), 18);
+    let via_dict = compress_with_dictionary(&msg, &dict, &opts);
+    assert_eq!(via_dict[6], 18);
+    assert_eq!(compress_with_model(&msg, &model, &opts), via_dict);
+}
+
+#[test]
+fn saved_model_loads_and_behaves_identically() {
+    let (dict, msg) = dict_and_message();
+    let model = PrimedModel::new(&dict, &Options::default());
+    let bytes = model.to_bytes();
+    let loaded = PrimedModel::from_bytes(&bytes).unwrap();
+    assert_eq!(loaded.dictionary(), &dict[..]);
+    assert_eq!(loaded.mem_bits(), model.mem_bits());
+    let a = compress_with_model(&msg, &model, &Options::default());
+    let b = compress_with_model(&msg, &loaded, &Options::default());
+    assert_eq!(a, b);
+    assert_eq!(loaded.to_bytes(), bytes, "save/load must be a fixed point");
+}
+
+#[test]
+fn damaged_model_files_are_rejected() {
+    let (dict, _) = dict_and_message();
+    let bytes = PrimedModel::new(&dict[..5_000], &Options::default()).to_bytes();
+    assert!(matches!(PrimedModel::from_bytes(&[]), Err(Error::BadModel)));
+    assert!(matches!(
+        PrimedModel::from_bytes(&bytes[..bytes.len() - 1]),
+        Err(Error::BadModel)
+    ));
+    let mut rng = Rng(8);
+    for _ in 0..20 {
+        let mut bad = bytes.clone();
+        let i = rng.next() as usize % bad.len();
+        bad[i] ^= 1 << (rng.next() % 8);
+        assert!(PrimedModel::from_bytes(&bad).is_err(), "flip at {i}");
+    }
+}
+
+#[test]
+fn primed_model_in_block_mode() {
+    let text = sample_text();
+    let (dict, data) = (&text[..10_000], &text[10_000..]);
+    let model = PrimedModel::new(dict, &Options::default());
+    let one = compress_with_model(data, &model, &blocked(8192, 1));
+    assert_eq!(one[5], 2);
+    assert_eq!(compress_with_model(data, &model, &blocked(8192, 4)), one);
+    assert_eq!(decompress_with_model(&one, &model, 0).unwrap(), data);
+    assert_eq!(decompress_with_dictionary(&one, dict, 0).unwrap(), data);
+}
+
+#[test]
+fn wrong_model_is_rejected() {
+    let (dict, msg) = dict_and_message();
+    let packed = compress_with_dictionary(&msg, &dict, &Options::default());
+    let other = PrimedModel::new(&dict[..20_000], &Options::default());
+    assert!(matches!(
+        decompress_with_model(&packed, &other, 0),
+        Err(Error::DictionaryMismatch { .. })
+    ));
 }

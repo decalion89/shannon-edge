@@ -47,8 +47,31 @@ All integers are little-endian.
   concatenated, must have exactly `length` bytes and match the outer CRC.
   The compressed bytes depend only on the data, `mem_bits` and `block_size`,
   never on how many threads were used. With a dictionary, every block is
-  primed with the same dictionary, so blocks stay independent. If the blocked result would not be
-  smaller than the input, the whole input is stored instead.
+  primed with the same dictionary, so blocks stay independent. If the
+  blocked result would not be smaller than the input, the whole input is
+  stored instead.
+
+## Primed-model files (`.sedgem`)
+
+A saved `PrimedModel`: the model state after reading a dictionary. It is a
+cache for speed, not a stream format — `.sedge` streams never depend on
+whether a model file or the raw dictionary was used.
+
+| Size | Field |
+|---:|---|
+| 8 | magic `SEDGMODL` |
+| 1 | format version (`1`) |
+| 1 | memory level (`16..=24`) |
+| 2 | reserved, `0` |
+| 4 | CRC-32 of the dictionary |
+| 4 | dictionary length `d` |
+| d | the dictionary |
+| … | model state, little-endian, in the order written by `Predictor::save` |
+| 4 | CRC-32 of everything above |
+
+Loading verifies both CRCs and range-checks every index and pointer; any
+mismatch is `BadModel`. The state layout is tied to the model version: a
+model change that bumps the format version also invalidates model files.
 
 ## Integrity
 

@@ -50,6 +50,7 @@ const FRESH: u32 = 1 << 31;
 // ---------------------------------------------------------------------------
 
 /// Directly indexed adaptive probabilities.
+#[derive(Clone)]
 struct DirectMap {
     t: Vec<u32>,
     limit: u32,
@@ -84,6 +85,7 @@ struct Bucket([u32; 16]);
 /// context touches a single cache line. A tag mismatch means the bucket
 /// belongs to another context; it is then reset rather than letting two
 /// contexts pollute each other's statistics.
+#[derive(Clone)]
 struct HashedMap {
     t: Vec<Bucket>,
     shift: u32,
@@ -136,6 +138,7 @@ const NI: usize = 24;
 /// Weights are 16-bit fixed point with 1.0 = 8192, inputs are stretched
 /// probabilities in -2047..=2047. Each `MixerBank` owns several weight sets
 /// and selects one per bit from a small context.
+#[derive(Clone)]
 struct MixerBank {
     w: Vec<[i16; NI]>,
     sel: usize,
@@ -182,6 +185,7 @@ impl MixerBank {
 }
 
 /// Final 2-layer combiner (few inputs, 32-bit weights, 1.0 = 65536).
+#[derive(Clone)]
 struct FinalMixer {
     w: [i32; 3],
     x: [i32; 3],
@@ -219,6 +223,7 @@ impl FinalMixer {
 // APM / SSE: secondary estimation, refines a probability given a context
 // ---------------------------------------------------------------------------
 
+#[derive(Clone)]
 struct Apm {
     t: Vec<u16>,
     idx: usize,
@@ -263,6 +268,7 @@ impl Apm {
 const MATCH_MIN: usize = 6;
 const MATCH_MAX: usize = 65_535;
 
+#[derive(Clone)]
 struct MatchModel {
     table: Vec<u32>,
     shift: u32,
@@ -367,6 +373,7 @@ impl MatchModel {
 /// Number of hashed context models.
 const N_HASHED: usize = 7;
 
+#[derive(Clone)]
 pub struct Predictor {
     o0: DirectMap,
     o1: DirectMap,
@@ -552,5 +559,262 @@ impl Predictor {
             *c = hash2(i as u32 + 1, 0);
         }
         self.predict();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// State snapshots: save a (primed) predictor and restore it bit-exactly
+// ---------------------------------------------------------------------------
+
+/// Little-endian serialiser for model state.
+#[derive(Default)]
+pub struct Writer(pub Vec<u8>);
+
+impl Writer {
+    fn u32(&mut self, v: u32) {
+        self.0.extend_from_slice(&v.to_le_bytes());
+    }
+    fn i32(&mut self, v: i32) {
+        self.u32(v as u32);
+    }
+    fn usize(&mut self, v: usize) {
+        self.0.extend_from_slice(&(v as u64).to_le_bytes());
+    }
+    fn u32s(&mut self, v: &[u32]) {
+        self.0.reserve(v.len() * 4);
+        for &x in v {
+            self.u32(x);
+        }
+    }
+    fn u16s(&mut self, v: &[u16]) {
+        self.0.reserve(v.len() * 2);
+        for &x in v {
+            self.0.extend_from_slice(&x.to_le_bytes());
+        }
+    }
+    fn i16s(&mut self, v: &[i16]) {
+        self.0.reserve(v.len() * 2);
+        for &x in v {
+            self.0.extend_from_slice(&x.to_le_bytes());
+        }
+    }
+}
+
+/// Reader matching [`Writer`]. Every method returns `None` on truncation or
+/// an out-of-range value, so a damaged snapshot is rejected, never trusted.
+pub struct Reader<'a> {
+    b: &'a [u8],
+    pos: usize,
+}
+
+impl<'a> Reader<'a> {
+    pub fn new(b: &'a [u8]) -> Self {
+        Self { b, pos: 0 }
+    }
+    pub fn is_done(&self) -> bool {
+        self.pos == self.b.len()
+    }
+    fn take(&mut self, n: usize) -> Option<&'a [u8]> {
+        let s = self.b.get(self.pos..self.pos.checked_add(n)?)?;
+        self.pos += n;
+        Some(s)
+    }
+    fn u32(&mut self) -> Option<u32> {
+        Some(u32::from_le_bytes(self.take(4)?.try_into().ok()?))
+    }
+    fn i32(&mut self) -> Option<i32> {
+        Some(self.u32()? as i32)
+    }
+    fn usize(&mut self) -> Option<usize> {
+        usize::try_from(u64::from_le_bytes(self.take(8)?.try_into().ok()?)).ok()
+    }
+    fn index(&mut self, bound: usize) -> Option<usize> {
+        self.usize().filter(|&v| v < bound)
+    }
+    fn u32s(&mut self, out: &mut [u32]) -> Option<()> {
+        let raw = self.take(out.len() * 4)?;
+        for (o, c) in out.iter_mut().zip(raw.chunks_exact(4)) {
+            *o = u32::from_le_bytes(c.try_into().ok()?);
+        }
+        Some(())
+    }
+    fn u16s(&mut self, out: &mut [u16]) -> Option<()> {
+        let raw = self.take(out.len() * 2)?;
+        for (o, c) in out.iter_mut().zip(raw.chunks_exact(2)) {
+            *o = u16::from_le_bytes(c.try_into().ok()?);
+        }
+        Some(())
+    }
+    fn i16s(&mut self, out: &mut [i16]) -> Option<()> {
+        let raw = self.take(out.len() * 2)?;
+        for (o, c) in out.iter_mut().zip(raw.chunks_exact(2)) {
+            *o = i16::from_le_bytes(c.try_into().ok()?);
+        }
+        Some(())
+    }
+}
+
+impl DirectMap {
+    fn save(&self, w: &mut Writer) {
+        w.u32s(&self.t);
+    }
+    fn load(&mut self, r: &mut Reader) -> Option<()> {
+        r.u32s(&mut self.t)
+    }
+}
+
+impl HashedMap {
+    fn save(&self, w: &mut Writer) {
+        for b in &self.t {
+            w.u32s(&b.0);
+        }
+    }
+    fn load(&mut self, r: &mut Reader) -> Option<()> {
+        for b in &mut self.t {
+            r.u32s(&mut b.0)?;
+        }
+        Some(())
+    }
+}
+
+impl MixerBank {
+    fn save(&self, w: &mut Writer) {
+        for set in &self.w {
+            w.i16s(set);
+        }
+        w.usize(self.sel);
+        w.i32(self.pr);
+    }
+    fn load(&mut self, r: &mut Reader) -> Option<()> {
+        for set in &mut self.w {
+            r.i16s(set)?;
+        }
+        self.sel = r.index(self.w.len())?;
+        self.pr = r.i32().filter(|p| (0..4096).contains(p))?;
+        Some(())
+    }
+}
+
+impl FinalMixer {
+    fn save(&self, w: &mut Writer) {
+        for i in 0..3 {
+            w.i32(self.w[i]);
+            w.i32(self.x[i]);
+        }
+        w.i32(self.pr);
+    }
+    fn load(&mut self, r: &mut Reader) -> Option<()> {
+        for i in 0..3 {
+            self.w[i] = r.i32()?;
+            self.x[i] = r.i32()?;
+        }
+        self.pr = r.i32().filter(|p| (0..4096).contains(p))?;
+        Some(())
+    }
+}
+
+impl Apm {
+    fn save(&self, w: &mut Writer) {
+        w.u16s(&self.t);
+        w.usize(self.idx);
+    }
+    fn load(&mut self, r: &mut Reader) -> Option<()> {
+        r.u16s(&mut self.t)?;
+        self.idx = r.index(self.t.len())?;
+        Some(())
+    }
+}
+
+impl MatchModel {
+    fn save(&self, w: &mut Writer) {
+        w.u32s(&self.table);
+        w.usize(self.ptr);
+        w.usize(self.len);
+        w.u32(self.expected);
+        w.u32(self.active as u32);
+        self.sm.save(w);
+        w.usize(self.ctx);
+    }
+    /// `hist_len` bounds the match pointer: it must point into the history.
+    fn load(&mut self, r: &mut Reader, hist_len: usize) -> Option<()> {
+        r.u32s(&mut self.table)?;
+        if self.table.iter().any(|&p| p as usize > hist_len) {
+            return None;
+        }
+        self.ptr = r.usize().filter(|&p| p <= hist_len)?;
+        self.len = r.usize().filter(|&l| l <= MATCH_MAX)?;
+        self.expected = r.u32().filter(|&e| e < 0x200)?;
+        self.active = match r.u32()? {
+            0 => false,
+            1 => true,
+            _ => return None,
+        };
+        self.sm.load(r)?;
+        self.ctx = r.index(self.sm.t.len())?;
+        Some(())
+    }
+}
+
+impl Predictor {
+    /// Serialise the complete state. Only valid at a byte boundary (after
+    /// [`Self::byte_update`]), which is where priming leaves the model.
+    pub fn save(&self, w: &mut Writer) {
+        debug_assert_eq!(self.known, 0);
+        self.o0.save(w);
+        self.o1.save(w);
+        for h in &self.hashed {
+            h.save(w);
+        }
+        w.u32s(&self.ctx);
+        for &b in &self.buckets {
+            w.usize(b);
+        }
+        w.usize(self.node);
+        self.mm.save(w);
+        w.i16s(&self.x);
+        self.m_byte.save(w);
+        self.m_match.save(w);
+        self.m_last.save(w);
+        self.m_final.save(w);
+        self.a1.save(w);
+        self.a2.save(w);
+        self.a3.save(w);
+        w.i32(self.pr);
+        for v in [self.c4, self.c8, self.word, self.prev_word] {
+            w.u32(v);
+        }
+    }
+
+    /// Restore a state written by [`Self::save`] for a model with the same
+    /// `bits`, whose history has `hist_len` bytes. Rejects anything that
+    /// does not fit exactly.
+    pub fn load(bits: u32, r: &mut Reader, hist_len: usize) -> Option<Self> {
+        let mut p = Self::new(bits);
+        p.o0.load(r)?;
+        p.o1.load(r)?;
+        for h in &mut p.hashed {
+            h.load(r)?;
+        }
+        r.u32s(&mut p.ctx)?;
+        let nb = p.hashed[0].t.len();
+        for b in &mut p.buckets {
+            *b = r.index(nb)?;
+        }
+        p.node = r.usize().filter(|n| (1..16).contains(n))?;
+        p.mm.load(r, hist_len)?;
+        r.i16s(&mut p.x)?;
+        p.m_byte.load(r)?;
+        p.m_match.load(r)?;
+        p.m_last.load(r)?;
+        p.m_final.load(r)?;
+        p.a1.load(r)?;
+        p.a2.load(r)?;
+        p.a3.load(r)?;
+        p.pr = r.i32().filter(|p| (1..4096).contains(p))?;
+        p.c4 = r.u32()?;
+        p.c8 = r.u32()?;
+        p.word = r.u32()?;
+        p.prev_word = r.u32()?;
+        Some(p)
     }
 }

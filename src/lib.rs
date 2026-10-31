@@ -99,6 +99,8 @@ pub enum Error {
     DictionaryRequired { crc: u32, len: usize },
     /// The dictionary given is not the one the stream was compressed with.
     DictionaryMismatch { crc: u32, len: usize },
+    /// A saved [`PrimedModel`] is damaged or not a model file.
+    BadModel,
 }
 
 impl fmt::Display for Error {
@@ -115,6 +117,7 @@ impl fmt::Display for Error {
                 f,
                 "compressed with a dictionary ({len} bytes, crc {crc:08x}); pass it with -D"
             ),
+            Error::BadModel => write!(f, "not a valid primed-model (.sedgem) file"),
             Error::DictionaryMismatch { crc, len } => write!(
                 f,
                 "wrong dictionary: stream needs {len} bytes with crc {crc:08x}"
@@ -196,7 +199,7 @@ fn parallel_map<T: Sync, R: Send>(
 /// # Panics
 /// Inputs of 4 GiB or more are not supported by format version 1.
 pub fn compress(data: &[u8], opts: &Options) -> Vec<u8> {
-    compress_with_dictionary(data, &[], opts)
+    compress_prior(data, Prior::None, opts)
 }
 
 /// Compress `data` given a dictionary: data that the decompressor will also
@@ -207,23 +210,63 @@ pub fn compress(data: &[u8], opts: &Options) -> Vec<u8> {
 ///
 /// Decompression requires exactly the same dictionary
 /// ([`decompress_with_dictionary`]); the stream records its CRC-32 and
-/// length. Priming costs time proportional to the dictionary size, per block.
-/// An empty dictionary is the same as [`compress`].
+/// length. Priming costs time proportional to the dictionary size, per block;
+/// to pay it only once, see [`PrimedModel`]. An empty dictionary is the same
+/// as [`compress`].
 ///
 /// # Panics
 /// If `dictionary` plus one block reaches 4 GiB.
 pub fn compress_with_dictionary(data: &[u8], dictionary: &[u8], opts: &Options) -> Vec<u8> {
+    let prior = if dictionary.is_empty() {
+        Prior::None
+    } else {
+        Prior::Dict(dictionary)
+    };
+    compress_prior(data, prior, opts)
+}
+
+/// Compress `data` with a model already primed on a dictionary. This
+/// produces a normal dictionary stream (decodable with either the same
+/// [`PrimedModel`] or the raw dictionary) but skips re-reading the
+/// dictionary: each block starts from a copy of the primed state.
+///
+/// The memory level is the model's own ([`PrimedModel::mem_bits`]), so the
+/// bytes can differ slightly from [`compress_with_dictionary`], which sizes
+/// tables per block; both are valid.
+pub fn compress_with_model(data: &[u8], model: &PrimedModel, opts: &Options) -> Vec<u8> {
+    compress_prior(data, Prior::Model(model), opts)
+}
+
+/// What a block's model knows before it sees the block.
+#[derive(Clone, Copy)]
+enum Prior<'a> {
+    None,
+    Dict(&'a [u8]),
+    Model(&'a PrimedModel),
+}
+
+impl Prior<'_> {
+    fn dict(&self) -> &[u8] {
+        match self {
+            Prior::None => &[],
+            Prior::Dict(d) => d,
+            Prior::Model(m) => &m.dict,
+        }
+    }
+}
+
+fn compress_prior(data: &[u8], prior: Prior, opts: &Options) -> Vec<u8> {
     assert!(
         (data.len() as u64) < u32::MAX as u64,
         "format v1 supports inputs below 4 GiB"
     );
     if opts.block_size == 0 || data.len() <= opts.block_size {
-        return compress_single(data, opts.mem_bits, dictionary);
+        return compress_single(data, opts.mem_bits, prior);
     }
 
     let blocks: Vec<&[u8]> = data.chunks(opts.block_size).collect();
     let streams = parallel_map(&blocks, opts.threads, |b| {
-        compress_single(b, opts.mem_bits, dictionary)
+        compress_single(b, opts.mem_bits, prior)
     });
 
     let total: usize = streams.iter().map(Vec::len).sum();
@@ -261,19 +304,44 @@ fn prime(pred: &mut Predictor, hist: &mut Vec<u8>, dict: &[u8]) {
     }
 }
 
+/// A model in the state it reaches after reading `dict` at memory level
+/// `bits`, plus the history buffer holding the dictionary. With a matching
+/// [`PrimedModel`] this is a copy; otherwise the dictionary is read.
+fn start_model(
+    bits: u8,
+    dict: &[u8],
+    model: Option<&PrimedModel>,
+    extra: usize,
+) -> (Predictor, Vec<u8>) {
+    let mut hist = Vec::with_capacity(dict.len() + extra);
+    match model {
+        Some(m) if m.bits == bits => {
+            hist.extend_from_slice(&m.dict);
+            (m.pred.clone(), hist)
+        }
+        _ => {
+            let mut pred = Predictor::new(bits as u32);
+            pred.start();
+            prime(&mut pred, &mut hist, dict);
+            (pred, hist)
+        }
+    }
+}
+
 /// Compress one block as a self-contained stored, CM or CM+dictionary stream.
-fn compress_single(data: &[u8], mem_bits: u8, dict: &[u8]) -> Vec<u8> {
+fn compress_single(data: &[u8], mem_bits: u8, prior: Prior) -> Vec<u8> {
+    let dict = prior.dict();
     assert!(
         ((dict.len() + data.len()) as u64) < u32::MAX as u64,
         "dictionary plus block must stay below 4 GiB"
     );
-    let bits = effective_mem_bits(dict.len() + data.len(), mem_bits);
+    let (bits, model) = match prior {
+        Prior::Model(m) => (m.bits, Some(m)),
+        _ => (effective_mem_bits(dict.len() + data.len(), mem_bits), None),
+    };
     if !data.is_empty() {
         let mut enc = Encoder::new(data.len() / 2 + 16);
-        let mut pred = Predictor::new(bits as u32);
-        pred.start();
-        let mut hist = Vec::with_capacity(dict.len() + data.len());
-        prime(&mut pred, &mut hist, dict);
+        let (mut pred, mut hist) = start_model(bits, dict, model, data.len());
         let limit = data.len();
         let mut gave_up = false;
         for &byte in data {
@@ -297,8 +365,12 @@ fn compress_single(data: &[u8], mem_bits: u8, dict: &[u8]) -> Vec<u8> {
                 let mut out = if dict.is_empty() {
                     header(METHOD_CM, bits, data.len() as u64, crc)
                 } else {
+                    let dict_crc = match prior {
+                        Prior::Model(m) => m.dict_crc,
+                        _ => crc32::crc32(dict),
+                    };
                     let mut h = header(METHOD_CM_DICT, bits, data.len() as u64, crc);
-                    h.extend_from_slice(&crc32::crc32(dict).to_le_bytes());
+                    h.extend_from_slice(&dict_crc.to_le_bytes());
                     h.extend_from_slice(&(dict.len() as u32).to_le_bytes());
                     h
                 };
@@ -358,19 +430,39 @@ pub fn decompress(input: &[u8]) -> Result<Vec<u8>, Error> {
 
 /// Like [`decompress`], with an explicit worker-thread count (`0` = all cores).
 pub fn decompress_with_threads(input: &[u8], threads: usize) -> Result<Vec<u8>, Error> {
-    decompress_with_dictionary(input, &[], threads)
+    decompress_prior(input, Prior::None, threads)
 }
 
 /// Decompress a stream that may have been compressed with a dictionary
-/// ([`compress_with_dictionary`]). Streams compressed without one ignore it.
+/// ([`compress_with_dictionary`] or [`compress_with_model`]). Streams
+/// compressed without one ignore it.
 pub fn decompress_with_dictionary(
     input: &[u8],
     dictionary: &[u8],
     threads: usize,
 ) -> Result<Vec<u8>, Error> {
+    let prior = if dictionary.is_empty() {
+        Prior::None
+    } else {
+        Prior::Dict(dictionary)
+    };
+    decompress_prior(input, prior, threads)
+}
+
+/// Like [`decompress_with_dictionary`], but starts from a primed model
+/// instead of re-reading the dictionary whenever the memory levels match.
+pub fn decompress_with_model(
+    input: &[u8],
+    model: &PrimedModel,
+    threads: usize,
+) -> Result<Vec<u8>, Error> {
+    decompress_prior(input, Prior::Model(model), threads)
+}
+
+fn decompress_prior(input: &[u8], prior: Prior, threads: usize) -> Result<Vec<u8>, Error> {
     let h = parse_header(input)?;
     if h.method != METHOD_BLOCKS {
-        return decompress_single(input, dictionary);
+        return decompress_single(input, prior);
     }
     let p = &input[HEADER_LEN..];
     let _block_size = read_u32(p, 0)?;
@@ -397,7 +489,7 @@ pub fn decompress_with_dictionary(
     if declared != h.len {
         return Err(Error::BadBlockTable);
     }
-    let parts = parallel_map(&streams, threads, |s| decompress_single(s, dictionary));
+    let parts = parallel_map(&streams, threads, |s| decompress_single(s, prior));
     let mut out = Vec::with_capacity(h.len);
     for part in parts {
         out.extend_from_slice(&part?);
@@ -413,7 +505,7 @@ pub fn decompress_with_dictionary(
 }
 
 /// Decode a single stored, CM or CM+dictionary stream.
-fn decompress_single(input: &[u8], dictionary: &[u8]) -> Result<Vec<u8>, Error> {
+fn decompress_single(input: &[u8], prior: Prior) -> Result<Vec<u8>, Error> {
     let Header {
         method,
         bits,
@@ -422,17 +514,23 @@ fn decompress_single(input: &[u8], dictionary: &[u8]) -> Result<Vec<u8>, Error> 
     } = parse_header(input)?;
     let mut payload = &input[HEADER_LEN..];
     let mut dict: &[u8] = &[];
+    let mut model = None;
     if method == METHOD_CM_DICT {
         let crc = read_u32(payload, 0)? as u32;
         let dlen = read_u32(payload, 4)?;
         payload = &payload[8..];
-        if dictionary.is_empty() {
-            return Err(Error::DictionaryRequired { crc, len: dlen });
-        }
-        if dictionary.len() != dlen || crc32::crc32(dictionary) != crc {
+        let (have, have_crc) = match prior {
+            Prior::None => return Err(Error::DictionaryRequired { crc, len: dlen }),
+            Prior::Dict(d) => (d, crc32::crc32(d)),
+            Prior::Model(m) => {
+                model = Some(m);
+                (&m.dict[..], m.dict_crc)
+            }
+        };
+        if have.len() != dlen || have_crc != crc {
             return Err(Error::DictionaryMismatch { crc, len: dlen });
         }
-        dict = dictionary;
+        dict = have;
     }
 
     let out = match method {
@@ -451,10 +549,7 @@ fn decompress_single(input: &[u8], dictionary: &[u8]) -> Result<Vec<u8>, Error> 
             if payload.is_empty() && len > 0 {
                 return Err(Error::Truncated);
             }
-            let mut hist = Vec::with_capacity(dict.len() + len);
-            let mut pred = Predictor::new(bits as u32);
-            pred.start();
-            prime(&mut pred, &mut hist, dict);
+            let (mut pred, mut hist) = start_model(bits, dict, model, len);
             let mut dec = Decoder::new(payload);
             let end = dict.len() + len;
             while hist.len() < end {
@@ -478,6 +573,125 @@ fn decompress_single(input: &[u8], dictionary: &[u8]) -> Result<Vec<u8>, Error> 
         return Err(Error::ChecksumMismatch { expected, actual });
     }
     Ok(out)
+}
+
+// ---------------------------------------------------------------------------
+// Primed models: pay for a dictionary once
+// ---------------------------------------------------------------------------
+
+/// Magic bytes of a saved [`PrimedModel`] (`.sedgem` file).
+pub const MODEL_MAGIC: [u8; 8] = *b"SEDGMODL";
+
+/// A model that has already read a dictionary. Priming is the slow part of
+/// dictionary compression (it runs at model speed); a `PrimedModel` does it
+/// once, then every message or block starts from a copy of the primed state.
+///
+/// It can be kept in memory (e.g. by a server compressing many small
+/// messages) or saved with [`PrimedModel::to_bytes`] and loaded later with
+/// [`PrimedModel::from_bytes`]. Snapshots are a cache, not a new format:
+/// streams made with a model decode with the raw dictionary and vice versa.
+#[derive(Clone)]
+pub struct PrimedModel {
+    bits: u8,
+    dict: Vec<u8>,
+    dict_crc: u32,
+    pred: Predictor,
+}
+
+impl PrimedModel {
+    /// Prime a model on `dictionary`. Tables are sized for the dictionary
+    /// plus messages of up to the same size, capped at `opts.mem_bits`.
+    ///
+    /// # Panics
+    /// If the dictionary is empty or reaches 2 GiB.
+    pub fn new(dictionary: &[u8], opts: &Options) -> Self {
+        assert!(!dictionary.is_empty(), "a primed model needs a dictionary");
+        assert!(
+            dictionary.len() < (1 << 31),
+            "dictionary must be below 2 GiB"
+        );
+        let bits = effective_mem_bits(dictionary.len() * 2, opts.mem_bits);
+        let (pred, hist) = start_model(bits, dictionary, None, 0);
+        Self {
+            bits,
+            dict_crc: crc32::crc32(&hist),
+            dict: hist,
+            pred,
+        }
+    }
+
+    /// The dictionary this model has read.
+    pub fn dictionary(&self) -> &[u8] {
+        &self.dict
+    }
+
+    /// Memory level of the model's tables.
+    pub fn mem_bits(&self) -> u8 {
+        self.bits
+    }
+
+    /// Serialise the model (dictionary included) so it can be loaded later
+    /// without re-reading the dictionary. Size ≈ the model's memory use.
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut w = model::Writer::default();
+        w.0.extend_from_slice(&MODEL_MAGIC);
+        w.0.push(FORMAT_VERSION);
+        w.0.push(self.bits);
+        w.0.extend_from_slice(&[0, 0]);
+        w.0.extend_from_slice(&self.dict_crc.to_le_bytes());
+        w.0.extend_from_slice(&(self.dict.len() as u32).to_le_bytes());
+        w.0.extend_from_slice(&self.dict);
+        self.pred.save(&mut w);
+        let crc = crc32::crc32(&w.0);
+        w.0.extend_from_slice(&crc.to_le_bytes());
+        w.0
+    }
+
+    /// Load a model saved by [`PrimedModel::to_bytes`]. The whole file is
+    /// checksummed and every field is range-checked.
+    pub fn from_bytes(b: &[u8]) -> Result<Self, Error> {
+        if b.len() < 24 || b[..8] != MODEL_MAGIC {
+            return Err(Error::BadModel);
+        }
+        let (body, tail) = b.split_at(b.len() - 4);
+        if crc32::crc32(body) != u32::from_le_bytes(tail.try_into().unwrap()) {
+            return Err(Error::BadModel);
+        }
+        if body[8] != FORMAT_VERSION {
+            return Err(Error::UnsupportedVersion(body[8]));
+        }
+        let bits = body[9];
+        if !(MIN_MEM_BITS..=MAX_MEM_BITS).contains(&bits) {
+            return Err(Error::BadMemBits(bits));
+        }
+        let dict_crc = read_u32(body, 12)? as u32;
+        let dlen = read_u32(body, 16)?;
+        let dict = body.get(20..20 + dlen).ok_or(Error::BadModel)?.to_vec();
+        if dict.is_empty() || crc32::crc32(&dict) != dict_crc {
+            return Err(Error::BadModel);
+        }
+        let mut r = model::Reader::new(&body[20 + dlen..]);
+        let pred = Predictor::load(bits as u32, &mut r, dict.len()).ok_or(Error::BadModel)?;
+        if !r.is_done() {
+            return Err(Error::BadModel);
+        }
+        Ok(Self {
+            bits,
+            dict,
+            dict_crc,
+            pred,
+        })
+    }
+}
+
+impl fmt::Debug for PrimedModel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PrimedModel")
+            .field("mem_bits", &self.bits)
+            .field("dictionary_len", &self.dict.len())
+            .field("dictionary_crc", &format_args!("{:08x}", self.dict_crc))
+            .finish()
+    }
 }
 
 #[cfg(test)]

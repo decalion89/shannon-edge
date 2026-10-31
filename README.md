@@ -110,11 +110,30 @@ the data), 4 cores:
 | 8 MiB blocks + 1 MiB dictionary | 21,502,540 | 1.87 MiB/s | 30% |
 | 8 MiB blocks + 4 MiB dictionary | 21,261,762 | 1.28 MiB/s | 58% |
 
-The price today is time: the model re-reads the dictionary at its own speed
-(~0.5 MiB/s) for every block or message, so a 3 KB message with a 900 KB
-dictionary takes ~1 s. Saving the primed model as a snapshot (load instead of
-re-read) is next on the [roadmap](ROADMAP.md). Reproduce the table with
-`bench/shared_knowledge.py`.
+**Primed models: pay for the dictionary once.** Reading a dictionary runs at
+model speed, so `sedge prime` does it once and saves the primed model;
+`-M` then loads it instead of re-reading. It is only a cache: streams made
+with `-M` decode with `-D` and vice versa, byte-identical when the memory
+level matches. Total command time for one 3 KB message, all verified:
+
+| Message | Dictionary | `-D` (re-read) | `-M` (load) | Size with knowledge | Size without |
+|---|---|---:|---:|---:|---:|
+| *Alice* excerpt | 2 books, 908 KB | 1,664 ms | **427 ms** | 962 | 1,278 |
+| last 3 KB of enwik8 | 4 MiB of enwik8 | 7,623 ms | **446 ms** | 764 | 1,211 |
+
+The bigger the knowledge, the bigger the win: loading costs roughly the
+same, re-reading grows with the dictionary. Model files are large (≈ the
+model's memory, ~144 MB at the default level; `-m 20` gives ~43 MB and
+986 bytes instead of 962 for the *Alice* excerpt). In a
+long-running process, keep a `PrimedModel` in memory and skip the load too.
+
+```sh
+sedge prime samples.json                       # -> samples.json.sedgem
+sedge compress msg.json -M samples.json.sedgem
+sedge decompress msg.json.sedge -D samples.json   # either works
+```
+
+Reproduce the first table with `bench/shared_knowledge.py`.
 
 ### What it cannot do (and nothing can)
 
@@ -150,6 +169,12 @@ assert_eq!(back, data);
 // With shared knowledge both sides hold:
 let packed = shannon_edge::compress_with_dictionary(&data, &dict, &opts);
 let back = shannon_edge::decompress_with_dictionary(&packed, &dict, 0)?;
+
+// Prime once, compress many messages from the primed state:
+let model = shannon_edge::PrimedModel::new(&dict, &opts);
+let packed = shannon_edge::compress_with_model(&msg, &model, &opts);
+let back = shannon_edge::decompress_with_model(&packed, &model, 0)?;
+std::fs::write("dict.sedgem", model.to_bytes())?; // PrimedModel::from_bytes to load
 ```
 
 Reproduce the benchmark tables:

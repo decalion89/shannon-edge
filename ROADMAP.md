@@ -59,9 +59,11 @@ v0.1 single core: ~0.5 MiB/s. Target: 10× without losing ratio, then more.
 
 - [x] Dictionary priming in the format and CLI (`-D`), with CRC-checked
       dictionary identity
-- [ ] Model-state snapshots: save the model after priming so a dictionary
-      costs a memory copy instead of re-reading it (today priming runs at
-      model speed, ~0.5 MiB/s, per block)
+- [x] Model-state snapshots (`sedge prime`, `-M`, `PrimedModel`): load the
+      primed model instead of re-reading the dictionary (17× faster for a
+      3 KB message with a 4 MiB dictionary)
+- [ ] Smaller model files: sparse/compressed snapshot encoding, and
+      memory-mapped loading
 - [ ] Pre-trained model "packs" shipped with the decoder (logs, JSON, source
       code, natural language), honestly reporting pack size separately
 - [ ] User-trainable dictionaries for many small similar files
