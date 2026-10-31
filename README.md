@@ -162,10 +162,11 @@ while a copy-based dictionary can only reuse literal strings.
 
 The price is speed. `PrimedModel::compress_message` (used by `sedge -M`)
 works on the primed model in place and undoes its changes from a journal,
-so a record costs time proportional to the record, not to the model:
-~14 ms per record per direction (1,000 records compress + decompress +
-verify in 28 s, whether the model was primed on 110 KiB or on 18 MB; before
-the journal: 63 s and 130 s). zstd takes microseconds. `.sedgem` model
+so a record costs time proportional to the record, not to the model, and
+each slot is journaled at most once per record: ~8 ms per record per
+direction. 1,000 records compress + decompress + verify in 16 s, whether
+the model was primed on 110 KiB or on 18 MB — barely more than the 13.8 s
+without any knowledge (before the journal: 63 s and 130 s). zstd takes microseconds. `.sedgem` model
 files are large (here 162 MB). Reproduce with
 `bench/small_messages.py`.
 

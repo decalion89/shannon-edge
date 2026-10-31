@@ -45,6 +45,58 @@ fn slot_p(e: u32) -> i32 {
 
 const FRESH: u32 = 1 << 31;
 
+/// Undo log for one table while a journal is open. Each slot is recorded
+/// at most once per journal (a bitmap remembers which), so restoring needs
+/// only its original value, and the buffers are reused across journals.
+#[derive(Clone)]
+struct UndoLog<T> {
+    on: bool,
+    entries: Vec<(u32, T)>,
+    seen: Vec<u64>,
+}
+
+impl<T> Default for UndoLog<T> {
+    fn default() -> Self {
+        Self {
+            on: false,
+            entries: Vec::new(),
+            seen: Vec::new(),
+        }
+    }
+}
+
+impl<T: Copy> UndoLog<T> {
+    fn start(&mut self, slots: usize) {
+        self.on = true;
+        let words = slots.div_ceil(64);
+        if self.seen.len() < words {
+            self.seen.resize(words, 0);
+        }
+    }
+
+    /// Remember `old` as the value of slot `i` before its first change.
+    #[inline]
+    fn record(&mut self, i: usize, old: T) {
+        if self.on {
+            let (w, m) = (i >> 6, 1u64 << (i & 63));
+            if self.seen[w] & m == 0 {
+                self.seen[w] |= m;
+                self.entries.push((i as u32, old));
+            }
+        }
+    }
+
+    /// Restore every recorded slot of `t` and close the journal.
+    fn undo(&mut self, t: &mut [T]) {
+        for &(i, v) in &self.entries {
+            t[i as usize] = v;
+            self.seen[i as usize >> 6] = 0;
+        }
+        self.entries.clear();
+        self.on = false;
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Probability tables
 // ---------------------------------------------------------------------------
@@ -54,8 +106,7 @@ const FRESH: u32 = 1 << 31;
 struct DirectMap {
     t: Vec<u32>,
     limit: u32,
-    /// Undo log (index, old value) while a journal is open.
-    log: Option<Vec<(u32, u32)>>,
+    log: UndoLog<u32>,
 }
 
 impl DirectMap {
@@ -63,7 +114,7 @@ impl DirectMap {
         Self {
             t: vec![FRESH; size],
             limit,
-            log: None,
+            log: UndoLog::default(),
         }
     }
 
@@ -74,18 +125,12 @@ impl DirectMap {
 
     #[inline]
     fn update(&mut self, i: usize, bit: u32) {
-        if let Some(log) = &mut self.log {
-            log.push((i as u32, self.t[i]));
-        }
+        self.log.record(i, self.t[i]);
         update_slot(&mut self.t[i], bit, self.limit);
     }
 
     fn rollback(&mut self) {
-        if let Some(log) = self.log.take() {
-            for &(i, v) in log.iter().rev() {
-                self.t[i as usize] = v;
-            }
-        }
+        self.log.undo(&mut self.t);
     }
 }
 
@@ -104,8 +149,8 @@ struct HashedMap {
     t: Vec<Bucket>,
     shift: u32,
     limit: u32,
-    /// Undo log of whole buckets, saved when first claimed for a nibble.
-    log: Option<Vec<(u32, Bucket)>>,
+    /// Undo log of whole buckets, saved when first claimed.
+    log: UndoLog<Bucket>,
 }
 
 impl HashedMap {
@@ -117,7 +162,7 @@ impl HashedMap {
             t: vec![b; 1usize << (bits - 4)],
             shift: 32 - (bits - 4),
             limit,
-            log: None,
+            log: UndoLog::default(),
         }
     }
 
@@ -128,9 +173,7 @@ impl HashedMap {
         let tag = (h & 0xffff) | 0x1_0000;
         // Every write to this bucket during the nibble follows this call,
         // so saving it here covers both the reset and the updates.
-        if let Some(log) = &mut self.log {
-            log.push((i as u32, self.t[i]));
-        }
+        self.log.record(i, self.t[i]);
         let b = &mut self.t[i].0;
         if b[0] != tag {
             *b = [FRESH; 16];
@@ -150,11 +193,7 @@ impl HashedMap {
     }
 
     fn rollback(&mut self) {
-        if let Some(log) = self.log.take() {
-            for &(i, b) in log.iter().rev() {
-                self.t[i as usize] = b;
-            }
-        }
+        self.log.undo(&mut self.t);
     }
 }
 
@@ -258,7 +297,7 @@ struct Apm {
     t: Vec<u16>,
     idx: usize,
     rate: i32,
-    log: Option<Vec<(u32, u16)>>,
+    log: UndoLog<u16>,
 }
 
 impl Apm {
@@ -274,7 +313,7 @@ impl Apm {
             t,
             idx: 0,
             rate,
-            log: None,
+            log: UndoLog::default(),
         }
     }
 
@@ -293,18 +332,12 @@ impl Apm {
     fn update(&mut self, bit: u32) {
         let g = ((bit as i32) << 16) + ((bit as i32) << self.rate) - 2 * bit as i32;
         let v = self.t[self.idx] as i32;
-        if let Some(log) = &mut self.log {
-            log.push((self.idx as u32, v as u16));
-        }
+        self.log.record(self.idx, v as u16);
         self.t[self.idx] = (v + ((g - v) >> self.rate)) as u16;
     }
 
     fn rollback(&mut self) {
-        if let Some(log) = self.log.take() {
-            for &(i, v) in log.iter().rev() {
-                self.t[i as usize] = v;
-            }
-        }
+        self.log.undo(&mut self.t);
     }
 }
 
@@ -325,7 +358,7 @@ struct MatchModel {
     active: bool,
     sm: DirectMap,
     ctx: usize,
-    log: Option<Vec<(u32, u32)>>,
+    log: UndoLog<u32>,
 }
 
 impl MatchModel {
@@ -339,7 +372,7 @@ impl MatchModel {
             active: false,
             sm: DirectMap::new(64, 1023),
             ctx: 0,
-            log: None,
+            log: UndoLog::default(),
         }
     }
 
@@ -381,9 +414,7 @@ impl MatchModel {
                     }
                 }
             }
-            if let Some(log) = &mut self.log {
-                log.push((slot as u32, self.table[slot]));
-            }
+            self.log.record(slot, self.table[slot]);
             self.table[slot] = pos as u32;
         }
         self.active = self.len > 0 && self.ptr < pos;
@@ -898,16 +929,17 @@ impl Predictor {
     /// current state exactly. Cost: proportional to what the message touches,
     /// instead of copying the whole model.
     pub fn begin_journal(&mut self) -> JournalGuard {
-        self.o0.log = Some(Vec::new());
-        self.o1.log = Some(Vec::new());
+        self.o0.log.start(self.o0.t.len());
+        self.o1.log.start(self.o1.t.len());
         // The buckets claimed by the last prediction are written by the next
         // update without passing through `bucket()` again: save them now.
         for (h, &b) in self.hashed.iter_mut().zip(&self.buckets) {
-            h.log = Some(vec![(b as u32, h.t[b])]);
+            h.log.start(h.t.len());
+            h.log.record(b, h.t[b]);
         }
-        self.mm.log = Some(Vec::new());
+        self.mm.log.start(self.mm.table.len());
         for a in [&mut self.a1, &mut self.a2, &mut self.a3] {
-            a.log = Some(Vec::new());
+            a.log.start(a.t.len());
         }
         JournalGuard(Box::new(Saved {
             m_byte: self.m_byte.clone(),
@@ -947,11 +979,7 @@ impl Predictor {
         for h in &mut self.hashed {
             h.rollback();
         }
-        if let Some(log) = self.mm.log.take() {
-            for &(i, v) in log.iter().rev() {
-                self.mm.table[i as usize] = v;
-            }
-        }
+        self.mm.log.undo(&mut self.mm.table);
         for a in [&mut self.a1, &mut self.a2, &mut self.a3] {
             a.rollback();
         }

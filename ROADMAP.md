@@ -73,11 +73,14 @@ v0.1 single core: ~0.5 MiB/s. Target: 10× without losing ratio, then more.
 - [ ] Model-aware training: choose dictionary content by how much it
       lowers sedge's actual coding cost on held-out samples
 - [x] Fast start for small messages: journaled in-place coding
-      (`PrimedModel::compress_message`) instead of copying the model per
-      record: 63 s -> 28 s per 1,000 records (110 KiB knowledge), 130 s ->
-      29 s (18 MB knowledge); the model is restored bit-for-bit (tested)
-- [ ] Below ~14 ms per record: needs a faster model (Phase 1) and lighter
-      journaling (log each bucket once per message)
+      (`PrimedModel::compress_message`), each slot logged at most once per
+      record, buffers reused: 1,000 records in 16 s (was 63 s with 110 KiB
+      knowledge, 130 s with 18 MB); using knowledge now costs about the same
+      as not using it. The model is restored bit-for-bit (tested)
+- [ ] Below ~8 ms per record per direction: needs a faster model. Ablation
+      on Canterbury + 4 MB of enwik8: two of the three SSE stages are free
+      to drop (≤ +0.05%, ~10% faster); the rest each cost 0.2–3.7% if
+      removed, so the next 10× needs a different architecture, not pruning
 - [ ] Measure `H(X | K)` gains per pack on public datasets
 
 ## Phase 4 — Production
