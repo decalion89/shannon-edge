@@ -102,6 +102,14 @@ class Sessions(unittest.TestCase):
         self.assertEqual(rx.decompress(a), b"first record")
         self.assertEqual(rx.decompress(b), b"second record")
 
+    def test_lean_session(self):
+        tx, rx = se.Session(mem_bits=18, lean=True), se.Session(mem_bits=18, lean=True)
+        full = se.Session(mem_bits=18)
+        for r in events(100):
+            frame = tx.compress(r)
+            self.assertLess(len(frame), len(full.compress(r)))
+            self.assertEqual(rx.decompress(frame), r)
+
     def test_session_from_model(self):
         dictionary = b"".join(events(300, seed=2))
         model = se.PrimedModel(dictionary, mem_bits=18)

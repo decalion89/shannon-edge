@@ -88,7 +88,13 @@ v0.1 single core: ~0.5 MiB/s. Target: 10× without losing ratio, then more.
 - [x] Sessions: bounded history (sliding window, default 32 MiB) for
       unbounded streams; even a 64 KiB window stays 20% below zstd
       streaming with its 8 MiB window
-- [ ] Sessions: optional shorter checksum for links that already have one
+- [x] Lean session frames (no sequence number/CRC) for links that already
+      protect integrity and order, e.g. CCSDS space links
+- [x] Spacecraft telemetry benchmark (ESA-AD, 6 channels, 6 M samples):
+      43% smaller than CCSDS 121 in total; ties on smooth channels, −41% to
+      −50% on noisy ones
+- [ ] Onboard-class speed: a small, fixed-cost model for spacecraft CPUs
+      (today ~5–10 s per million samples vs ~0.1 s for CCSDS 121)
 - [ ] Measure `H(X | K)` gains per pack on public datasets
 
 ## Phase 4 — Production

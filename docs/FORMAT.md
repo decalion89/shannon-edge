@@ -65,6 +65,10 @@ for small records:
 | 4 | CRC-32 of the original record |
 | … | payload: the record itself (stored), or the coded record |
 
+**Lean frames** (a session option both sides must share) are `0xD0` +
+kind, then the LEB128 length, then the payload: no sequence number and no
+CRC, for links that already guarantee integrity and order.
+
 Coded payloads use a minimal arithmetic-coder flush: trailing bytes the
 decoder would pad with zeros anyway are omitted. Record *n* is coded with
 the model after records *0..n-1* (and the starting dictionary, if any);

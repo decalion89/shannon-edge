@@ -309,9 +309,13 @@ pub unsafe extern "C" fn sedge_model_free(model: *mut SedgeModel) {
     }
 }
 
+/// `flags` bit for `sedge_session_new`: lean frames (no sequence number,
+/// no CRC) for links that already guarantee integrity and order.
+pub const SEDGE_SESSION_LEAN: u32 = 1;
+
 /// Start a session. With `model` NULL it starts empty at `mem_bits`
 /// (0 = default); otherwise it starts from a copy of the primed model.
-/// Returns NULL on bad input.
+/// `flags`: 0, or `SEDGE_SESSION_LEAN`. Returns NULL on bad input.
 ///
 /// # Safety
 /// `model` NULL or valid.
@@ -319,7 +323,11 @@ pub unsafe extern "C" fn sedge_model_free(model: *mut SedgeModel) {
 pub unsafe extern "C" fn sedge_session_new(
     model: *const SedgeModel,
     mem_bits: i32,
+    flags: u32,
 ) -> *mut SedgeSession {
+    if flags & !SEDGE_SESSION_LEAN != 0 {
+        return std::ptr::null_mut();
+    }
     let s = if model.is_null() {
         match options(mem_bits) {
             Some(o) => Session::new(&o),
@@ -327,6 +335,11 @@ pub unsafe extern "C" fn sedge_session_new(
         }
     } else {
         Session::from_model((*model).0.clone())
+    };
+    let s = if flags & SEDGE_SESSION_LEAN != 0 {
+        s.lean()
+    } else {
+        s
     };
     Box::into_raw(Box::new(SedgeSession(s)))
 }

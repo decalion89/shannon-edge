@@ -33,7 +33,7 @@ int main(void) {
     sedge_free(packed, packed_len);
     sedge_free(back, back_len);
 
-    SedgeSession *tx = sedge_session_new(NULL, 18), *rx = sedge_session_new(NULL, 18);
+    SedgeSession *tx = sedge_session_new(NULL, 18, 0), *rx = sedge_session_new(NULL, 18, 0);
     size_t total = 0;
     char rec[96];
     for (int i = 0; i < 200 && ok; i++) {

@@ -178,6 +178,8 @@ everything learned from records *0..n-1*; sender and receiver make the same
 updates, so the model is never sent. Each record is a compact frame
 (≈8 bytes: kind, length, 16-bit sequence number, CRC-32), lost or reordered
 records are detected, and a corrupt record leaves the receiver unchanged.
+`Session::lean()` drops the sequence number and CRC (2–3 bytes per frame)
+for links that already guarantee integrity and order.
 
 1,000 consecutive GitHub events (GH Archive, 2024-01-15 16:00 UTC), every
 record verified for every method:
@@ -216,6 +218,35 @@ for record in records {
     assert_eq!(rx.decompress(&frame)?, record);
 }
 ```
+
+### Spacecraft telemetry vs. CCSDS 121, the space standard
+
+Real telemetry from an ESA mission ([ESA Anomaly Dataset](https://doi.org/10.5281/zenodo.12528696),
+Mission 1, CC BY 3.0 IGO; Kotowski et al., arXiv:2406.17826): six channels,
+the first 1,000,000 samples of each, sent as packets of 256 consecutive
+samples. CCSDS 121.0-B (libaec, unit-delay preprocessor, each packet
+independent, as flown) against zstd and a sedge session per channel. Lean
+session frames carry no CRC/sequence number, like CCSDS 121 packets, whose
+integrity comes from the link layer. Each method's best representation
+(published float32 values, or 16-bit codes + codebook) per channel; every
+packet verified:
+
+| Channel | CCSDS 121 | zstd -19 streaming | **sedge session (lean)** | vs CCSDS 121 |
+|---|---:|---:|---:|---:|
+| channel_1 | 30,036 | 48,828 | **23,264** | −23% |
+| channel_4 | **17,037** | 40,076 | 16,737 | −2% |
+| channel_10 | **16,338** | 39,392 | 16,230 | −1% |
+| channel_12 | 277,906 | 285,261 | **157,384** | −43% |
+| channel_14 | 298,025 | 281,299 | **149,156** | −50% |
+| channel_25 | 306,424 | 328,917 | **179,964** | −41% |
+| **Total** | **945,766** | 1,023,773 | **542,735** | **−43%** |
+
+On smooth channels CCSDS 121 is already near-optimal and sedge only ties;
+on noisy channels, where the downlink budget actually goes, a learning
+model cuts the data almost in half. The catch is computation: CCSDS 121
+coded each million samples in ~0.1 s, sedge took ~5–10 s (both directions)
+— fine on the ground, but onboard use needs a much cheaper model.
+Reproduce with `bench/telemetry.py` (full per-representation table there).
 
 ### What it cannot do (and nothing can)
 
@@ -340,6 +371,7 @@ The file format is specified in [`docs/FORMAT.md`](docs/FORMAT.md).
 | `bench/shared_knowledge.py` | Compression with vs. without a shared dictionary |
 | `bench/small_messages.py` | Many small records: sedge vs zstd with a trained dictionary |
 | `bench/streams.py`, `examples/session_bench.rs` | Record streams: sedge sessions vs zstd streaming |
+| `bench/telemetry.py` | ESA spacecraft telemetry: sedge vs CCSDS 121 and zstd |
 | `docs/THEORY.md` | The limits, with proofs, and how to move them honestly |
 | `docs/FORMAT.md` | `.sedge` format specification |
 | `ROADMAP.md` | Where this goes next |

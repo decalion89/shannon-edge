@@ -719,3 +719,29 @@ fn session_history_is_bounded_and_stays_in_sync() {
         assert_eq!(tx.history_len(), rx.history_len());
     }
 }
+
+#[test]
+fn lean_sessions_roundtrip_with_smaller_frames() {
+    let opts = Options {
+        mem_bits: 18,
+        ..Options::default()
+    };
+    let (mut tx, mut rx) = (Session::new(&opts).lean(), Session::new(&opts).lean());
+    let mut full = Session::new(&opts);
+    let mut saved = 0;
+    for e in event_stream(200) {
+        let frame = tx.compress(&e);
+        saved += full.compress(&e).len() - frame.len();
+        assert_eq!(rx.decompress(&frame).unwrap(), e);
+    }
+    assert!(
+        saved >= 200 * 6,
+        "lean frames should drop seq + CRC: saved {saved}"
+    );
+    // Modes do not mix.
+    let mut checked = Session::new(&opts);
+    assert!(matches!(
+        checked.decompress(&Session::new(&opts).lean().compress(b"x")),
+        Err(Error::NotThisSession)
+    ));
+}

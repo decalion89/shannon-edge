@@ -46,6 +46,8 @@ const METHOD_CM_DICT: u8 = 3;
 
 /// First byte of a session message: marker in the high bits, kind below.
 const SESSION_MARK: u8 = 0xE0;
+/// First byte of a lean session message (no sequence number, no CRC).
+const LEAN_MARK: u8 = 0xD0;
 const SESSION_STORED: u8 = 0;
 const SESSION_CM: u8 = 1;
 
@@ -824,6 +826,7 @@ pub struct Session {
     model: PrimedModel,
     seq: u64,
     limit: usize,
+    lean: bool,
 }
 
 /// Default session history window: 32 MiB (at most 64 MiB held).
@@ -858,6 +861,7 @@ impl Session {
             model,
             seq: 0,
             limit: DEFAULT_SESSION_HISTORY,
+            lean: false,
         }
     }
 
@@ -867,6 +871,18 @@ impl Session {
     /// copied verbatim. **Both sides must use the same limit.**
     pub fn with_history_limit(mut self, bytes: usize) -> Self {
         self.limit = bytes.max(64 << 10);
+        self
+    }
+
+    /// Lean frames: only kind and length (2–3 bytes of overhead instead of
+    /// ~8), no sequence number and no CRC. For links that already guarantee
+    /// integrity and order — e.g. CCSDS space links, whose frames carry
+    /// their own CRC, Reed-Solomon coding and counters — where per-record
+    /// checks would be paid twice. **Corruption or loss is then not
+    /// detected by sedge**: a damaged frame decodes to wrong data and puts
+    /// the two sides out of step. Both sides must agree on the mode.
+    pub fn lean(mut self) -> Self {
+        self.lean = true;
         self
     }
 
@@ -895,6 +911,7 @@ impl Session {
             },
             seq: 0,
             limit: DEFAULT_SESSION_HISTORY,
+            lean: false,
         }
     }
 
@@ -911,10 +928,15 @@ impl Session {
 
     fn frame(&self, kind: u8, data: &[u8]) -> Vec<u8> {
         let mut out = Vec::with_capacity(12 + data.len() / 2);
-        out.push(SESSION_MARK | kind);
-        put_varint(&mut out, data.len() as u64);
-        out.extend_from_slice(&(self.seq as u16).to_le_bytes());
-        out.extend_from_slice(&crc32::crc32(data).to_le_bytes());
+        if self.lean {
+            out.push(LEAN_MARK | kind);
+            put_varint(&mut out, data.len() as u64);
+        } else {
+            out.push(SESSION_MARK | kind);
+            put_varint(&mut out, data.len() as u64);
+            out.extend_from_slice(&(self.seq as u16).to_le_bytes());
+            out.extend_from_slice(&crc32::crc32(data).to_le_bytes());
+        }
         out
     }
 
@@ -953,7 +975,8 @@ impl Session {
     /// session is left exactly as it was.
     pub fn decompress(&mut self, input: &[u8]) -> Result<Vec<u8>, Error> {
         let first = *input.first().ok_or(Error::Truncated)?;
-        if first & !1 != SESSION_MARK {
+        let mark = if self.lean { LEAN_MARK } else { SESSION_MARK };
+        if first & !1 != mark {
             return Err(Error::NotThisSession);
         }
         let mut pos = 1;
@@ -962,24 +985,38 @@ impl Session {
             return Err(Error::TooLarge(len));
         }
         let len = len as usize;
-        let seq = read_u16(input, pos)?;
-        let crc = read_u32(input, pos + 2)? as u32;
-        let payload = &input[pos + 6..];
-        if seq != self.seq as u16 {
-            return Err(Error::SessionOutOfSync {
-                expected: self.seq,
-                got: seq as u64,
-            });
-        }
-        let out = if first & 1 == SESSION_STORED {
-            let out = payload.get(..len).ok_or(Error::Truncated)?.to_vec();
-            let actual = crc32::crc32(&out);
-            if actual != crc {
-                return Err(Error::ChecksumMismatch {
-                    expected: crc,
-                    actual,
+        // Lean frames carry no checks: `crc` is None and nothing is verified.
+        let crc = if self.lean {
+            None
+        } else {
+            let seq = read_u16(input, pos)?;
+            let crc = read_u32(input, pos + 2)? as u32;
+            pos += 6;
+            if seq != self.seq as u16 {
+                return Err(Error::SessionOutOfSync {
+                    expected: self.seq,
+                    got: seq as u64,
                 });
             }
+            Some(crc)
+        };
+        let payload = &input[pos..];
+        let check = |out: &[u8]| -> Result<(), Error> {
+            match crc {
+                Some(expected) => {
+                    let actual = crc32::crc32(out);
+                    if actual == expected {
+                        Ok(())
+                    } else {
+                        Err(Error::ChecksumMismatch { expected, actual })
+                    }
+                }
+                None => Ok(()),
+            }
+        };
+        let out = if first & 1 == SESSION_STORED {
+            let out = payload.get(..len).ok_or(Error::Truncated)?.to_vec();
+            check(&out)?;
             out
         } else {
             if payload.is_empty() && len > 0 {
@@ -989,14 +1026,10 @@ impl Session {
             let guard = self.model.pred.begin_journal();
             decode_payload(&mut self.model.pred, &mut self.model.dict, payload, len);
             let out = self.model.dict[hist_len..].to_vec();
-            let actual = crc32::crc32(&out);
-            if actual != crc {
+            if let Err(e) = check(&out) {
                 self.model.pred.rollback(guard);
                 self.model.dict.truncate(hist_len);
-                return Err(Error::ChecksumMismatch {
-                    expected: crc,
-                    actual,
-                });
+                return Err(e);
             }
             self.model.pred.commit(guard);
             self.trim_history();

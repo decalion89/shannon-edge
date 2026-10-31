@@ -65,7 +65,7 @@ _model_save = _sig("sedge_model_save", ctypes.c_int32, ctypes.c_void_p, *_out)
 _model_compress = _sig("sedge_model_compress", ctypes.c_int32, ctypes.c_void_p, ctypes.c_char_p, _size, *_out)
 _model_decompress = _sig("sedge_model_decompress", ctypes.c_int32, ctypes.c_void_p, ctypes.c_char_p, _size, *_out)
 _model_free = _sig("sedge_model_free", None, ctypes.c_void_p)
-_session_new = _sig("sedge_session_new", ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int32)
+_session_new = _sig("sedge_session_new", ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int32, ctypes.c_uint32)
 _session_compress = _sig("sedge_session_compress", ctypes.c_int32, ctypes.c_void_p, ctypes.c_char_p, _size, *_out)
 _session_decompress = _sig("sedge_session_decompress", ctypes.c_int32, ctypes.c_void_p, ctypes.c_char_p, _size, *_out)
 _session_free = _sig("sedge_session_free", None, ctypes.c_void_p)
@@ -160,10 +160,14 @@ class PrimedModel:
 class Session:
     """One side of a learning session: records must be decompressed in the
     order they were compressed. Start both sides the same way: empty at the
-    same `mem_bits`, or from the same `PrimedModel`."""
+    same `mem_bits`, or from the same `PrimedModel`, with the same `lean`.
 
-    def __init__(self, model: PrimedModel | None = None, mem_bits: int = 0):
-        self._h = _session_new(model._h if model is not None else None, mem_bits)
+    `lean=True` drops the per-record sequence number and CRC (2-3 bytes of
+    framing instead of ~8). Use it only on links that already guarantee
+    integrity and order: corruption or loss is then not detected."""
+
+    def __init__(self, model: PrimedModel | None = None, mem_bits: int = 0, lean: bool = False):
+        self._h = _session_new(model._h if model is not None else None, mem_bits, 1 if lean else 0)
         if not self._h:
             raise SedgeError(-1)
 

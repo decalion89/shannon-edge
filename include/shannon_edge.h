@@ -57,8 +57,11 @@ int32_t sedge_model_decompress(SedgeModel *m, const uint8_t *data, size_t len, u
 void sedge_model_free(SedgeModel *m);
 
 /* Sessions: both sides keep learning from every record, in order.
- * model may be NULL (start empty at mem_bits) or a primed model (copied). */
-SedgeSession *sedge_session_new(const SedgeModel *model, int32_t mem_bits);
+ * model may be NULL (start empty at mem_bits) or a primed model (copied).
+ * flags: 0, or SEDGE_SESSION_LEAN for frames without sequence number and CRC
+ * (only for links that already guarantee integrity and order). */
+#define SEDGE_SESSION_LEAN 1u
+SedgeSession *sedge_session_new(const SedgeModel *model, int32_t mem_bits, uint32_t flags);
 int32_t sedge_session_compress(SedgeSession *s, const uint8_t *data, size_t len, uint8_t **out,
                                size_t *out_len);
 int32_t sedge_session_decompress(SedgeSession *s, const uint8_t *data, size_t len, uint8_t **out,
