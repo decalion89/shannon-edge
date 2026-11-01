@@ -255,7 +255,7 @@ codes (same packets, lean framing, minimal flush, every packet verified):
 | Model | Total, 6 channels | vs CCSDS 121 | Speed (encode + decode) |
 |---|---:|---:|---:|
 | CCSDS 121 (libaec) | 945,766 | — | far faster (optimised C) |
-| `delta`: residual vs previous sample, adaptive arithmetic coding | 702,813 | −26% | 20–60 M samples/s |
+| `delta`: residual vs previous sample, adaptive arithmetic coding | 702,841 | −26% | 20–60 M samples/s |
 | `o1 \| delta`: per sample, whichever model was cheaper recently | 635,471 | −33% | 2–3 M samples/s |
 | `o1o2 \| delta` | 567,422 | −40% | ~1 M samples/s |
 | full sedge session | 542,735 | −43% | 0.1–0.2 M samples/s |
