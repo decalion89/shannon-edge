@@ -191,6 +191,12 @@ struct Column {
     base: u32,
     /// Coding class (see [`class`]).
     class: u8,
+    /// Predict "above + this column's delta at the previous packet" (a
+    /// ramp continues) instead of "above". Chosen by the ground
+    /// ([`FastPacketSession::learn_slopes`]); off by default.
+    slope: bool,
+    /// The column's delta at the previous packet (0 if it did not change).
+    prev_d: u8,
 }
 
 /// Column coding classes, chosen by the ground from the history
@@ -526,6 +532,121 @@ impl FastPacketSession {
             .collect()
     }
 
+    /// Make the columns marked `true` follow slopes: predict "above + the
+    /// column's previous delta" instead of "above". Static-class columns
+    /// ignore it. Both ends must use the same slopes; default: none. Set it
+    /// before priming or enabling epochs.
+    ///
+    /// # Panics
+    /// If `slopes` does not have one entry per column.
+    pub fn with_slopes(mut self, slopes: &[bool]) -> Self {
+        assert_eq!(slopes.len(), self.len, "one slope flag per column");
+        for (c, &s) in self.cols.iter_mut().zip(slopes) {
+            c.slope = s && c.class != class::STATIC;
+        }
+        self
+    }
+
+    /// Ground side: choose for each column whether to follow slopes, by the
+    /// ideal adaptive cost on `history` of the "same as predicted?"
+    /// decision (per context of the previous delta's class) plus the
+    /// residual symbol (in the column's recipe context), with each
+    /// predictor. A column follows slopes only if that saves at least 2%.
+    ///
+    /// # Panics
+    /// As [`Self::learn_windows`].
+    pub fn learn_slopes(history: &[&[u8]], recipes: &[u8], classes: &[u8]) -> Vec<bool> {
+        let packet_len = recipes.len();
+        assert_eq!(classes.len(), packet_len, "one class per column");
+        let mut cost = vec![[0f64; 2]; packet_len];
+        for (mode, slope) in [false, true].into_iter().enumerate() {
+            let mut freq = Vec::new();
+            let mut base = Vec::with_capacity(packet_len);
+            for (&r, &cl) in recipes.iter().zip(classes) {
+                base.push(freq.len());
+                let syms = if cl == class::ALWAYS { 256 } else { SYMS };
+                freq.extend((0..recipe::tables(r)).map(|_| Freq::new(syms, window::DEFAULT)));
+            }
+            let mut flags = vec![[[1u32; 2]; 10]; packet_len];
+            let mut above = vec![0u8; packet_len];
+            let mut last = vec![0u8; packet_len];
+            let mut prev = vec![0u8; packet_len];
+            for p in history {
+                assert_eq!(p.len(), packet_len, "packet length");
+                let (mut lc, mut ld) = (false, 0u8);
+                for k in 0..packet_len {
+                    let pred = if slope {
+                        above[k].wrapping_add(prev[k])
+                    } else {
+                        above[k]
+                    };
+                    let e = p[k].wrapping_sub(pred);
+                    let d = p[k].wrapping_sub(above[k]);
+                    let always = classes[k] == class::ALWAYS;
+                    if !always {
+                        let fl = &mut flags[k][delta_class(prev[k])];
+                        let hit = (e == 0) as usize;
+                        cost[k][mode] += ((fl[0] + fl[1]) as f64 / fl[hit] as f64).log2();
+                        fl[hit] += 2;
+                    }
+                    if e != 0 || always {
+                        let cx = recipe_context(recipes[k], lc, ld, last[k], above[k]);
+                        let f = &mut freq[base[k] + cx];
+                        let s = if always { e as usize } else { e as usize - 1 };
+                        cost[k][mode] += (f.total as f64 / f.f[s] as f64).log2();
+                        f.update(s);
+                    }
+                    lc = d != 0;
+                    ld = d;
+                    if d != 0 {
+                        last[k] = d;
+                    }
+                    prev[k] = d;
+                }
+                above.copy_from_slice(p);
+            }
+        }
+        cost.iter()
+            .zip(classes)
+            .map(|(c, &cl)| cl != class::STATIC && c[1] < 0.98 * c[0])
+            .collect()
+    }
+
+    /// Like [`Self::learn_slopes`], then each candidate column is checked
+    /// with the codec itself. The second half of `history` is compressed
+    /// (after priming on the first half) with and without that column's
+    /// slope, and the slope is kept only if the payloads get smaller. Slower
+    /// (one pass per candidate), and immune to the cost estimate's errors.
+    ///
+    /// # Panics
+    /// As [`Self::learn_windows`], or if `windows` has another length.
+    pub fn learn_slopes_checked(
+        history: &[&[u8]],
+        recipes: &[u8],
+        classes: &[u8],
+        windows: &[u8],
+    ) -> Vec<bool> {
+        let cand = Self::learn_slopes(history, recipes, classes);
+        let (prime, check) = history.split_at(history.len() / 2);
+        let size = |sl: &[bool]| -> usize {
+            let mut s = Self::with_layout_windows(recipes, classes, windows).with_slopes(sl);
+            s.prime(prime.iter().copied());
+            check.iter().map(|p| s.compress(p).len()).sum()
+        };
+        let mut chosen = vec![false; recipes.len()];
+        let mut best = size(&chosen);
+        for k in (0..recipes.len()).filter(|&k| cand[k]) {
+            chosen[k] = true;
+            let n = size(&chosen);
+            if n < best {
+                best = n;
+            } else {
+                chosen[k] = false;
+            }
+        }
+        chosen
+    }
+
     /// Learn from historical packets before the link starts (both ends must
     /// prime with the same packets). Nothing is transmitted.
     ///
@@ -610,24 +731,32 @@ impl FastPacketSession {
             if c.class == class::STATIC && !group_changed {
                 left_changed = false;
                 left_delta = 0;
+                self.cols[k].prev_d = 0;
                 out.push(above);
                 continue;
             }
+            // Prediction: the byte above, or the byte above plus the column's
+            // previous delta when it follows slopes (a ramp continues).
+            let pred = if c.slope {
+                above.wrapping_add(c.prev_d)
+            } else {
+                above
+            };
             if c.class == class::ALWAYS {
                 // The delta directly, 0 included.
                 let cx = recipe_context(c.recipe, left_changed, left_delta, c.last_delta, above);
                 let f = &mut self.freq[c.base as usize + cx];
-                let d = code_symbol(
-                    f,
-                    packet.get(k).map(|&b| b.wrapping_sub(above) as usize),
-                    io,
-                ) as u8;
+                let e =
+                    code_symbol(f, packet.get(k).map(|&b| b.wrapping_sub(pred) as usize), io) as u8;
+                let value = pred.wrapping_add(e);
+                let d = value.wrapping_sub(above);
                 left_changed = d != 0;
                 left_delta = d;
                 if d != 0 {
                     self.cols[k].last_delta = d;
                 }
-                out.push(above.wrapping_add(d));
+                self.cols[k].prev_d = d;
+                out.push(value);
                 continue;
             }
             // 1. Same as above?
@@ -640,7 +769,7 @@ impl FastPacketSession {
             let p1 = (p16 >> 4).clamp(1, 4095);
             let same = match io {
                 Io::Enc(e) => {
-                    let bit = (packet[k] == above) as u32;
+                    let bit = (packet[k] == pred) as u32;
                     e.encode(bit, p1);
                     bit
                 }
@@ -662,9 +791,14 @@ impl FastPacketSession {
             let value = if same == 1 {
                 col.run = (col.run + 1).min(15);
                 col.changed_last = false;
-                left_changed = false;
-                left_delta = 0;
-                above
+                let d = pred.wrapping_sub(above);
+                left_changed = d != 0;
+                left_delta = d;
+                if d != 0 {
+                    col.last_delta = d;
+                }
+                col.prev_d = d;
+                pred
             } else {
                 col.run = 0;
                 col.changed_last = true;
@@ -674,13 +808,18 @@ impl FastPacketSession {
                 let f = &mut self.freq[col.base as usize + cx];
                 let s = code_symbol(
                     f,
-                    packet.get(k).map(|&b| b.wrapping_sub(above) as usize - 1),
+                    packet.get(k).map(|&b| b.wrapping_sub(pred) as usize - 1),
                     io,
                 );
-                left_changed = true;
-                left_delta = s as u8 + 1;
-                col.last_delta = left_delta;
-                above.wrapping_add(left_delta)
+                let value = pred.wrapping_add(s as u8 + 1);
+                let d = value.wrapping_sub(above);
+                left_changed = d != 0;
+                left_delta = d;
+                if d != 0 {
+                    col.last_delta = d;
+                }
+                col.prev_d = d;
+                value
             };
             out.push(value);
         }

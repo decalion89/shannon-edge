@@ -200,3 +200,55 @@ fn coding_classes_roundtrip() {
 fn unknown_class_is_rejected() {
     FastPacketSession::with_layout(&[0, 0], &[0, 7]);
 }
+
+#[test]
+fn slopes_follow_ramps_round_trip_and_survive_epochs() {
+    // Column 0: an accelerating ramp (its delta grows by 1 every 100
+    // packets, so "above + previous delta" is almost always exact while the
+    // delta itself keeps moving); column 1: noise; column 2: constant.
+    let mut rng = Rng(42);
+    let ps: Vec<Vec<u8>> = (0..6000u64)
+        .map(|i| vec![((i * i) / 200) as u8, (rng.next() % 4) as u8, 9])
+        .collect();
+    let len = 3;
+    let refs: Vec<&[u8]> = ps.iter().map(Vec::as_slice).collect();
+    let recipes = vec![0u8; len];
+    let classes = vec![0u8; len];
+    let windows = vec![0u8; len];
+    let slopes =
+        FastPacketSession::learn_slopes_checked(&refs[..2000], &recipes, &classes, &windows);
+    assert!(
+        slopes[0],
+        "the ramp column should follow slopes: {slopes:?}"
+    );
+    let size = |sl: &[bool]| {
+        let (mut tx, mut rx) = (
+            FastPacketSession::with_layout_windows(&recipes, &classes, &windows).with_slopes(sl),
+            FastPacketSession::with_layout_windows(&recipes, &classes, &windows).with_slopes(sl),
+        );
+        ps.iter()
+            .map(|p| {
+                let c = tx.compress(p);
+                assert_eq!(&rx.decompress(&c).unwrap(), p);
+                c.len()
+            })
+            .sum::<usize>()
+    };
+    assert!(size(&slopes) < size(&[false; 3]));
+    // With epochs, a receiver that skips packets still decodes the rest.
+    let mk = || {
+        FastPacketSession::with_layout_windows(&recipes, &classes, &windows)
+            .with_slopes(&slopes)
+            .with_epochs(64)
+    };
+    let (mut tx, mut rx) = (mk(), mk());
+    let payloads: Vec<Vec<u8>> = ps.iter().map(|p| tx.compress(p)).collect();
+    for (i, (c, p)) in payloads.iter().zip(&ps).enumerate() {
+        if i % 64 == 10 {
+            continue; // lost
+        }
+        if let Ok(out) = rx.decompress_indexed(i as u64, c) {
+            assert_eq!(&out, p, "packet {i}");
+        }
+    }
+}

@@ -188,6 +188,38 @@ model, and that 1.3% is the per-packet flush, the price of independent
 payloads. Further gains have to come from a better model (learned windows,
 numeric prediction), not from the code.
 
+## Slopes: numeric prediction inside the fast profile (`with_slopes`, `learn_slopes_checked`)
+
+The paq8px ablation showed that the missing model is numeric prediction.
+The cheapest form fits the fast profile's loop: a column may predict
+"above + its own delta at the previous packet" (a ramp continues) instead
+of "above". The "same?" flag then means "same as predicted", and the
+symbol is the residual from the prediction. Contexts are unchanged.
+Default: no slopes, so model v2's golden stream is unchanged.
+
+The ground chooses the columns in two steps. An ideal-cost estimate
+proposes candidates. Then each candidate is *checked with the codec
+itself* on history: prime on the first half, compress the second half
+with and without that column's slope, and keep the slope only if the
+payloads shrink. The estimate alone chose two AIS columns that made the
+test 0.65% larger; the checked choice never does.
+
+Learned recipes + windows, test 90%, verified:
+
+| Dataset | Without slopes | **With checked slopes** | Columns |
+|---|---:|---:|---:|
+| Venus Express | 3,185,236 | **3,163,733 (−0.68%)** | 7 |
+| power_uci | 5,849,716 | **5,826,921 (−0.39%)** | 1 |
+| ecg_incart | 36,331,221 | 36,324,621 (−0.02%) | 1 |
+| ais_tracks | 10,957,428 | 10,957,428 (0) | 0 |
+| metropt_codes | 4,858,444 | 4,858,444 (0) | 0 |
+
+Slopes help where a value's *rate* changes slowly, as in accelerating
+ramps. A fixed fractional slope does not benefit (e.g. steps of 2, 2, 3):
+its delta pattern is already cheap for the delta tables, while its slope
+residuals (0, +1, −1) are not. The gain is real but small; the bulk of
+paq8px's lead (OLS over 32 values) remains.
+
 ## The orbit as a context: visible, not useful
 
 Venus Express orbited Venus every 24 h. The file covers 7 days at one

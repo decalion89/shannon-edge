@@ -43,6 +43,9 @@ fn main() {
         let win_n = FastPacketSession::learn_windows(history, &recipes, &normal);
         let win_c = FastPacketSession::learn_windows(history, &recipes, &classes);
         let learn_w = t.elapsed().as_secs_f64() / 2.0;
+        let sl_n = FastPacketSession::learn_slopes_checked(history, &recipes, &normal, &win_n);
+        let sl_c = FastPacketSession::learn_slopes_checked(history, &recipes, &classes, &win_c);
+        let no_sl = vec![false; len];
         let dw = vec![0u8; len];
         let runs = [
             (
@@ -50,40 +53,59 @@ fn main() {
                 vec![0u8; len],
                 normal.clone(),
                 dw.clone(),
+                no_sl.clone(),
             ),
             (
                 "learned recipes",
                 recipes.clone(),
                 normal.clone(),
                 dw.clone(),
+                no_sl.clone(),
             ),
             (
                 "learned recipes + classes",
                 recipes.clone(),
                 classes.clone(),
                 dw,
+                no_sl.clone(),
             ),
             (
                 "learned recipes + windows",
                 recipes.clone(),
-                normal,
+                normal.clone(),
                 win_n.clone(),
+                no_sl.clone(),
             ),
             (
                 "learned recipes + classes + windows",
+                recipes.clone(),
+                classes.clone(),
+                win_c.clone(),
+                no_sl,
+            ),
+            (
+                "learned recipes + windows + slopes",
+                recipes.clone(),
+                normal,
+                win_n.clone(),
+                sl_n.clone(),
+            ),
+            (
+                "learned recipes + classes + windows + slopes",
                 recipes,
                 classes.clone(),
                 win_c,
+                sl_c,
             ),
         ];
         let only: Option<usize> = std::env::var("SEDGE_FAST_ONLY")
             .ok()
             .and_then(|v| v.parse().ok());
-        for (i, (name, r, cl, w)) in runs.into_iter().enumerate() {
+        for (i, (name, r, cl, w, sl)) in runs.into_iter().enumerate() {
             if only.is_some_and(|o| o != i) {
                 continue;
             }
-            let mut base = FastPacketSession::with_layout_windows(&r, &cl, &w);
+            let mut base = FastPacketSession::with_layout_windows(&r, &cl, &w).with_slopes(&sl);
             base.prime(history.iter().copied());
             let (mut tx, mut rx) = (base.clone(), base);
             let t = Instant::now();
@@ -106,6 +128,7 @@ fn main() {
              {ccount:?} (SEDGE_FAST_CLASSES={smax},{amin}); windows per kind {:?}, learned in {learn_w:.2}s",
             (0..7u8).map(|w| win_n.iter().filter(|&&x| x == w).count()).collect::<Vec<_>>()
         );
+        println!("slope columns: {}", sl_n.iter().filter(|&&x| x).count());
         return;
     }
     let (mut tx, mut rx) = (FastPacketSession::new(len), FastPacketSession::new(len));
