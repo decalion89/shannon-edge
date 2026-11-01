@@ -1,8 +1,9 @@
-# sedge_fast and sedge_flight: portable C99 fast packet and flight profiles.
+# sedge_fast, sedge_flight and sedge_fields: portable C99 fast packet and
+# flight profiles, and record transforms.
 #
-#   make test        golden streams (bit-exact with Rust) + unit tests of both
-#                    profiles, then the same under -fsanitize=address,undefined
-#   make test-flight the same, flight profile only
+#   make test        golden streams (bit-exact with Rust) + unit tests of all
+#                    three, then the same under -fsanitize=address,undefined
+#   make test-flight the same, flight profile only (test-fast, test-fields)
 #   make warnings    -Werror builds with gcc and clang
 #   make cross       golden tests on 32-bit / big-endian CPUs under qemu-user
 #                    (needs clang, ld.lld, qemu-riscv32/arm/i386/mips/ppc)
@@ -25,12 +26,14 @@ SAN      = -g -O1 -fsanitize=address,undefined -fno-sanitize-recover=all -fno-om
 
 LIB = sedge_fast.c sedge_fast.h
 FLIB = sedge_flight.c sedge_flight.h
+DLIB = sedge_fields.c sedge_fields.h
 TB ?= 14
 
-.PHONY: all test test-fast test-flight warnings cross size bench bench-flight crosscheck clean
+.PHONY: all test test-fast test-flight test-fields warnings cross size bench bench-flight crosscheck clean
 
 all: $(BUILD)/test_golden $(BUILD)/test_fast $(BUILD)/bench $(BUILD)/crosscheck \
-     $(BUILD)/test_flight_golden $(BUILD)/test_flight $(BUILD)/bench_flight $(BUILD)/crosscheck_flight
+     $(BUILD)/test_flight_golden $(BUILD)/test_flight $(BUILD)/bench_flight $(BUILD)/crosscheck_flight \
+     $(BUILD)/test_fields_golden $(BUILD)/test_fields $(BUILD)/crosscheck_fields
 
 $(BUILD):
 	mkdir -p $(BUILD)
@@ -74,7 +77,22 @@ $(BUILD)/bench_flight: bench_flight.c $(FLIB) | $(BUILD)
 $(BUILD)/crosscheck_flight: crosscheck_flight.c $(FLIB) | $(BUILD)
 	$(CC) $(ALL_CFLAGS) sedge_flight.c crosscheck_flight.c -o $@
 
-test: test-fast test-flight
+$(BUILD)/test_fields_golden: test_fields_golden.c $(DLIB) | $(BUILD)
+	$(CC) $(ALL_CFLAGS) sedge_fields.c test_fields_golden.c -o $@
+
+$(BUILD)/test_fields: test_fields.c $(DLIB) | $(BUILD)
+	$(CC) $(ALL_CFLAGS) sedge_fields.c test_fields.c -o $@
+
+$(BUILD)/test_fields_golden_san: test_fields_golden.c $(DLIB) | $(BUILD)
+	$(SAN_CC) $(STD) $(WARN) $(SAN) sedge_fields.c test_fields_golden.c -o $@
+
+$(BUILD)/test_fields_san: test_fields.c $(DLIB) | $(BUILD)
+	$(SAN_CC) $(STD) $(WARN) $(SAN) sedge_fields.c test_fields.c -o $@
+
+$(BUILD)/crosscheck_fields: crosscheck_fields.c $(DLIB) | $(BUILD)
+	$(CC) $(ALL_CFLAGS) sedge_fields.c crosscheck_fields.c -o $@
+
+test: test-fast test-flight test-fields
 
 test-fast: $(BUILD)/test_golden $(BUILD)/test_fast $(BUILD)/test_golden_san $(BUILD)/test_fast_san
 	$(BUILD)/test_golden
@@ -90,7 +108,14 @@ test-flight: $(BUILD)/test_flight_golden $(BUILD)/test_flight $(BUILD)/test_flig
 	$(BUILD)/test_flight_golden_san
 	$(BUILD)/test_flight_san
 
-crosscheck: $(BUILD)/crosscheck $(BUILD)/crosscheck_flight
+test-fields: $(BUILD)/test_fields_golden $(BUILD)/test_fields $(BUILD)/test_fields_golden_san $(BUILD)/test_fields_san
+	$(BUILD)/test_fields_golden
+	$(BUILD)/test_fields
+	@echo "--- under AddressSanitizer + UndefinedBehaviorSanitizer:"
+	$(BUILD)/test_fields_golden_san
+	$(BUILD)/test_fields_san
+
+crosscheck: $(BUILD)/crosscheck $(BUILD)/crosscheck_flight $(BUILD)/crosscheck_fields
 
 bench: $(BUILD)/bench
 	@test -n "$(DATA)" || (echo "usage: make bench DATA=packets.bin LEN=90"; exit 2)
@@ -103,7 +128,8 @@ bench-flight: $(BUILD)/bench_flight
 warnings: | $(BUILD)
 	for cc in gcc clang; do \
 	  for f in sedge_fast.c test_golden.c test_fast.c bench.c crosscheck.c \
-	           sedge_flight.c test_flight_golden.c test_flight.c bench_flight.c crosscheck_flight.c; do \
+	           sedge_flight.c test_flight_golden.c test_flight.c bench_flight.c crosscheck_flight.c \
+	           sedge_fields.c test_fields_golden.c test_fields.c crosscheck_fields.c; do \
 	    $$cc $(STD) $(WARN) -Werror -O2 -c $$f -o $(BUILD)/w.o || exit 1; \
 	  done; \
 	  for d in SEDGE_FLIGHT_TEST_HOOKS SEDGE_FLIGHT_NO_CUSUM; do \
@@ -121,6 +147,7 @@ XFLAGS  = $(STD) $(WARN) -Werror -O2 -ffreestanding -fno-builtin -nostdinc \
           -fuse-ld=lld -Wl,--no-dynamic-linker -Wl,-e,_start
 XSRC    = sedge_fast.c test_golden.c cross/start.c
 XSRC_FL = sedge_flight.c test_flight_golden.c cross/start.c
+XSRC_FD = sedge_fields.c test_fields_golden.c cross/start.c
 XTARGETS = riscv32:qemu-riscv32:--target=riscv32-unknown-linux-gnu,-march=rv32imac,-mabi=ilp32,-mno-relax \
            cortex-m4:qemu-arm:--target=thumbv7em-none-eabi,-mcpu=cortex-m4,-mfloat-abi=soft \
            i386:qemu-i386:--target=i386-unknown-linux-gnu \
@@ -128,7 +155,7 @@ XTARGETS = riscv32:qemu-riscv32:--target=riscv32-unknown-linux-gnu,-march=rv32im
            mipsel:qemu-mipsel:--target=mipsel-unknown-linux-gnu,-mno-abicalls,-G0 \
            ppc32-be:qemu-ppc:--target=powerpc-unknown-linux-gnu
 
-cross: $(XSRC) $(XSRC_FL) $(LIB) $(FLIB) test_flight_data.h cross/include/string.h | $(BUILD)
+cross: $(XSRC) $(XSRC_FL) $(XSRC_FD) $(LIB) $(FLIB) $(DLIB) test_flight_data.h cross/include/string.h | $(BUILD)
 	@for t in $(XTARGETS); do \
 	  name=$${t%%:*}; rest=$${t#*:}; qemu=$${rest%%:*}; flags=$$(echo $${rest#*:} | tr , ' '); \
 	  echo "== $$name ($$qemu)"; \
@@ -136,6 +163,8 @@ cross: $(XSRC) $(XSRC_FL) $(LIB) $(FLIB) test_flight_data.h cross/include/string
 	  $$qemu $(BUILD)/golden-$$name || exit 1; \
 	  clang $$flags $(XFLAGS) $(XSRC_FL) -o $(BUILD)/flight-golden-$$name || exit 1; \
 	  $$qemu $(BUILD)/flight-golden-$$name || exit 1; \
+	  clang $$flags $(XFLAGS) $(XSRC_FD) -o $(BUILD)/fields-golden-$$name || exit 1; \
+	  $$qemu $(BUILD)/fields-golden-$$name || exit 1; \
 	done
 
 # Code size of the codec object at -Os (text + data + bss, bytes).
@@ -147,7 +176,7 @@ STARGETS = x86-64-$(CC):$(CC) \
            cortex-m0:clang,--target=thumbv6m-none-eabi,-mcpu=cortex-m0,FREE \
            msp430:clang,--target=msp430-unknown-elf,FREE
 
-size: $(LIB) $(FLIB) | $(BUILD)
+size: $(LIB) $(FLIB) $(DLIB) | $(BUILD)
 	@printf "%-16s %10s %16s\n" target bytes "-DSEDGE_FAST_NO_LEARN"
 	@for t in $(STARGETS); do \
 	  name=$${t%%:*}; cmd=$$(echo $${t#*:} | tr , ' ' | sed 's|FREE|$(FREE)|'); \
@@ -169,6 +198,15 @@ size: $(LIB) $(FLIB) | $(BUILD)
 	    $$(llvm-size -A $(BUILD)/f1.o | awk '$$1 ~ /^\.text/ {s+=$$2} END{print s}') \
 	    $$(llvm-size $(BUILD)/f2.o | awk 'NR==2{print $$1+$$2+$$3}') \
 	    $$(llvm-size -A $(BUILD)/f2.o | awk '$$1 ~ /^\.text/ {s+=$$2} END{print s}'); \
+	done
+	@echo
+	@echo "sedge_fields.o: total (of which code)"
+	@for t in $(STARGETS); do \
+	  name=$${t%%:*}; cmd=$$(echo $${t#*:} | tr , ' ' | sed 's|FREE|$(FREE)|'); \
+	  $$cmd $(SFLAGS) -c sedge_fields.c -o $(BUILD)/d1.o || exit 1; \
+	  printf "%-16s %8s (%6s)\n" $$name \
+	    $$(llvm-size $(BUILD)/d1.o | awk 'NR==2{print $$1+$$2+$$3}') \
+	    $$(llvm-size -A $(BUILD)/d1.o | awk '$$1 ~ /^\.text/ {s+=$$2} END{print s}'); \
 	done
 
 clean:

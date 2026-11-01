@@ -8,8 +8,11 @@ the ground, or the other way round.
 
 The **flight profile** (`sedge_flight.h`, `sedge_flight.c`: integer
 samples, per-sample surprise and the Kraft anomaly detector) is described
-in [its own part](#sedge_flight-the-flight-profile-in-portable-c99) below.
-Both follow the same rules and share the Makefile.
+in [its own part](#sedge_flight-the-flight-profile-in-portable-c99) below,
+and the **record transforms** (`sedge_fields.h`, `sedge_fields.c`: field
+relations and deltas loaded from the `SEDGREL1` uplink) in
+[theirs](#sedge_fields-record-transforms-in-portable-c99). All three follow
+the same rules and share the Makefile.
 
 - `sedge_fast.h`, `sedge_fast.c`: the codec (one file to add to a build)
 - `test_golden.c`: the Rust golden stream, and a second golden stream that
@@ -265,11 +268,11 @@ A flight encoder needs about 5 KB of code plus the memory block above.
 ## Building and testing
 
 ```
-make test        # golden + unit tests of both profiles, then again under
-                 # ASan + UBSan (make test-fast / make test-flight: one)
+make test        # golden + unit tests of all three, then again under
+                 # ASan + UBSan (make test-fast / test-flight / test-fields: one)
 make warnings    # -Werror, gcc and clang:
                  #   -std=c99 -Wall -Wextra -Wpedantic -Wconversion -Wshadow
-make cross       # golden tests on riscv32, Cortex-M4, i386, MIPS BE/LE,
+make cross       # golden tests (all three) on riscv32, Cortex-M4, i386, MIPS BE/LE,
                  # PPC32 BE (clang + ld.lld + qemu-user)
 make size
 make bench DATA=venus-express.ccsds LEN=90
@@ -591,3 +594,222 @@ int16, the inverse logistic of `src/math.rs`) and `NEG_LOG2` (4097 ×
 uint16, the cost table of `src/flight.rs`), both needed for exactness and
 speed, plus 1.5 KB for the cumulative detector. Neither has a symmetry that
 would halve it.
+
+# sedge_fields: record transforms in portable C99
+
+A dependency-free C99 implementation of the sender and receiver side of
+`src/fields.rs` (`RecordTransform`): field **relations** (within a record)
+and field **deltas** (across records), loaded from the `SEDGREL1` uplink of
+`docs/FORMAT.md` ("Record transforms"). It is **bit-exact** with the Rust
+crate: the same uplink and records give the same transformed records, and
+C accepts exactly the uplinks Rust accepts. Learning a transform
+(`RecordTransform::learn`, floating point) is ground-side only and stays in
+Rust.
+
+- `sedge_fields.h`, `sedge_fields.c`: the transform (one file to add to a
+  build)
+- `test_fields_golden.c`: Rust golden values: forward outputs of three
+  uplinks, and the verdicts, re-serialised uplinks and forward outputs of
+  20,000 corrupted uplinks. Runs hosted or with no C library (`make cross`).
+- `test_fields.c`: hand-computed values, every rejection rule, argument
+  and memory errors, alignment, in-place calls, and the garbage-uplink fuzz
+- `crosscheck_fields.c`: compares C and Rust on a data set, or on a file
+  of random cases
+
+## API
+
+```c
+#include "sedge_fields.h"
+
+/* Static allocation: up to 16 fields, 8 relations, 64-byte records. */
+static uint64_t mem[SEDGE_FIELDS_MEMORY_BYTES(16, 8, 64) / 8 + 1];
+
+sedge_fields *t;
+sedge_fields_init(&t, mem, sizeof mem, uplink, uplink_len);  /* checks everything */
+
+/* On board (sender), records in order: */
+sedge_fields_forward(t, record, len, out);       /* out may equal record */
+/* ... compress out with a packet codec ... */
+
+/* On the ground (receiver), after decoding, same order: */
+sedge_fields_inverse(t, decoded, len, record_out);
+```
+
+| Rust (`RecordTransform`) | C |
+|---|---|
+| `from_bytes(b)` | `sedge_fields_init(&t, mem, bytes, b, n)` |
+| `forward(rec)` | `sedge_fields_forward(t, rec, len, out)` |
+| `inverse(rec)` | `sedge_fields_inverse(t, rec, len, out)` |
+| `reset()` | `sedge_fields_reset(t)` |
+| `to_bytes()` | `sedge_fields_to_bytes(t, out, cap, &n)` |
+| `layout().len()`, `layout().fields()`, `deltas()` | `sedge_fields_record_len(t)`, `sedge_fields_field_count(t)`, `sedge_fields_get_field(t, k, &f)` (`f.delta`) |
+| `relations()` | `sedge_fields_relation_count(t)`, `sedge_fields_get_relation(t, k, &r)` |
+| `Error::BadModel` | `SEDGE_FIELDS_E_BAD_MODEL` (-12, as in `include/shannon_edge.h`) |
+| panics (record of the wrong length) | `SEDGE_FIELDS_E_ARGUMENT` (-1) |
+
+Not ported: `learn` (ground only), `Layout::parse` and `identity` (an
+uplink with no relations and no delta flags is the identity). Field and
+relation types mirror `fields::Field` and `fields::Relation`.
+
+C additions:
+
+- `sedge_fields_memory_bytes(uplink, n)`: the block size this uplink
+  needs (0 if it is malformed);
+- `SEDGE_FIELDS_E_MEMORY` (block too small) and `SEDGE_FIELDS_E_BUFFER`
+  (`to_bytes` output too small; `n` is the size needed);
+- forward and inverse work in place, or on overlapping buffers;
+- a failed `sedge_fields_init` leaves `*out` NULL; a transform
+  previously loaded in the same block must not be used afterwards (it is
+  invalidated when the failure is a bad index).
+
+Loading checks what Rust `from_bytes` checks, in the same way: magic; at
+least one field; widths 1..255, and 1, 2, 4 or 8 for integer fields; flag
+bits 4-7 zero; every relation index in range and on an integer field;
+target different from both predictors; no target used twice; no target
+used as a predictor (in any relation, before or after); exact length, no
+trailing bytes. As in Rust, a delta bit on an opaque field is accepted and
+dropped (so `to_bytes` writes it as 0), and the signed and big-endian bits
+of an opaque field are kept. A relation may use the same predictor twice
+(`i == j`). The only difference in order: an uplink that is well formed
+but has a bad index, given a block too small for it, gets
+`SEDGE_FIELDS_E_MEMORY` before the indices are checked.
+
+## Memory
+
+All state lives in one caller-provided block of any alignment: no
+allocation, no globals, a few scalar locals.
+
+```
+SEDGE_FIELDS_MEMORY_BYTES(fields, relations, record_len)
+  = 40 + 8 * fields + 8 * relations + 2 * record_len
+```
+
+- 8 bytes per field (offset, width, flags), 8 per relation (as uplinked);
+- the previous record of each side (`prev_fwd`, `prev_inv`), used by the
+  deltas: `2 * record_len`;
+- 32 bytes of header and 8 of alignment slack.
+
+INCART ECG (`i16le*12`, 3 relations): 208 bytes. AIS (14 fields, 34-byte
+records): 220 bytes. The uplink is copied into the block, so it can be
+discarded after `sedge_fields_init`. The largest possible uplink (65,535
+fields of 255 bytes and 65,535 relations) needs 34.5 MB; on a 16-bit
+`size_t` target, uplinks that do not fit are rejected with
+`SEDGE_FIELDS_E_MEMORY` (`memory_bytes` returns 0).
+
+## Guarantees
+
+- **C99**: only `<stdint.h>`, `<stddef.h>` and `<string.h>` (`memcpy`,
+  `memmove`, `memset`). No malloc, no recursion, no floating point, no
+  globals (constant tables only). Reentrant across transforms; a transform
+  is not thread-safe.
+- **No undefined behaviour**:
+  - every value is a `uint64_t`; Rust's wrapping `i64` products and sums
+    followed by a mask to the field width are the same bits in unsigned
+    arithmetic;
+  - sign extension ORs in the high bits (`v | ~mask` when `v > mask / 2`),
+    and `a`, `b` are sign-extended the same way from their raw bytes;
+  - the floor of a relation, Rust's arithmetic `>> 1`, is
+    `(s >> 1) | (s & 2^63)`; zigzag and unzigzag are written on unsigned
+    values (`(d << 1) ^ (negative ? ~0 : 0)`, `(z >> 1) ^ (0 - (z & 1))`);
+  - every shift is by a constant, so 32-bit CPUs need no 64-bit shift
+    helper (64-bit multiplies are inline on all the targets below).
+- **Checked by**: gcc ASan+UBSan (`make test-fields`); clang
+  `-fsanitize=undefined,implicit-conversion,bounds,integer` in trap mode
+  (all but the intended unsigned wrap: `-fno-sanitize=unsigned-integer-overflow,unsigned-shift-base`);
+  Valgrind memcheck on both tests. No warnings with gcc 13 and clang 18 at
+  `-O0` to `-O3` and `-Os` (`make warnings`: `-O2`).
+- **Same bytes on every CPU**: the golden test passes on x86-64 and, under
+  qemu with no C library, on riscv32, Cortex-M4 (Thumb-2), i386, MIPS32
+  big- and little-endian and PowerPC32 big-endian (`make cross`).
+- **Untrusted uplinks**: any byte string is either rejected or loads into
+  a transform whose inverse undoes its forward step. Work per record is
+  O(fields + relations + record length); loading is O(uplink length +
+  record length).
+- **Trusted state**: the block is not self-checking; protect it like any
+  other RAM state (EDAC, scrubbing).
+
+## Bit-exactness: how it was checked
+
+The Rust side is a small program built against the crate (not in the
+repository) that learns transforms, dumps the uplink and the Rust
+`forward` output of every record, and checks Rust's own inverse.
+`crosscheck_fields` then runs C `forward` on every record and compares it
+with Rust's, and runs C `inverse` and compares it with the original.
+
+| Data | Transform (learned on the first 10%, `max_bits` 2) | Result |
+|---|---|---|
+| INCART ECG, `i16le*12`, 4,626,000 records | 3 relations, no deltas | 4,626,000 / 4,626,000 forward identical; 4,626,000 / 4,626,000 restored |
+| same | 3 relations, deltas on 9 fields | 4,626,000 / 4,626,000 identical; all restored |
+| AIS tracks, `u32le*2,i32le*2,i16le*2,u16le*2,u8,u16le*4,u8`, 4,076,512 records | no relation found, no deltas (identity) | 4,076,512 / 4,076,512 identical; all restored |
+| same | deltas on all 14 fields | 4,076,512 / 4,076,512 identical; all restored |
+| same | deltas, `reset()` every 256 records | 4,076,512 / 4,076,512 identical; all restored |
+| Random cases (3 seeds × 4,000) | see below | 12,000 / 12,000 verdicts equal; 9,160 / 9,160 `to_bytes` equal; 7,293,050 / 7,293,050 records identical and restored |
+
+The random cases have random layouts of 1 to 40 fields: every integer
+width (8 to 64 bits), signed and unsigned, little- and big-endian, and
+opaque fields of 1 to 9 bytes. Values are random walks, full-range noise,
+extremes (minimum and maximum of the type) or near-constants. A quarter
+are learned by Rust on data with a planted relation (with and without
+deltas); half are random valid uplinks with arbitrary `a`, `b` in
+-128..127 (including -128 and 127 on 64-bit fields), random targets,
+predictors and delta flags, shuffled relation order and junk flag bits on
+opaque fields; a quarter are corrupted uplinks. Resets every 1, 7 or 100
+records or never. In all, 5,608 accepted uplinks had relations and 6,842
+had deltas.
+
+`test_fields_golden` freezes a part of this: 81,000 bytes of forward
+output (FNV-1a 0xbbea1a422146836f) and 20,000 corrupted uplinks, of
+which Rust accepts 1,149 (FNV-1a of verdicts, uplinks and 3,447 forward
+outputs 0x178ddd804ca480ff); C matches on every target above.
+
+`test_fields` adds 2.76 million checks, among them a fuzz of 300,003
+random, structured and corrupted uplinks (19,848 accepted, 476,352
+records with deltas and resets inverted in place). Each verdict is also
+compared with an independent, plain reading of the Rust rules, and each
+accepted uplink must re-serialise to itself (up to the dropped delta bits
+of opaque fields) and be a fixed point of `to_bytes` and `init`.
+
+No deviation from Rust was found.
+
+To repeat the cross-check, dump the uplink and the forward output with a
+small program built against the crate, then run `crosscheck_fields`:
+
+```rust
+// cargo project with: shannon-edge = { path = "..." }
+use shannon_edge::fields::{Layout, RecordTransform};
+use std::io::Write;
+fn main() {
+    let a: Vec<String> = std::env::args().skip(1).collect();
+    let (raw, lay) = (std::fs::read(&a[0]).unwrap(), Layout::parse(&a[1]).unwrap());
+    let recs: Vec<&[u8]> = raw.chunks_exact(lay.len()).collect();
+    let tf = RecordTransform::learn(lay, recs[..recs.len() / 10].iter().copied(), a[2] == "1", 2.0);
+    std::fs::write("t.up", tf.to_bytes()).unwrap();
+    let mut tx = RecordTransform::from_bytes(&tf.to_bytes()).unwrap();
+    let mut f = std::io::BufWriter::new(std::fs::File::create("t.fwd").unwrap());
+    for r in &recs {
+        f.write_all(&tx.forward(r)).unwrap();
+    }
+}
+```
+
+```
+make crosscheck
+build/crosscheck_fields ecg_incart.bin t.up t.fwd [RESET]
+```
+
+## Code size
+
+`make size`: text + data + bss of `sedge_fields.o` at `-Os`, and in
+brackets the code alone (the rest is the magic and the error strings).
+
+| Target | Total | Code |
+|---|---:|---:|
+| x86-64, gcc 13 | 2,939 | 2,761 |
+| RISC-V rv32imc, clang 18 | 3,098 | 2,984 |
+| Cortex-M4 (Thumb-2), clang 18 | 3,014 | 2,772 |
+| Cortex-M0 (Thumb-1), clang 18 | 2,886 | 2,644 |
+| MSP430 (16-bit), clang 18 | 5,936 | 5,822 |
+
+About 3 KB, of which the sender alone (`init`, `forward`, `reset`) is
+about two thirds; the linker drops the unused functions with
+`-ffunction-sections -Wl,--gc-sections`.

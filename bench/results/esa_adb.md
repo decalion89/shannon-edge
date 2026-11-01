@@ -709,3 +709,32 @@ because its events are too dense for a 30-day gap. On these data, no
 early warning is visible in the compressor's surprise. The compressor is a
 detector, not a predictor. This agrees with ADTQC's after-ratio of about 1:
 the surprise never fires before an event starts.
+
+## The packet's size is an anomaly score (`bench/analysis/packet_size_priority.py`)
+
+**Why it works.** A compressed packet is short when its samples were
+predictable and long when they surprised the model. Its size is
+therefore an anomaly score, and anyone on the path can read it without
+decoding: the spacecraft, a relay or the ground. When the downlink is
+short, sending the largest packets first sends the surprising data first.
+
+**Method.** Flight profile, 256 samples per packet, all test packets of
+the lightweight channels ranked by size. Each top fraction is compared
+with the same number of random packets (mean of 20 draws).
+
+| Mission | Top packets by size | Share of test time | Anomalies overlapped | Random | Rare events overlapped | Random |
+|---|---:|---:|---:|---:|---:|---:|
+| 1 | 1% | 1.70% | **16/29** | 4.9 | **27/36** | 6.7 |
+| 1 | 5% | 5.67% | **26/29** | 9.9 | **31/36** | 17.6 |
+| 2 | 1% | 1.00% | 0/1 | 0.2 | 94/349 | 71.3 |
+| 2 | 5% | 5.00% | 0/1 | 0.7 | 214/349 | 218.2 |
+
+* **Mission 1:** the 1% largest packets touch 55% of the anomalies and 75%
+  of the rare events, 3–4 times more than chance. The 5% largest touch
+  90% of the anomalies.
+* **Mission 2:** the gain is small at 1% and nil at 5%. Its 350 rare
+  events are dense and long, so random packets touch them too.
+
+Prioritising the downlink by compressed size is free, needs no detector
+and no decoding, and on Mission 1 it brings most anomalies to the ground
+first.
