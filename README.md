@@ -1,5 +1,7 @@
 # shannon-edge
 
+**Technical report:** [`docs/TECHNICAL_REPORT.md`](docs/TECHNICAL_REPORT.md) — all results, methods, negative results, limitations and how to reproduce each figure.
+
 **Lossless compression by prediction — pushing toward the Shannon limit.**
 
 `sedge` is a context-mixing compressor written in Rust with zero dependencies.
