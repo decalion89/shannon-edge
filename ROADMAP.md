@@ -147,8 +147,10 @@ v0.1 single core: ~0.5 MiB/s. Target: 10× without losing ratio, then more.
 - [x] Fast profile, ground-chosen coding classes (static / normal /
       always): −11 to −17% instructions per byte; ~150–185 instructions
       per byte vs ~1,290 for the open CCSDS 124 implementation
-- [ ] Fast profile on a flight CPU (LEON3/RISC-V; 32-bit range-coder
-      arithmetic instead of 64-bit division), C/Python bindings
+- [x] Fast profile on RISC-V (QEMU, exact instruction counts): 195
+      instructions/byte vs 590 for the open CCSDS 124 implementation (3.0x)
+- [ ] Cycles on real NOEL-V/LEON hardware; 32-bit range-coder arithmetic
+      for LEON3; C/Python bindings for the packet profiles
 - [x] Whole-mission measurement (ESA-AD Mission 1, 75 channels, 734 M
       samples, 14 years): flight profile beats CCSDS 121 on 75/75 channels,
       −38% in total; 16 channels below 1% of float32

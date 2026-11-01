@@ -202,3 +202,33 @@ SEDGE_FAST_CLASSES=0.01,0.9 valgrind --tool=callgrind
 target/release/examples/packet_fast_bench venus-express.ccsds 90`; for
 CCSDS 124, build `bench/c/ccsds124_loss.c` with the library sources and
 `--toggle-collect=ccsds124_compress_packet`.
+
+### Measured on RISC-V
+
+RISC-V is the ISA of ESA's next flight processor family (Gaisler NOEL-V,
+RV64). Both codecs were cross-compiled for `riscv64gc-unknown-linux-gnu`
+(sedge: Rust release build; CCSDS 124: the library sources with
+`riscv64-linux-gnu-gcc -O3`), run under `qemu-riscv64`, and every executed
+guest instruction counted from QEMU's execution log
+(`bench/analysis/qemu_count.awk`; this QEMU build has no plugins, and its
+`instret` counter follows the host clock, so it could not be used).
+Drivers: `examples/packet_fast_count.rs`, `bench/c/ccsds124_count.c`
+(compress only; runs with 0, 500 and 1,000 packets, the difference taken
+so that start-up and file reading cancel out). The RISC-V build of sedge
+produces exactly the same bytes as on x86 (58,221 bytes for the first
+2,000 packets).
+
+| Venus Express, packets 500–1,000 | Instructions | Per input byte |
+|---|---:|---:|
+| CCSDS 124 (R=0, pt=14, ft=10⁵, rt=10⁶) | 26,541,506 | **590** |
+| sedge fast profile (default layout) | 8,759,961 | **195** |
+
+On RISC-V the fast profile executes **3.0x fewer instructions per byte**
+than the open CCSDS 124 implementation while producing 27% fewer bytes.
+That is much less than the 7–8x counted on x86 (where gcc compiled the
+CCSDS 124 bit-vector code into many more instructions): the ratio depends
+on the ISA and the compiler, which is why it had to be measured on the
+relevant one. Still not measured: cycles on real NOEL-V or LEON hardware
+(caches, multiply/divide latency), and the learned-layout variant on
+RISC-V. RV64 has hardware 64-bit division, so `encode_freq` is not a
+problem there; on 32-bit LEON3 it would be.

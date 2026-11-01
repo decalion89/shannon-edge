@@ -338,10 +338,11 @@ column to uplink), which cut another 6.5% on the 90% of Venus Express not
 used to learn them (−32.2% vs CCSDS 124 there) at the same speed. Ground-chosen
 *coding classes* (static columns share one decision per packet; columns
 that always change skip theirs) cut the work per byte by 11–17%. Counted in
-instructions (callgrind), the fast profile executes ~150–185 instructions
-per byte to compress, against ~1,290 for the open CCSDS 124 implementation
-(7–8x; ~2x in wall-clock time on a desktop core, not yet measured on a
-flight CPU).
+instructions, the fast profile executes **3.0x fewer instructions per byte
+than the open CCSDS 124 implementation on RISC-V** (195 vs 590, both
+cross-compiled and counted exactly under QEMU; RISC-V is the ISA of ESA's
+next flight processors) and 7–8x fewer on x86; ~2x in wall-clock time on a
+desktop core. Not yet timed on real flight hardware.
 
 The idea came from a clue in the data: on the whole file, xz (4.0 MB) beat
 sedge (4.3 MB), so sedge was ignoring structure — the column, which POCKET+
