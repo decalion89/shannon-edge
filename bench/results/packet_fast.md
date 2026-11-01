@@ -106,3 +106,24 @@ Learned recipes: 35 columns left-changed, 8 left-delta, 22 last-delta,
 recipes is −32.2% vs CCSDS 124 R=0, at ~1.8x its speed. The estimate
 before writing code (Python, `per-column recipe chosen on the first 10%`)
 was −8.0% on the changed bytes; the codec got −6.5% overall.
+
+## Cross-channel dependencies: a negative result
+
+A spacecraft is one physical system: a heater switching on moves several
+temperatures, currents and voltages at once. The idea was to let the
+ground learn a dependency map between columns (each column's best
+predictor, by mutual information, à la Chow–Liu) and code each column with
+its *parent's* change in the same packet as context — a different coding
+order and one parent per column to uplink, same encoder work per byte.
+Scripts: `bench/analysis/parents.py`, `recipes2.py`, `flags.py`.
+
+* Static estimate (empirical conditional entropy, parents chosen on the
+  first 10%, measured on the other 90%): 205.7 bits/packet with the left
+  neighbour as context, 194.4 with the chosen parent (−5.5%). In 72 of 90
+  columns the best predictor is not the neighbouring column: the
+  cross-channel structure is real.
+* But adaptive models already capture most of it. Ideal adaptive cost on
+  the test 90%: changed bytes 2,950,712 → 2,940,658 bytes with parent
+  recipes added to the learned recipes (−0.3%); "same?" decisions 260,163
+  → 245,866 bytes with "parent changed" added (−5.5% of the flags). About
+  −0.7% of the total: not worth a reordered coding loop. Not implemented.
