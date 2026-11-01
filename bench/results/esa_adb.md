@@ -853,3 +853,24 @@ This pattern is consistent with several other results: detection that is
 on time but never early, missed slow events, no early-warning signal, and
 the low cost of keeping rare values exact. It is an empirical regularity
 measured with one model on four data sources, not a theorem.
+
+### An "Omori law" for surprise after onset? No universal one (`bench/analysis/aftershock.py`)
+
+**Method.** Events are aligned at their first labelled sample, and the
+mean excess surprise (cost minus the channel's median) is averaged by lag.
+
+| Data | Events | Lag 0 | Lags −200..−1 | Lags 1..10 | Lags 100..200 | Lags 1000..2000 | Power-law p (log-MSE) | Exponential τ (log-MSE) |
+|---|---:|---:|---:|---:|---:|---:|---|---|
+| ESA Mission 1 | 1,231 | **+9.33** | +0.57 | +1.59 | +0.63 | +0.51 | 0.12 (0.037) | 6,311 (0.042) |
+| ESA Mission 2 | 5,274 | **+15.92** | +0.73 | +5.99 | +1.92 | +0.78 | 0.61 (1.039) | 1,181 (1.150) |
+| UCR | 250 | **+4.02** | +0.42 | +1.32 | +0.38 | +0.31 | 0.15 (0.300) | 4,966 (0.309) |
+
+**What all three share:** a spike exactly at the labelled onset, 6–22
+times the pre-onset level. The excess then falls within about ten samples
+to a level barely above the pre-onset one.
+
+**What they do not share is a decay law.** A power law fits slightly
+better than an exponential in all three, but the exponents differ (0.12,
+0.61, 0.15), so there is no Omori-like universal exponent here. The
+result supports "information concentrated near onset" and rejects a
+universal decay law.
