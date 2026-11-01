@@ -20,7 +20,7 @@ implementation verified byte-identical to the ESA reference:
   profile, 193 KiB of model memory) to 43.3% (profile v2, 6 MiB) fewer
   bytes.
 * **Speed:** the fast profile executes 3.0x fewer instructions per byte
-  than the open CCSDS 124 implementation on RISC-V (195 vs 590,
+  than the open CCSDS 124 implementation on RISC-V (191 vs 590,
   cross-compiled and counted exactly under QEMU), and runs ~1.9x faster on
   a desktop core.
 * **Loss tolerance:** with payloads packed into 223-byte transfer frames
@@ -119,7 +119,7 @@ as well (`packet_v2.md`, `packet_fast.md`).
 
 | Measure | CCSDS 124 (open implementation) | sedge fast profile |
 |---|---:|---:|
-| Instructions per byte, RISC-V (QEMU, exact) | 590 | **195** (3.0x fewer) |
+| Instructions per byte, RISC-V (QEMU, exact) | 590 | **191** (3.1x fewer) |
 | Instructions per byte, x86 (callgrind) | 1,288 | 153–184 (7–8x fewer) |
 | Wall clock, one desktop core | ~26 MB/s | ~50 MB/s |
 
@@ -237,8 +237,7 @@ the optional error bound.
   necessarily the fastest flight code. Instruction counts are not cycles;
   no measurement on flight hardware (LEON, NOEL-V) yet. The fast profile's
   coder uses one 32-bit division per symbol (no 64-bit arithmetic), which
-  32-bit flight CPUs do in hardware; the RISC-V count was measured before
-  that change.
+  32-bit flight CPUs do in hardware.
 * Model memory: 0.2–6 MiB against a few hundred bytes for CCSDS 124.
 * Loss models are i.i.d. (packets or frames); burst losses longer than a
   group's parity require interleaving, not evaluated. Erasure-code

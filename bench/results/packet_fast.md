@@ -267,3 +267,8 @@ recipes on the held-out 90%, 3,237,111 → 3,237,712. The fast profile's
 golden stream changed accordingly. Tables above measured before this
 change (frame and packet loss, instruction counts) differ by about 0.02% in
 size; the RISC-V instruction count was measured with the 64-bit version.
+
+Re-measured on RISC-V after the change (same method, packets 500–1,000):
+8,596,351 instructions, **191 per byte** (was 195), i.e. 3.1x fewer than
+CCSDS 124's 590. The RISC-V build again produces the same bytes as x86
+(58,229 bytes for the first 2,000 packets).

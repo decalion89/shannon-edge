@@ -341,7 +341,7 @@ used to learn them (−32.2% vs CCSDS 124 there) at the same speed. Ground-chose
 *coding classes* (static columns share one decision per packet; columns
 that always change skip theirs) cut the work per byte by 11–17%. Counted in
 instructions, the fast profile executes **3.0x fewer instructions per byte
-than the open CCSDS 124 implementation on RISC-V** (195 vs 590, both
+than the open CCSDS 124 implementation on RISC-V** (191 vs 590, both
 cross-compiled and counted exactly under QEMU; RISC-V is the ISA of ESA's
 next flight processors) and 7–8x fewer on x86; ~2x in wall-clock time on a
 desktop core. Not yet timed on real flight hardware.
