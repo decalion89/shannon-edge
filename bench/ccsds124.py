@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import itertools
 import json
+import os
 import re
 import subprocess
 import tempfile
@@ -61,11 +62,16 @@ def zstd_stream(packets: list[bytes]) -> int:
     return total
 
 
-def packet_profile(path: Path, plen: int, table_bits: int) -> tuple[int, float]:
+def packet_profile(path: Path, plen: int, table_bits: int, v2: bool = False) -> tuple[int, float, float]:
+    """Size, compress speed (MB/s) and memory (KiB) of the packet profile."""
     binary = Path(__file__).resolve().parent.parent / "target/release/examples/packet_bench"
+    env = dict(os.environ, SEDGE_PACKET_V2="1") if v2 else {k: v for k, v in os.environ.items()
+                                                              if k != "SEDGE_PACKET_V2"}
     out = subprocess.run([str(binary), str(path), str(plen), str(table_bits)], check=True,
-                         capture_output=True, text=True).stdout
-    return int(re.search(r"-> (\d+) bytes", out).group(1)), float(re.search(r"([\d.]+) MB/s", out).group(1))
+                         capture_output=True, text=True, env=env).stdout
+    return (int(re.search(r"-> (\d+) bytes", out).group(1)),
+            float(re.search(r"compress ([\d.]+) MB/s", out).group(1)),
+            float(re.search(r"memory (\d+) KiB", out).group(1)))
 
 
 def ccsds124_best(cli: Path, data: bytes, plen: int) -> tuple[int, str, float]:
@@ -120,10 +126,10 @@ def main() -> None:
     rows.append(("sedge lean session", session_total(packets)))
     rows.append((f"sedge lean session, record model ({plen}-byte packets)",
                  session_total(packets, record_len=plen)))
-    for tb in (14, 18):
-        size, speed = packet_profile(inp, plen, tb)
-        mem = {14: "~0.3 MiB", 18: "~5 MiB"}[tb]
-        rows.append((f"**sedge packet profile, tables 2^{tb} ({mem}; {speed:.1f} MB/s enc+dec)**", size))
+    for v2, tb in ((False, 14), (False, 18), (True, 12), (True, 18)):
+        size, speed, mem = packet_profile(inp, plen, tb, v2)
+        rows.append((f"**sedge packet profile {'v2' if v2 else 'v1'}, tables 2^{tb} "
+                     f"({mem:,.0f} KiB; compress {speed:.1f} MB/s)**", size))
     print(f"{len(packets):,} packets of {plen} bytes ({len(data):,} bytes), {time.perf_counter() - t:.0f}s",
           file=sys.stderr)
 

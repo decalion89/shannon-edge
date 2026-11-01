@@ -135,7 +135,12 @@ v0.1 single core: ~0.5 MiB/s. Target: 10× without losing ratio, then more.
       hybrid ARQ −3 to −6% (negative result for this data)
 - [ ] Slepian–Wolf over multi-packet blocks (longer codes, older side
       information)
-- [ ] Packet profile: speed (POCKET+ is ~10x faster), C/Python bindings
+- [x] Packet profile v2: byte-level "same as above" decision, sampled
+      model comparison, SSE. At equal memory −3 to −8% and ~2x faster
+      than v1; Venus Express −36.7% vs best CCSDS 124 at 372 KiB, −43.3%
+      at 6 MiB; with erasure code −36.2% at 1% loss
+- [ ] Packet profile: speed (CCSDS 124 is still ~2x faster at compressing),
+      C/Python bindings, flight-hardware timing
 - [x] Whole-mission measurement (ESA-AD Mission 1, 75 channels, 734 M
       samples, 14 years): flight profile beats CCSDS 121 on 75/75 channels,
       −38% in total; 16 channels below 1% of float32

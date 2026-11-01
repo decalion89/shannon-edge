@@ -174,3 +174,76 @@ fn lost_key_packet_recovers_at_next_epoch() {
     // restarted at 192, so decoding resumes right after the gap.
     check(5, &[189, 190, 191, 192, 193], 0..0);
 }
+
+#[test]
+fn v2_roundtrips_and_beats_v1() {
+    for &len in &[1usize, 9, 32, 90] {
+        let ps = packets(3_000, len, len as u64);
+        let (mut tx, mut rx) = (PacketSession::v2(len, 14), PacketSession::v2(len, 14));
+        let size: usize = ps
+            .iter()
+            .map(|p| {
+                let payload = tx.compress(p);
+                assert_eq!(&rx.decompress(&payload).unwrap(), p);
+                payload.len()
+            })
+            .sum();
+        let v1 = roundtrip(&ps, len, 14);
+        if len >= 32 {
+            assert!(size < v1, "{len}-byte packets: v2 {size} vs v1 {v1}");
+        }
+    }
+    // Random data and garbage payloads.
+    let mut rng = Rng(19);
+    let ps: Vec<Vec<u8>> = (0..300)
+        .map(|_| (0..64).map(|_| rng.next() as u8).collect())
+        .collect();
+    let (mut tx, mut rx) = (PacketSession::v2(64, 12), PacketSession::v2(64, 12));
+    for p in &ps {
+        assert_eq!(&rx.decompress(&tx.compress(p)).unwrap(), p);
+    }
+    let mut rx = PacketSession::v2(40, 12);
+    for n in 0..64 {
+        let payload: Vec<u8> = (0..n).map(|_| rng.next() as u8).collect();
+        assert_eq!(rx.decompress(&payload).unwrap().len(), 40);
+    }
+}
+
+#[test]
+fn v2_with_key_packets_and_epochs() {
+    let ps = packets(400, 32, 6);
+    let make = || {
+        let mut s = PacketSession::v2(32, 12).with_key_interval(4);
+        s.prime(packets(50, 32, 7).iter().map(Vec::as_slice));
+        s.with_epochs(64)
+    };
+    let got = lossy_link(&ps, make, &[5, 136]);
+    for (i, &d) in got.iter().enumerate() {
+        assert_eq!(d, i != 5 && !(136..192).contains(&i), "packet {i}");
+    }
+}
+
+/// The v2 packet format must not change silently either.
+#[test]
+fn golden_packet_v2_stream_is_stable() {
+    let mut tx = PacketSession::v2(48, 14);
+    let mut all = Vec::new();
+    for p in packets(1_000, 48, 2026) {
+        all.extend_from_slice(&tx.compress(&p));
+    }
+    let h = all.iter().fold(0xcbf2_9ce4_8422_2325u64, |h, &b| {
+        (h ^ b as u64).wrapping_mul(0x100_0000_01b3)
+    });
+    if std::env::var_os("SEDGE_BLESS").is_some() {
+        println!("GOLDEN_V2 {} {h:#018x}", all.len());
+        return;
+    }
+    assert_eq!(
+        (all.len(), h),
+        (GOLDEN_V2_LEN, GOLDEN_V2_HASH),
+        "packet v2 format changed"
+    );
+}
+
+const GOLDEN_V2_LEN: usize = 1603;
+const GOLDEN_V2_HASH: u64 = 0x3a40_ae5e_a585_1e4f;

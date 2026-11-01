@@ -296,9 +296,12 @@ codes the packets **one by one, as they arrive**; every packet verified:
 | CCSDS 124, test-vector settings (R=2, pt=20, ft=50, rt=100) | tiny | 5,891,500 | 2.31× | +11.4% |
 | **CCSDS 124, best of the sweep** (R=0, pt=14, ft=10⁵, rt=10⁶) | tiny | **5,289,939** | 2.57× | — |
 | zstd -19, streaming, flushed per packet | ~8 MiB | 8,236,002 | 1.65× | +55.7% |
-| **sedge packet profile, tables 2^14** | **~0.3 MiB** | **3,650,124** | 3.73× | **−31.0%** |
-| sedge packet profile, tables 2^18 | ~5 MiB | 3,238,198 | 4.20× | −38.8% |
+| sedge packet profile v1, tables 2^14 | 321 KiB | 3,650,124 | 3.73× | −31.0% |
+| sedge packet profile v1, tables 2^18 | 5.0 MiB | 3,238,198 | 4.20× | −38.8% |
 | sedge lean session + record model (full model) | ~70 MiB | 3,202,177 | 4.25× | −39.5% |
+| **sedge packet profile v2, tables 2^12** | **372 KiB** | **3,350,925** | 4.06× | **−36.7%** |
+| sedge packet profile v2, tables 2^14 | 648 KiB | 3,251,718 | 4.18× | −38.5% |
+| **sedge packet profile v2, tables 2^18** | 6.0 MiB | **2,999,548** | **4.54×** | **−43.3%** |
 
 **The packet profile** (`shannon_edge::packet::PacketSession`) is the
 flight-class answer: integer-only, golden-pinned, one coder per packet, no
@@ -307,15 +310,29 @@ a column predicted from the byte above (previous packet), two packets back
 and its left neighbour, by a transition model and a residual model chosen
 per column by recent cost.
 
+**Version 2** (`PacketSession::v2`, a separate, golden-pinned stream) adds
+a byte-level decision before the bit models — "is this byte the same as
+in the previous packet?" — in contexts the bit models do not see (did the
+left neighbour just change, how long the column has been constant, how many
+bytes of this packet changed). 64% of Venus Express bytes repeat, so only a
+third of the bytes reach the bit models. It also compares the two bit
+models on one packet in 16 instead of running both on every byte (which,
+it turned out, also stopped the inactive model from being trained on bytes
+it does not code, and *improved* compression), and adds SSE stages. At
+equal memory it is smaller and about twice as fast as v1; it is slightly
+worse during the first ~100 packets and on streams where many columns
+change at random in every packet. Details and the variants that failed:
+[`packet_v2.md`](bench/results/packet_v2.md).
+
 The idea came from a clue in the data: on the whole file, xz (4.0 MB) beat
 sedge (4.3 MB), so sedge was ignoring structure — the column, which POCKET+
 also exploits with bit masks. Column contexts brought the whole file to
 2.87 MB and the packet-by-packet results above.
 
 Costs, stated plainly: CCSDS 124 compresses this file at ~15 MB/s with a
-few hundred bytes of state, built for very weak flight CPUs; the packet
-profile runs at 1.2–1.7 MB/s encode+decode on a desktop core and needs
-0.3–5 MiB. Its best CCSDS 124 configuration has no robustness (R=0), like
+few hundred bytes of state, built for very weak flight CPUs; on one desktop
+core the packet profile compresses at 2.9–3.6 MB/s (v1) and 5.2–7.0 MB/s
+(v2), and needs 0.3–6 MiB. Its best CCSDS 124 configuration has no robustness (R=0), like
 lean sedge: a lost packet desynchronises both. Reproduce with
 `bench/ccsds124.py ccsds124/test-vectors --cli <ccsds124 CLI>`.
 
@@ -331,9 +348,12 @@ under the same simulated i.i.d. loss (its decoder told about every gap,
 
 | Loss | Best CCSDS 124 | sedge + erasure code | Difference |
 |---:|---|---|---:|
-| 0.1% | R=1: 4,976,442 bytes, 99.89% of packets correct | G=32, m=2: 3,396,454 bytes, **100%** | **−31.7%** |
-| 1% | R=2: 5,123,900 bytes, 99.02% | G=64, m=6: 3,561,510 bytes, **100%** | **−30.5%** |
-| 5% | R=3: 5,241,460 bytes, 95.04% | G=64, m=12: 4,001,670 bytes, **100%** | **−23.7%** |
+| 0.1% | R=1: 4,976,442 bytes, 99.89% of packets correct | v2, G=32, m=2: 3,108,186 bytes, **100%** | **−37.5%** |
+| 1% | R=2: 5,123,900 bytes, 99.02% | v2, G=64, m=6: 3,268,004 bytes, **100%** | **−36.2%** |
+| 5% | R=3: 5,241,460 bytes, 95.04% | v2, G=64, m=12: 3,692,702 bytes, **100%** | **−29.5%** |
+
+(Packet profile v2, tables 2^16; with v1 the differences were −31.7%,
+−30.5% and −23.7%.)
 
 The receiver also gets back the lost packets themselves. The price: after
 a loss it waits up to G + m packets for the parity (CCSDS 124 does not

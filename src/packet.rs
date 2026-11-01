@@ -31,6 +31,10 @@ struct Column {
     last_len: u8,
     cost_t: u32,
     cost_r: u32,
+    /// v2: packets since this column last changed (capped at 31).
+    run: u8,
+    /// v2: whether it changed in the previous (key) packet.
+    chg_last: bool,
 }
 
 /// One end of a link carrying fixed-length packets. Both ends must use the
@@ -63,6 +67,56 @@ pub struct PacketSession {
     key: u64,
     /// Whether the packet being coded is a key packet (updates the model).
     learning: bool,
+    /// v2: a byte-level "same as above" decision before the bit models.
+    v2: bool,
+    flag_t: [Table; 3],
+    /// v2 flag mixer weights, by whether the left byte changed.
+    wf: [[i32; 4]; 2],
+    /// v2, per packet: did the previous byte change, how many changed so far.
+    left_changed: bool,
+    nchanged: u32,
+    /// v2: SSE on the transition model, by column and bit position.
+    apm: Apm,
+    /// v2: SSE on the residual model, by column and coding step.
+    apm_r: Apm,
+    /// v2: SSE on the "same" decision, by column and run length.
+    apm_f: Apm,
+}
+
+/// Secondary estimation (SSE): refines a probability given a context.
+#[derive(Clone)]
+struct Apm {
+    t: Vec<u16>,
+    idx: usize,
+}
+
+impl Apm {
+    fn new(contexts: usize) -> Self {
+        let row: Vec<u16> = (0..33)
+            .map(|j| (squash((j - 16) * 128) * 16) as u16)
+            .collect();
+        Self {
+            t: row.iter().copied().cycle().take(contexts * 33).collect(),
+            idx: 0,
+        }
+    }
+
+    fn pp(&mut self, pr: u32, cx: usize) -> u32 {
+        let s = stretch(pr as i32) + 2048;
+        let lo = (s >> 7) as usize;
+        let w = s & 127;
+        let base = cx * 33 + lo;
+        self.idx = base + (w >> 6) as usize;
+        let p = (self.t[base] as i32 * (128 - w) + self.t[base + 1] as i32 * w) >> 11;
+        p.clamp(1, 4095) as u32
+    }
+
+    fn update(&mut self, bit: u32) {
+        // Rate 1/64; the + 64 - 2 offset keeps the fixed point within u16.
+        let g = ((bit as i32) << 16) + ((bit as i32) << 6) - 2 * bit as i32;
+        let v = self.t[self.idx] as i32;
+        self.t[self.idx] = (v + ((g - v) >> 6)) as u16;
+    }
 }
 
 enum Io<'a, 'b> {
@@ -113,7 +167,79 @@ impl PacketSession {
             cur_epoch: 0,
             key: 1,
             learning: true,
+            v2: false,
+            flag_t: [Table::new(1), Table::new(1), Table::new(1)],
+            wf: [[22_000; 4]; 2],
+            left_changed: false,
+            nchanged: 0,
+            apm: Apm::new(0),
+            apm_r: Apm::new(0),
+            apm_f: Apm::new(0),
         }
+    }
+
+    /// Version 2 of the packet profile (a different, incompatible stream):
+    /// each byte first codes one decision, "same as the byte above?", in
+    /// contexts the bit models do not see (did the left neighbour change,
+    /// how long the column has been constant, how many bytes of this packet
+    /// changed so far); only changed bytes go through the bit models. In
+    /// housekeeping data most bytes repeat, so this is both faster and
+    /// smaller. Memory: `23 * 2^table_bits` bytes plus about 3.2 KiB per
+    /// byte of packet ([`PacketSession::memory_bytes`]).
+    ///
+    /// # Panics
+    /// If a parameter is out of range (as for [`PacketSession::new`]).
+    pub fn v2(packet_len: usize, table_bits: u32) -> Self {
+        let mut s = Self::new(packet_len, table_bits);
+        let fb = table_bits - 2;
+        s.v2 = true;
+        s.flag_t = [Table::new(fb), Table::new(fb), Table::new(fb)];
+        s.apm = Apm::new(packet_len * 16);
+        s.apm_r = Apm::new(packet_len * 16);
+        s.apm_f = Apm::new(packet_len * 16);
+        s
+    }
+
+    /// v2: code "byte k equals the byte above" (1) or not (0).
+    fn same_flag(&mut self, k: usize, same: u32, io: &mut Io) -> u32 {
+        let c = self.cols[k];
+        let col = k as u64 + 1;
+        let lc = self.left_changed as usize;
+        let s = [
+            self.flag_t[0].slot(h2(col, c.run as u64 + 1)),
+            self.flag_t[1].slot(h2(h2(col, (lc * 2) as u64 + c.chg_last as u64 + 1), 5)),
+            self.flag_t[2].slot(h2(
+                h2(col, self.nchanged.min(15) as u64 * 2 + lc as u64 + 1),
+                9,
+            )),
+        ];
+        let x = [
+            stretch(self.flag_t[0].t[s[0]].p12() as i32),
+            stretch(self.flag_t[1].t[s[1]].p12() as i32),
+            stretch(self.flag_t[2].t[s[2]].p12() as i32),
+            256,
+        ];
+        let w = &mut self.wf[lc];
+        let dot: i64 = x
+            .iter()
+            .zip(w.iter())
+            .map(|(&a, &b)| a as i64 * b as i64)
+            .sum();
+        let p0 = squash(((dot >> 16) as i32).clamp(-2047, 2047)).clamp(1, 4095) as u32;
+        let a = self.apm_f.pp(p0, (k * 8 + c.run.min(7) as usize) * 2 + lc);
+        let p = ((p0 + 3 * a) >> 2).clamp(1, 4095);
+        let bit = io.bit(p, same);
+        if self.learning {
+            self.apm_f.update(bit);
+            let err = ((bit as i32) << 12) - p0 as i32;
+            for (wk, xk) in w.iter_mut().zip(x) {
+                *wk += (xk * err) >> 10;
+            }
+            for (t, &sk) in self.flag_t.iter_mut().zip(&s) {
+                t.t[sk].update(bit);
+            }
+        }
+        bit
     }
 
     /// Only one packet in `every` (a *key packet*) teaches the model and
@@ -186,6 +312,20 @@ impl PacketSession {
         self.len
     }
 
+    /// Model memory in bytes (tables, SSE stages and per-column state),
+    /// excluding the epoch origin copy if epochs are enabled.
+    pub fn memory_bytes(&self) -> usize {
+        let tables: usize = self
+            .t
+            .iter()
+            .chain([&self.res])
+            .chain(&self.flag_t)
+            .map(|t| t.t.len() * 4)
+            .sum();
+        let apms = (self.apm.t.len() + self.apm_r.t.len() + self.apm_f.t.len()) * 2;
+        tables + apms + self.len * (1 + std::mem::size_of::<Column>())
+    }
+
     /// Transition model for byte `k` with left neighbour `left`.
     fn transition(&mut self, k: usize, left: u8, value: u32, io: &mut Io) -> (u32, u32) {
         let above = self.above[k] as u64;
@@ -214,11 +354,24 @@ impl PacketSession {
                 .zip(w.iter())
                 .map(|(&a, &b)| a as i64 * b as i64)
                 .sum();
-            let p = squash(((dot >> 16) as i32).clamp(-2047, 2047)).clamp(1, 4095) as u32;
+            let p0 = squash(((dot >> 16) as i32).clamp(-2047, 2047)).clamp(1, 4095) as u32;
+            let p = if self.v2 {
+                // Context: column, bit position, and whether the bits so
+                // far equal those of the byte above.
+                let pm = node as u64 == (1 << (7 - i)) | (above >> (i + 1));
+                let cx = (k * 8 + (7 - i) as usize) * 2 + pm as usize;
+                let a = self.apm.pp(p0, cx);
+                ((p0 + 3 * a) >> 2).clamp(1, 4095)
+            } else {
+                p0
+            };
             let bit = io.bit(p, (value >> i) & 1);
             total += cost(p, bit);
             if self.learning {
-                let err = ((bit as i32) << 12) - p as i32;
+                if self.v2 {
+                    self.apm.update(bit);
+                }
+                let err = ((bit as i32) << 12) - p0 as i32;
                 for (wk, xk) in w.iter_mut().zip(x) {
                     *wk += (xk * err) >> 10;
                 }
@@ -243,12 +396,20 @@ impl PacketSession {
         let mut len = 0u32;
         loop {
             let s = self.res.slot(h2(h2(col, ctx * 16 + len as u64), 1));
-            let c = &mut self.res.t[s];
-            let p = c.p12();
+            let p0 = self.res.t[s].p12();
+            let p = if self.v2 {
+                let a = self.apm_r.pp(p0, k * 16 + len as usize);
+                ((p0 + 3 * a) >> 2).clamp(1, 4095)
+            } else {
+                p0
+            };
             let bit = io.bit(p, (len < n) as u32);
             total += cost(p, bit);
             if self.learning {
-                c.update(bit);
+                self.res.t[s].update(bit);
+                if self.v2 {
+                    self.apm_r.update(bit);
+                }
             }
             if bit == 0 || len >= 8 {
                 break;
@@ -258,12 +419,20 @@ impl PacketSession {
         let mut v: u32 = (len != 0) as u32;
         for i in (0..len.saturating_sub(1)).rev() {
             let s = self.res.slot(h2(h2(col, len as u64 * 64 + v as u64), 2));
-            let c = &mut self.res.t[s];
-            let p = c.p12();
+            let p0 = self.res.t[s].p12();
+            let p = if self.v2 {
+                let a = self.apm_r.pp(p0, k * 16 + 9 + i as usize);
+                ((p0 + 3 * a) >> 2).clamp(1, 4095)
+            } else {
+                p0
+            };
             let bit = io.bit(p, (z >> i) & 1);
             total += cost(p, bit);
             if self.learning {
-                c.update(bit);
+                self.res.t[s].update(bit);
+                if self.v2 {
+                    self.apm_r.update(bit);
+                }
             }
             v = (v << 1) | bit;
         }
@@ -276,8 +445,36 @@ impl PacketSession {
     }
 
     fn byte(&mut self, k: usize, left: u8, value: u32, io: &mut Io) -> u8 {
+        if self.v2 {
+            let above = self.above[k];
+            let same = self.same_flag(k, (value == above as u32) as u32, io);
+            let learning = self.learning;
+            let c = &mut self.cols[k];
+            if same == 1 {
+                if learning {
+                    c.run = c.run.saturating_add(1).min(31);
+                    c.chg_last = false;
+                }
+                self.left_changed = false;
+                return above;
+            }
+            if learning {
+                c.run = 0;
+                c.chg_last = true;
+            }
+            self.left_changed = true;
+            self.nchanged += 1;
+        }
         let c = self.cols[k];
         let use_t = c.cost_t <= c.cost_r;
+        if self.v2 && self.count % 16 != 1 {
+            // v2: compare the two models on one packet in four only.
+            return if use_t {
+                self.transition(k, left, value, io).0 as u8
+            } else {
+                self.residual(k, value, io).0 as u8
+            };
+        }
         let (v, ct, cr) = if use_t {
             let (v, ct) = self.transition(k, left, value, io);
             let (_, cr) = self.residual(k, v, &mut Io::Dry);
@@ -315,6 +512,8 @@ impl PacketSession {
         self.learning = self.is_key(self.count);
         self.count += 1;
         let mut enc = Encoder::new(self.len);
+        self.left_changed = false;
+        self.nchanged = 0;
         {
             let mut io = Io::Enc(&mut enc);
             let mut left = 0u8;
@@ -382,6 +581,8 @@ impl PacketSession {
         self.learning = self.is_key(self.count);
         self.count += 1;
         let mut dec = Decoder::new(payload);
+        self.left_changed = false;
+        self.nchanged = 0;
         let mut io = Io::Dec(&mut dec);
         let mut out = Vec::with_capacity(self.len);
         let mut left = 0u8;

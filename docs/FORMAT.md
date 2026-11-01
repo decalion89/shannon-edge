@@ -110,7 +110,11 @@ its arithmetic-coded payload with a minimal flush: no length, checksum or
 sequence number — the packet length is a session parameter and the link
 layer delimits packets and guarantees integrity and order. Both ends must
 use the same `packet_len` and `table_bits`; `golden_packet_stream_is_stable`
-pins the coded bytes.
+pins the coded bytes. Version 2 (`PacketSession::v2`) is a different model
+with the same framing; both ends must agree on the version (it is not
+signalled in the stream), and `golden_packet_v2_stream_is_stable` pins it.
+Key packets and epochs (`with_key_interval`, `with_epochs`, `prime`) change
+the coded bytes and must also match on both ends.
 
 ## Primed-model files (`.sedgem`)
 

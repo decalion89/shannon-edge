@@ -14,7 +14,7 @@
 //!
 //! CCSDS_SIZES (optional): the per-packet sizes of CCSDS 124 on the same
 //! test packets (`bench/c/ccsds124_loss.c`), to report its size with the
-//! same erasure code.
+//! same erasure code. Set SEDGE_PACKET_V2=1 for version 2 of the profile.
 
 use shannon_edge::fec;
 use shannon_edge::packet::PacketSession;
@@ -53,7 +53,12 @@ fn main() {
     let packets: Vec<&[u8]> = data.chunks_exact(len).collect();
     let (history, test) = packets.split_at(packets.len() / 10);
 
-    let mut base = PacketSession::new(len, tb);
+    let v2 = std::env::var_os("SEDGE_PACKET_V2").is_some();
+    let mut base = if v2 {
+        PacketSession::v2(len, tb)
+    } else {
+        PacketSession::new(len, tb)
+    };
     base.prime(history.iter().copied());
     let make = || base.clone().with_epochs(EPOCH);
     let mut tx = make();
@@ -61,9 +66,10 @@ fn main() {
     let size: usize = payloads.iter().map(Vec::len).sum();
     let sizes: Vec<usize> = payloads.iter().map(Vec::len).collect();
     println!(
-        "test {} packets ({} bytes), tables 2^{tb}, primed, epochs of {EPOCH}: {size} bytes without parity",
+        "test {} packets ({} bytes), tables 2^{tb}{}, primed, epochs of {EPOCH}: {size} bytes without parity",
         test.len(),
-        test.len() * len
+        test.len() * len,
+        if v2 { ", v2" } else { "" }
     );
     print!("| Group G | Parity m | sedge + parity: bytes |");
     if ccsds.is_some() {
