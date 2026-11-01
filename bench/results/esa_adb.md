@@ -305,6 +305,43 @@ Whether these spikes matter to operators (data errors, acquisition
 glitches, or events worth a label) cannot be decided from the data
 alone. They are listed with times and channels for an expert to check.
 
+## Cumulative Kraft (`--kraft-cusum`): a gain where the model is calibrated, a collapse where it is not
+
+Per channel, CUSUMs of the per-sample e-values log2((1−e) + e·2^(cost−b))
+are run for four values of e. A calibrated model gives each increment
+expectation at most 1, so with t = log2(test samples) + 2 bits the
+expected number of false alarms is at most 1, as for `--kraft auto`. The
+difference is that evidence from several moderately surprising samples
+now adds up. No training.
+
+| Setting | Per-sample Kraft | Cumulative Kraft | Trained | Best published |
+|---|---:|---:|---:|---:|
+| Mission 1, lightweight | 0.705 | **0.766** (recall 0.477; validation also picks it) | 0.690 | 0.786 |
+| Mission 1, full set | 0.576 | 0.000 (9 detections covering the test) | 0.279 | 0.061 |
+| Mission 2, lightweight | 0.200 | 0.000 (2 detections covering the test) | 0.725 | 0.949 |
+
+On Mission 1 lightweight the official code gives:
+* alarming precision 0.939;
+* affiliation F0.5 0.605 (per-sample rule: 0.536);
+* channel-aware F0.5 0.340;
+* ADTQC 0.580, down from 1.000. Accumulated evidence can cross the
+  threshold before the labelled start.
+
+**Why it collapses elsewhere.** The guarantee assumes calibration, and
+accumulation punishes even mild overconfidence. On Mission 2, channels
+18–20 exceed b + t bits about 4 times more often than 2^−t at t ≥ 16
+(`bench/analysis/kraft_calibration.py`). That is harmless for one sample
+at a time and fatal when summed over millions of samples.
+
+The cumulative rule is therefore not adopted. It needs a model that
+measures and corrects its own overconfidence online.
+
+A side product: with the cumulative rule, the strongest unlabelled
+detection on Mission 2 lightweight starts at 2002-09-09 22:43. Nine
+channels (18–24, 26, 28) flag together, peaking at 39 bits, for hours,
+with no label in any channel. It is a candidate for a missed event, for an
+expert to check.
+
 ## Naming the affected channels
 
 **The ceiling.** ESA-ADB's channel-aware F0.5 averages a per-event score,
