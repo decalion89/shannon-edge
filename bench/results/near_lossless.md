@@ -130,3 +130,24 @@ almost for the price of the first alone.
 The point of the mode is the guarantee, not the size: everything the
 detector would flag reaches the ground exactly, and the rest stays within
 a stated fraction of sensor noise.
+
+### Do real anomalies fall on the values kept exact? (ESA-AD, labelled)
+
+The same rule was applied to ESA-AD channels:
+* the threshold is the jump seen at most once in 2^10 nominal training
+  samples per channel;
+* it is applied to the test period.
+
+The question: how many labelled test events have at least one value kept
+exact? The scripted check (`bench/analysis/surprise_adaptive.py`'s rule,
+inline analysis in the session) gives:
+
+| Mission (channels) | Test values kept exact | Anomalies touched | Rare events touched |
+|---|---:|---:|---:|
+| Mission 1 lightweight (41–46) | 0.11% | 26/29 | 26/36 |
+| Mission 2 lightweight (18–28) | 0.10% | 0/1 | 323/349 |
+
+So **90% of ESA's labelled test events (375/415) contain values that the
+rule sends exactly**, while keeping only about 0.1% of all values exact.
+"Contains an exact value" is not "is entirely exact": the rest of each
+event stays within the error bound.
