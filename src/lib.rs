@@ -19,6 +19,7 @@ pub mod coder;
 mod crc32;
 pub mod fec;
 pub mod ffi;
+pub mod fields;
 pub mod flight;
 mod math;
 mod model;

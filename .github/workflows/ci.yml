@@ -83,7 +83,7 @@ jobs:
       - run: cargo install cargo-fuzz --locked
       - name: Fuzz each target for 60 s
         run: |
-          for t in decompress packet_fast packet_v2 flight roundtrip; do
+          for t in decompress packet_fast packet_v2 flight roundtrip transform; do
             cargo fuzz run -O "$t" -- -max_total_time=60 -rss_limit_mb=2048 -max_len=4096
           done
 

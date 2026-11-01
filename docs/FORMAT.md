@@ -126,6 +126,43 @@ multi-symbol ranges on the binary coder's interval (`encode_freq`: one
 frequency total (r = 0), both ends fall back to eight bits at probability
 1/2.
 
+## Record transforms (`fields::RecordTransform`, uplink format)
+
+A record transform is learned on the ground and runs before a packet codec;
+the receiver inverts it after decoding. Serialised, little-endian:
+
+| Bytes | Content |
+|---:|---|
+| 8 | magic `SEDGREL1` |
+| 2 | number of fields F |
+| 2·F | per field: width in bytes; flags (bit 0 integer, bit 1 signed, bit 2 big-endian, bit 3 field delta; other bits 0) |
+| 2 | number of relations R |
+| 8·R | per relation: target, i, j (u16 each), a, b (i8 each) |
+
+Field offsets follow from the widths, in order. Integer fields are 1, 2, 4
+or 8 bytes wide.
+
+Sender, per record:
+1. For every relation, replace field t by
+   r = x_t − ⌊(a·x_i + b·x_j)/2⌋ mod 2^bits. The values are sign-extended
+   if the field is signed, the arithmetic is two's-complement, and the
+   floor is an arithmetic shift.
+2. For every field with the delta flag, replace the value v (after step
+   1) by the zigzag of (v − v_prev) taken mod 2^bits, where v_prev is the
+   previous record's value after step 1. The first record, and the first
+   after `reset`, is sent unchanged.
+
+The receiver undoes step 2, then step 1, in reverse relation order.
+
+Loading rejects:
+* an index out of range;
+* a relation on a non-integer field;
+* a target used twice, or used as a predictor of another relation;
+* trailing bytes.
+So the inverse never reads a field it has not yet restored. Relations are
+stateless and survive packet loss. Deltas chain records, so a lost record
+breaks them until the next `reset`.
+
 ## Primed-model files (`.sedgem`)
 
 A saved `PrimedModel`: the model state after reading a dictionary. It is a

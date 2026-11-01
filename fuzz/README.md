@@ -10,6 +10,7 @@ every decoder and of losslessness:
 | `packet_v2` | the same for packet profile v2 |
 | `flight` | the flight profile's frame decoder: never a panic; samples fit the sample width |
 | `roundtrip` | arbitrary data comes back bit-exact through the file format and both packet profiles |
+| `transform` | an untrusted uplinked record transform (`fields`) is rejected or inverts its own output |
 
     rustup toolchain install nightly --profile minimal
     cargo install cargo-fuzz --locked
@@ -36,5 +37,6 @@ CI runs each target for 60 s on every pull request.
 | `packet_v2` | 98,845 | 10 min | clean |
 | `flight` | 156,754 | 10 min | clean |
 | `roundtrip` | 27,334 | 10 min | clean |
+| `transform` | 18,463,346 | 2 min | clean |
 
 Machine shared with other jobs, one core each, `-max_len=4096`.

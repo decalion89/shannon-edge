@@ -154,9 +154,27 @@ All results are verified bit for bit:
 Relations pay where the data carry physically derived signals, as in the
 derived ECG leads. Elsewhere they cost nothing.
 
-**What it implies for the codec.** Two additions would carry this into
-sedge itself, both computed record by record with integer arithmetic:
-* a ground-uploaded "relations" step before the packet codec;
-* a numeric field-delta step.
-They are not implemented yet; the numbers above come from the reversible
-Python transforms plus the existing codecs.
+**Now in the codec: `shannon_edge::fields`.** `RecordTransform::learn`
+finds the relations by least squares on up to 4096 history records, then
+scores them by residual entropy on up to 65,536 records. It learns in
+0.3 s instead of minutes, and finds the same three ECG relations. It also
+picks per-field deltas when they lower the entropy.
+
+The uplink is 60 bytes for the ECG (`docs/FORMAT.md`).
+`examples/packet_transform_bench.rs` learns on the first 10%, transforms,
+compresses packet by packet, decompresses, inverts and checks every record:
+
+| Dataset (layout) | v2 2^16 | v2 + relations | v2 + relations + deltas | fast | fast + deltas | Best whole-file baseline |
+|---|---:|---:|---:|---:|---:|---:|
+| ECG (`i16le*12`) | 2.77x | 3.60x | **3.82x** | 3.34x (relations) | 3.25x | 2.94x (3.84x with the same relations) |
+| power (`u32le,u16le*7`) | 5.82x | (none found) | **6.00x** | 5.46x | 4.83x | 6.69x |
+| AIS tracks (34-byte report) | 11.38x | (none found) | **11.98x** | 10.34x | 9.63x | 12.59x |
+| MetroPT codes (`u32le,u16le*7,u8*8`) | 7.61x | 7.61x | **7.97x** | 6.57x | 6.32x | 8.84x |
+
+* Numeric field deltas help packet profile v2 on every dataset, by 3–6%.
+* They *hurt* the fast profile: its "same as the byte above?" flag is
+  what makes it fast and small, and zigzag deltas break that.
+* The rule is therefore deltas for v2 and relations for both.
+* The whole-file archivers stay ahead by 1–11%, except on ECG, where v2
+  with relations and deltas is within 0.6% of the best of them while
+  coding each record as it arrives.
