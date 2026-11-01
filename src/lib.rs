@@ -163,7 +163,9 @@ fn confirm_record_len(data: &[u8], record: usize, mem_bits: u8) -> usize {
 /// Errors returned by [`decompress`].
 #[derive(Debug, PartialEq, Eq)]
 pub enum Error {
-    /// Input is shorter than the header or the declared payload.
+    /// Input is shorter than the header or the declared payload, or the
+    /// coded payload ends before the data it announces (truncation or
+    /// corruption).
     Truncated,
     /// Input does not start with [`MAGIC`].
     BadMagic,
@@ -195,7 +197,7 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::Truncated => write!(f, "input is truncated"),
+            Error::Truncated => write!(f, "input is truncated or corrupt"),
             Error::BadMagic => write!(f, "not a shannon-edge (.sedge) stream"),
             Error::UnsupportedVersion(v) => write!(f, "unsupported format version {v}"),
             Error::UnknownMethod(m) => write!(f, "unknown compression method {m}"),
@@ -532,7 +534,16 @@ fn wrap_cm(data: &[u8], bits: u8, dict: Option<(u32, usize)>, payload: Option<Ve
 }
 
 /// Decode `len` bytes from `payload` with `pred`, appending them to `hist`.
-fn decode_payload(pred: &mut Predictor, hist: &mut Vec<u8>, payload: &[u8], len: usize) {
+/// Decode `len` bytes onto `hist`. Fails as soon as the decoder has read
+/// further past the end of `payload` than any valid stream makes it (see
+/// [`coder::MAX_OVERRUN`]), so a header announcing more data than the
+/// payload holds costs at most a few bytes' worth of decoding, not `len`.
+fn decode_payload(
+    pred: &mut Predictor,
+    hist: &mut Vec<u8>,
+    payload: &[u8],
+    len: usize,
+) -> Result<(), Error> {
     let mut dec = Decoder::new(payload);
     let end = hist.len() + len;
     while hist.len() < end {
@@ -544,7 +555,18 @@ fn decode_payload(pred: &mut Predictor, hist: &mut Vec<u8>, payload: &[u8], len:
             }
         }
         pred.byte_update(hist);
+        if dec.overrun() > coder::MAX_OVERRUN {
+            return Err(Error::Truncated);
+        }
     }
+    Ok(())
+}
+
+/// Capacity to reserve for `len` declared bytes decoded from `payload`
+/// bytes. The declared length is untrusted input, so reserve no more than
+/// a bounded expansion of the payload; the buffer still grows on demand.
+fn reserve_for(len: usize, payload: usize) -> usize {
+    len.min(payload.saturating_mul(64).saturating_add(1 << 16))
 }
 
 struct Header {
@@ -655,7 +677,7 @@ fn decompress_prior(input: &[u8], prior: Prior, threads: usize) -> Result<Vec<u8
         return Err(Error::BadBlockTable);
     }
     let parts = parallel_map(&streams, threads, |s| decompress_single(s, prior));
-    let mut out = Vec::with_capacity(h.len);
+    let mut out = Vec::with_capacity(reserve_for(h.len, input.len()));
     for part in parts {
         out.extend_from_slice(&part?);
     }
@@ -725,11 +747,11 @@ fn decompress_single(input: &[u8], prior: Prior) -> Result<Vec<u8>, Error> {
             let (mut pred, mut hist) = if record > 0 {
                 let mut p = Predictor::with_record(bits as u32, record);
                 p.start();
-                (p, Vec::with_capacity(len))
+                (p, Vec::with_capacity(reserve_for(len, payload.len())))
             } else {
-                start_model(bits, dict, model, len)
+                start_model(bits, dict, model, reserve_for(len, payload.len()))
             };
-            decode_payload(&mut pred, &mut hist, payload, len);
+            decode_payload(&mut pred, &mut hist, payload, len)?;
             hist.drain(..dict.len());
             hist
         }
@@ -839,9 +861,10 @@ impl PrimedModel {
             return Err(Error::Truncated);
         }
         let guard = self.pred.begin_journal();
-        decode_payload(&mut self.pred, &mut self.dict, payload, h.len);
+        let decoded = decode_payload(&mut self.pred, &mut self.dict, payload, h.len);
         self.pred.rollback(guard);
         let out = self.dict.split_off(dlen);
+        decoded?;
         let actual = crc32::crc32(&out);
         if actual != h.crc {
             return Err(Error::ChecksumMismatch {
@@ -1169,9 +1192,9 @@ impl Session {
             }
             let hist_len = self.model.dict.len();
             let guard = self.model.pred.begin_journal();
-            decode_payload(&mut self.model.pred, &mut self.model.dict, payload, len);
+            let decoded = decode_payload(&mut self.model.pred, &mut self.model.dict, payload, len);
             let out = self.model.dict[hist_len..].to_vec();
-            if let Err(e) = check(&out) {
+            if let Err(e) = decoded.and_then(|()| check(&out)) {
                 self.model.pred.rollback(guard);
                 self.model.dict.truncate(hist_len);
                 return Err(e);

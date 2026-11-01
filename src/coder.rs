@@ -85,8 +85,14 @@ impl Encoder {
                 break;
             }
         }
-        // Trailing zero bytes are implied by the decoder's zero padding.
-        while self.out.last() == Some(&0) {
+        // Trailing zero bytes are implied by the decoder's zero padding. At
+        // most MAX_IMPLIED_ZEROS are dropped, so a decoder can tell a valid
+        // stream (it reads at most MAX_OVERRUN bytes past the end) from
+        // garbage that keeps it decoding past the data it was given.
+        for _ in 0..MAX_IMPLIED_ZEROS {
+            if self.out.last() != Some(&0) {
+                break;
+            }
             self.out.pop();
         }
         self.out
@@ -98,6 +104,14 @@ impl Encoder {
         self.out.len()
     }
 }
+
+/// Most trailing zero bytes [`Encoder::finish_short`] drops.
+pub const MAX_IMPLIED_ZEROS: usize = 4;
+
+/// Most bytes a [`Decoder`] reads past the end of a valid stream: its 4-byte
+/// look-ahead, minus the at least 1 flush byte, plus the implied zeros.
+/// Reading further proves the stream is truncated or corrupt.
+pub const MAX_OVERRUN: usize = 3 + MAX_IMPLIED_ZEROS;
 
 /// Decodes bits from a byte slice. Reads past the end as zeros, so a
 /// truncated or corrupted stream never panics; it just decodes garbage that
@@ -123,6 +137,12 @@ impl<'a> Decoder<'a> {
             d.x = (d.x << 8) | d.next_byte();
         }
         d
+    }
+
+    /// Bytes read past the end of the input (as implied zeros) so far.
+    #[inline]
+    pub fn overrun(&self) -> usize {
+        self.pos.saturating_sub(self.input.len())
     }
 
     #[inline]

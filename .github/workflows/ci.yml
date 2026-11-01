@@ -70,3 +70,19 @@ jobs:
         run: |
           cc -Wall -Wextra -Werror examples/c/demo.c -Iinclude -Ltarget/release -lshannon_edge -o demo
           LD_LIBRARY_PATH=target/release ./demo
+
+  fuzz:
+    # Coverage-guided fuzzing of every decoder (garbage in: Ok or Err, never
+    # a panic, hang or out-of-bounds access) and of losslessness on
+    # adversarial inputs. A short smoke run per target; longer campaigns are
+    # run locally (fuzz/README.md).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - run: cargo install cargo-fuzz --locked
+      - name: Fuzz each target for 60 s
+        run: |
+          for t in decompress packet_fast packet_v2 flight roundtrip; do
+            cargo fuzz run -O "$t" -- -max_total_time=60 -rss_limit_mb=2048 -max_len=4096
+          done

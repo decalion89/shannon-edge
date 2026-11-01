@@ -159,10 +159,27 @@ fn corruption_is_detected_not_silently_accepted() {
         let i = HEADER_LEN + (rng.next() as usize % (bad.len() - HEADER_LEN));
         bad[i] ^= 1 << (rng.next() % 8);
         match decompress(&bad) {
-            Err(Error::ChecksumMismatch { .. }) => {}
+            // A flipped bit desynchronises the decoder: it either runs out of
+            // payload early (Truncated) or produces data that fails the CRC.
+            Err(Error::ChecksumMismatch { .. } | Error::Truncated) => {}
             Ok(out) => assert_eq!(out, data, "corruption produced wrong output"),
             Err(e) => panic!("unexpected error {e:?}"),
         }
+    }
+}
+
+#[test]
+fn a_lying_length_costs_neither_memory_nor_time() {
+    // Found by fuzzing: a header announcing ~4 GB over a few payload bytes
+    // used to reserve the announced size before decoding anything.
+    let mut packed = compress(&sample_text(), &Options::default());
+    packed.truncate(HEADER_LEN + 8);
+    for len in [u32::MAX as u64 - 1, 1 << 30, 1 << 20] {
+        let mut bad = packed.clone();
+        bad[8..16].copy_from_slice(&len.to_le_bytes());
+        let t = std::time::Instant::now();
+        assert!(decompress(&bad).is_err());
+        assert!(t.elapsed().as_secs() < 2, "{len}: {:?}", t.elapsed());
     }
 }
 

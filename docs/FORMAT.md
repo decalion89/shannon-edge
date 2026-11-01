@@ -80,7 +80,8 @@ kind, then the LEB128 length, then the payload: no sequence number and no
 CRC, for links that already guarantee integrity and order.
 
 Coded payloads use a minimal arithmetic-coder flush: trailing bytes the
-decoder would pad with zeros anyway are omitted. Record *n* is coded with
+decoder would pad with zeros anyway are omitted, at most 4 of them
+(`coder::MAX_IMPLIED_ZEROS`). Record *n* is coded with
 the model after records *0..n-1* (and the starting dictionary, if any);
 stored records are not learned from, on either side. A frame whose sequence
 number is not the next expected one fails with `SessionOutOfSync`; a frame
@@ -154,6 +155,14 @@ The decoder always recomputes the CRC-32 of its output and rejects the stream
 (`BadBlockTable`). Corrupted or truncated payloads never
 cause a panic: the arithmetic decoder reads missing bytes as zeros and the
 checksum catches the result.
+
+The declared length is untrusted. A valid payload never makes the decoder
+read more than `coder::MAX_OVERRUN` (7) bytes past its end: 4 bytes of
+look-ahead, minus at least one flush byte, plus at most 4 implied zeros. The
+decoder stops with `Truncated` as soon as it reads further, and reserves
+memory for at most a bounded expansion of the payload, so a header that
+announces gigabytes over a few bytes of payload costs a few bytes of
+decoding, not gigabytes of memory. (Found by fuzzing, `fuzz/`.)
 
 ## Determinism and versioning
 

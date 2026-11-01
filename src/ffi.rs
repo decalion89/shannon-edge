@@ -66,7 +66,7 @@ pub extern "C" fn sedge_error_message(code: i32) -> *const c_char {
         SEDGE_E_ARGUMENT => {
             b"invalid argument (null pointer, bad memory level or input too large)\0"
         }
-        SEDGE_E_TRUNCATED => b"input is truncated\0",
+        SEDGE_E_TRUNCATED => b"input is truncated or corrupt\0",
         SEDGE_E_BAD_MAGIC => b"not a shannon-edge stream\0",
         SEDGE_E_VERSION => b"unsupported format version\0",
         SEDGE_E_METHOD => b"unknown compression method\0",
