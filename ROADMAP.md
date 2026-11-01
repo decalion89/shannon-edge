@@ -120,8 +120,13 @@ v0.1 single core: ~0.5 MiB/s. Target: 10× without losing ratio, then more.
       epochs + primed origin are a negative result; key packets (sent
       twice) + epochs decode 98.72% at −4.8% vs CCSDS 124 R=1. Robustness
       costs most of the no-loss advantage
-- [ ] Packet profile: run the CCSDS 124 decoder under the same simulated
-      loss; a cheaper reference for non-key packets than a frozen model
+- [x] CCSDS 124 decoder under the same simulated loss
+      (`bench/c/ccsds124_loss.c`): R=2 needed at 1% loss, R=3 at 5%
+- [x] Separation: full-strength packet profile + packet-level Reed–Solomon
+      erasure code (`fec`): 100% of packets at 0.1/1/5% i.i.d. loss,
+      −31.7/−30.5/−23.7% vs the best CCSDS 124 configuration at each rate
+- [ ] Burst loss (interleaving), loss statistics of real links, and
+      erasure coding over transfer frames instead of packets
 - [ ] Packet profile: speed (POCKET+ is ~10x faster), C/Python bindings
 - [x] Whole-mission measurement (ESA-AD Mission 1, 75 channels, 734 M
       samples, 14 years): flight profile beats CCSDS 121 on 75/75 channels,

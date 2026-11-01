@@ -319,17 +319,25 @@ profile runs at 1.2–1.7 MB/s encode+decode on a desktop core and needs
 lean sedge: a lost packet desynchronises both. Reproduce with
 `bench/ccsds124.py ccsds124/test-vectors --cli <ccsds124 CLI>`.
 
-**Under packet loss the advantage mostly disappears**
-([`bench/results/venus_robustness.md`](bench/results/venus_robustness.md)).
-Epochs (periodic return to a common, optionally history-primed, state) were
-a negative result: E=100 costs +15% and still loses 37% of the packets at 1%
-loss. What works is *key packets* (`with_key_interval(K)`): only every K-th
-packet teaches the model, the others are coded with it frozen, so losing
-one harms nothing else; key packets are sent twice. On the last 90% of the
-file, K=16 with epochs of 1024 and a primed origin takes 4,737,620 bytes and
-decodes 98.72% of the packets at 1% i.i.d. loss — **−4.8% vs CCSDS 124
-R=1** (4,976,442) and −7.5% vs R=2, down from −34.9% vs R=0 without loss.
-CCSDS 124's own decoder was not run under simulated loss.
+**Under packet loss: separate compression from protection.** Building loss
+tolerance into the compressor (epochs, key packets) cost most of the
+advantage ([`venus_robustness.md`](bench/results/venus_robustness.md)).
+Following Shannon's separation principle instead — full-strength packet
+profile, plus a packet-level Reed–Solomon erasure code over the compressed
+payloads (`shannon_edge::fec`) — keeps it
+([`venus_fec.md`](bench/results/venus_fec.md)). Against CCSDS 124 measured
+under the same simulated i.i.d. loss (its decoder told about every gap,
+`bench/c/ccsds124_loss.c`):
+
+| Loss | Best CCSDS 124 | sedge + erasure code | Difference |
+|---:|---|---|---:|
+| 0.1% | R=1: 4,976,442 bytes, 99.89% of packets correct | G=32, m=2: 3,396,454 bytes, **100%** | **−31.7%** |
+| 1% | R=2: 5,123,900 bytes, 99.02% | G=64, m=6: 3,561,510 bytes, **100%** | **−30.5%** |
+| 5% | R=3: 5,241,460 bytes, 95.04% | G=64, m=12: 4,001,670 bytes, **100%** | **−23.7%** |
+
+The receiver also gets back the lost packets themselves. The price: after
+a loss it waits up to G + m packets for the parity (CCSDS 124 does not
+wait), and bursts longer than m need interleaving (not evaluated).
 
 ### A whole mission: 14 years of a satellite's life
 
@@ -513,6 +521,8 @@ The file format is specified in [`docs/FORMAT.md`](docs/FORMAT.md).
 | `bench/telemetry.py` | ESA spacecraft telemetry: sedge vs CCSDS 121 and zstd |
 | `src/packet.rs`, `examples/packet_bench.rs` | Packet profile for fixed-length housekeeping packets |
 | `examples/packet_robust.rs` | Packet profile under simulated packet loss (key packets, epochs, priming) |
+| `src/fec.rs`, `examples/packet_fec.rs` | Packet-level Reed–Solomon erasure code; packet profile + erasure code under loss |
+| `bench/c/ccsds124_loss.c` | CCSDS 124 under the same simulated loss (open C implementation) |
 | `bench/ccsds124.py` | Venus Express packets vs CCSDS 124 / POCKET+ (reference output and parameter sweep) |
 | `bench/mission.py`, `bench/results/` | Every channel of an ESA mission through CCSDS 121 and the flight profile |
 | `bench/anomaly.py`, `examples/flight_surprise.rs` | Anomaly detection from the compressor's surprise (ESA labels) |
