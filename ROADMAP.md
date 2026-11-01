@@ -149,6 +149,9 @@ v0.1 single core: ~0.5 MiB/s. Target: 10× without losing ratio, then more.
       per byte vs ~1,290 for the open CCSDS 124 implementation
 - [x] Fast profile on RISC-V (QEMU, exact instruction counts): 195
       instructions/byte vs 590 for the open CCSDS 124 implementation (3.0x)
+- [x] Side information both ends already have: telecommand timeline
+      (ESA-AD Mission 1). No excess surprise after commands on 8 channels:
+      negative result (`bench/results/side_information.md`)
 - [ ] Cycles on real NOEL-V/LEON hardware; 32-bit range-coder arithmetic
       for LEON3; C/Python bindings for the packet profiles
 - [x] Whole-mission measurement (ESA-AD Mission 1, 75 channels, 734 M
