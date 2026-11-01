@@ -676,3 +676,25 @@ anomalies). So it is an option for irregularly resampled inputs, not a
 default: a detector on board, seeing the original samples, should not use
 it. The weak spot is narrowed, not closed (0.238 vs 0.786 for the best
 published method there).
+
+## Does surprise rise before anomalies? No (`bench/analysis/early_warning.py`)
+
+**Question.** Complex systems often grow erratic before a tipping point
+("early-warning signals", Scheffer et al., 2009). If spacecraft do too,
+the median surprise would rise in the days before an anomaly.
+
+**Method.** For each "Anomaly" event, take the median surprise of its
+labelled channels over the 3 days before its start, divided by the median
+over the window 30 to 10 days before. The ratio, in log2, is compared with
+the same ratio at random placebo times.
+
+| Mission | Events with data | Mean log2(pre / base) | Placebo mean | One-sided p |
+|---|---:|---:|---:|---:|
+| Mission 1, lightweight | 51 | +0.001 | −0.001 (sd 0.011) | 0.16 |
+| Mission 2, lightweight | 19 | −0.089 | −0.012 (sd 0.065) | 1.00 |
+
+The Mission 2 placebo times only need to be 3 days from any event,
+because its events are too dense for a 30-day gap. On these data, no
+early warning is visible in the compressor's surprise. The compressor is a
+detector, not a predictor. This agrees with ADTQC's after-ratio of about 1:
+the surprise never fires before an event starts.

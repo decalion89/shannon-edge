@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Does the telemetry become less compressible in the days before an anomaly?
 
-    python3 bench/analysis/early_warning.py ESA-MissionN.zip CHANNEL...
+    python3 bench/analysis/early_warning.py [--gap-days=N] ESA-MissionN.zip CHANNEL...
 
 For each labelled event of category "Anomaly" on the given channels, compare
 the median surprise (flight profile, bits per sample) of its labelled
@@ -9,7 +9,7 @@ channels in the PRE window (3 days before the start, ending 1 hour before
 it) with the BASE window (30 to 10 days before the start). The statistic
 is log2(PRE / BASE). It is averaged over events and compared with the same
 statistic at 2,000 random placebo times (same channels, no event within
-30 days). The one-sided p-value is the share of placebo means, resampled
+30 days; --gap-days=N for missions whose events are too dense for that). The one-sided p-value is the share of placebo means, resampled
 with the events' size, that are at least the observed mean.
 """
 import io
@@ -23,7 +23,11 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import anomaly_esaadb as A  # noqa: E402
 
-zp, chans = sys.argv[1], sys.argv[2:]
+args = sys.argv[1:]
+gap_days = 30
+if args[0].startswith("--gap-days="):
+    gap_days = int(args.pop(0).split("=")[1])
+zp, chans = args[0], args[1:]
 z = zipfile.ZipFile(zp)
 root = next(n.split("/")[0] for n in z.namelist() if n.endswith("labels.csv"))
 lab = pd.read_csv(io.BytesIO(z.read(f"{root}/labels.csv")))
@@ -68,7 +72,7 @@ while len(plac) < 2000:
     t0 = np.datetime64(int(t0.astype(np.int64)), "ns") if not isinstance(t0, np.datetime64) else t0
     k = np.searchsorted(allev, t0)
     near = [allev[i] for i in (k - 1, k) if 0 <= i < len(allev)]
-    if any(abs(t0 - e) < 30 * D for e in near):
+    if any(abs(t0 - e) < gap_days * D for e in near):
         continue
     ch = names[rng.integers(len(names))]
     v = stat(ch, t0)
