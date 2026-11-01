@@ -29,6 +29,8 @@ ap.add_argument("fits")
 ap.add_argument("--pmin", type=float, default=0.5)
 ap.add_argument("--pmax", type=float, default=20.0)
 ap.add_argument("--planets", type=int, default=3)
+ap.add_argument("--inject", nargs=4, type=float, default=None, metavar=("PERIOD", "PHASE", "DEPTH_PPM", "HOURS"),
+                help="add a synthetic box transit to this star before searching (recovery tests)")
 ap.add_argument("--cotrend", nargs="*", default=[],
                 help="other stars' light curves of the same quarter: subtract their common-mode (median of "
                      "their detrended, normalised flux, interpolated to this star's times), scaled by least "
@@ -40,6 +42,9 @@ t, f = d["TIME"], d["PDCSAP_FLUX"]
 # manual excludes, cosmic rays, ...) produce dips that look like transits.
 ok = np.isfinite(t) & np.isfinite(f) & (d["SAP_QUALITY"] == 0)
 t, f = t[ok].astype(np.float64), f[ok].astype(np.float64) / np.median(f[ok])
+if a.inject:
+    P_i, ph_i, dep_i, h_i = a.inject
+    f = f - dep_i * 1e-6 * ((((t - t[0]) / P_i - ph_i) % 1.0) < h_i / 24 / P_i)
 cad = np.median(np.diff(t))
 r = f - median_filter(f, size=max(3, int(round(1.0 / cad))), mode="nearest")
 if a.cotrend:
@@ -104,12 +109,24 @@ for k in range(a.planets):
     # transit; stellar spots and instrument events do not line up at a strict period.
     ep = np.floor((t - t[0]) / P - ph).astype(np.int64)
     seen = hit = 0
+    dep, err = [], []
     for e_ in np.unique(ep[inbox]):
         sel = inbox & (ep == e_)
         if sel.sum() >= 2:
             seen += 1
             hit += int(r[sel].mean() < -2 * sigma / np.sqrt(sel.sum()))
+            dep.append(r[sel].mean())
+            err.append(sigma / np.sqrt(sel.sum()))
     print(f"  per-transit check: {hit} of {seen} predicted transits show the dip")
+    # Depth consistency: a planet blocks the same fraction of light at every transit, spots do
+    # not. Reduced chi-square of the per-transit depths around their weighted mean.
+    if len(dep) >= 3:
+        dep, err = np.array(dep), np.array(err)
+        w_ = 1 / err ** 2
+        mu = (dep * w_).sum() / w_.sum()
+        chi2 = float((((dep - mu) / err) ** 2).sum() / (len(dep) - 1))
+        print(f"  depth consistency: reduced chi-square {chi2:.2f} over {len(dep)} transits "
+              f"(about 1 for a planet with white noise)")
     print(f"planet search #{k + 1}: best P = {P:.5f} d, phase {ph:.3f}, duration {D * 24:.0f} h, depth {depth * 1e6:.0f} ppm, "
           f"{n} points in box; bits saved {net + desc:.1f} - description {desc:.1f} = net {net:.1f} bits "
           f"(false-alarm bound 2^-{max(net, 0):.0f})")

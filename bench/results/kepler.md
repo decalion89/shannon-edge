@@ -161,3 +161,39 @@ and centroid tests, all of which the NASA pipeline applies.
 finds a 1.4-Earth-radius planet. Vetting is what makes a planet search
 trustworthy, and this code has only the first steps of it. No discovery
 is claimed.
+
+### Depth consistency and injection-recovery: the honest trade-off
+
+**Depth consistency.** A planet blocks the same fraction of light at every
+transit, and spots do not. The test is the reduced χ² of the per-transit
+depths around their weighted mean (`mdl_transit_search.py`):
+
+| Star | Reduced χ² of transit depths |
+|---|---:|
+| Kepler-10b (100 transits) | **2.36** |
+| KIC 11081729 (spotted F star) | 707.5 |
+| Other top false signals | 22.8–299.4 |
+
+**False positives.** Requiring both ≥ 300 weaker-half bits and χ² < 5
+leaves **0 of the 62 quiet LEGACY stars**, while Kepler-10b passes.
+
+**Recovery.** A box transit of 2 h at a random period of 0.6–10 days was
+injected into 40 of the quiet stars (`--inject`):
+
+| Injected depth | Right period found | Passes both vetting criteria |
+|---|---:|---:|
+| 150 ppm (about Kepler-10b) | **34/40** | 11/40 |
+| 75 ppm | **31/40** | 1/40 |
+
+The search itself finds most injected planets: 85% at 150 ppm and 78% at
+75 ppm, about 1.5σ per point. But the vetting thresholds, chosen to
+reject every false positive, also reject most real ones.
+* The χ² test is inflated by red noise and by the box grid's partial
+  overlap with each transit.
+* 300 bits in the weaker half is too strict for shallow planets.
+
+This is the usual detection trade-off, made measurable here. The next
+step is a depth-consistency model that accounts for partial overlap and
+red noise, with thresholds set on one set of quiet stars and validated on
+a held-out set. Until then the pipeline can confirm known planets but
+cannot claim new ones.
