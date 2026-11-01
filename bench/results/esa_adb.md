@@ -242,6 +242,69 @@ What this shows:
   next improvement targets this.
 * The lightweight subsets keep the weaknesses already reported: recall.
 
+## Training-free thresholds (Kraft) and the unlabelled detections
+
+**The bound.** Code a sample in an alphabet of 2^b values. A calibrated
+model assigns it more than b + t bits with probability at most 2^-t: at
+most 2^b outcomes can each have probability at or below 2^-(b+t). A
+threshold of b + t bits therefore needs no training data. `--kraft auto`
+sets t = ceil(log2(test samples over all target channels)): at most one
+expected false sample-alarm in the whole test set if the model is
+calibrated.
+
+**Does the flight model obey it?** On Mission 1 channels 41–46, nominal
+training samples (7.63 M per channel):
+
+* With margins up to 20 bits, every channel exceeds b + t less often than
+  2^-t. At t = 4 to 16 the margin is 10 to 400 times.
+* At t = 24 and 28, one sample in 7.6 M on channel 43 exceeds the bound.
+  At t = 24 that is expected by chance; at t = 28, under one in 30
+  (Poisson).
+
+Script: in the session scratchpad, not in the repository.
+
+**Scores.** Corrected event-wise F0.5, rule fixed a priori by `auto`, not
+chosen on validation:
+
+| Setting | t (auto) | Kraft, no training | Trained, chosen on validation | Best published |
+|---|---:|---:|---:|---:|
+| Mission 1, lightweight | 26 | **0.705** (0 false alarms; ADTQC 1.000) | 0.690 | 0.786 |
+| Mission 1, full set | 29 | **0.576** (3 false alarms, 22 events) | 0.279 | 0.061 |
+| Mission 2, lightweight | 26 | 0.200 (recall 0.049) | 0.725 | 0.949 |
+
+On Mission 1 the training-free rule beats the trained one. On Mission 1
+full it scores 9x the best published method. On Mission 2 lightweight the
+a-priori margin is far too strict: the mission has 350 short labelled
+events, most below b + 26 bits. For the record, smaller margins score 0.509
+(t = 16) and 0.582 (t = 20); they were not chosen, since that choice would
+look at the test.
+
+The bound guarantees the false-alarm rate; it does not say how much risk
+a mission should accept.
+
+**What are the unlabelled detections?** `--report` on Mission 1 full
+(trained rule, 113 detections that overlap no labelled event in any
+channel), analysed by `bench/analysis/spikes.py`:
+
+* The two strongest are one-sample spikes in two channels of the same
+  physical unit (channels 57 and 59, subsystem 6, group 13) on the same
+  day, 2009-04-18, with no label anywhere. Their excess over the
+  threshold is 29 and 14 bits.
+* 44 of the 113 are single-sample excursions: the value jumps and the
+  next sample returns. Measured in local quantisation steps, their sizes
+  cluster at **16–19 steps** in 12 different channels (20 of 43; peak at
+  17). A physical event would have no reason to share an amplitude across
+  sensors measured in different units. This points to a common
+  acquisition effect.
+* Hypothesis tested and rejected: radiation bit flips. A flip moves the
+  raw code by exactly 2^k, but only 8 of the 35 excursions of 3 or more
+  steps are powers of two, close to chance (3 of the 17 sizes from 3 to
+  19 are powers of two).
+
+Whether these spikes matter to operators (data errors, acquisition
+glitches, or events worth a label) cannot be decided from the data
+alone. They are listed with times and channels for an expert to check.
+
 ## Are the test sets the same as the paper's?
 
 Event counts of our test and validation sets against ESA-ADB's
