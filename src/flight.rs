@@ -267,6 +267,7 @@ pub struct FlightSession {
     /// Exponentially decayed recent cost of each model (1/256 bits).
     cost_t: u64,
     cost_r: u64,
+    last_other: u32,
 }
 
 impl FlightSession {
@@ -288,6 +289,7 @@ impl FlightSession {
             residual: Residual::new(bits_per_sample, table_bits),
             cost_t: 0,
             cost_r: 0,
+            last_other: 0,
         }
     }
 
@@ -311,7 +313,37 @@ impl FlightSession {
         };
         self.cost_t = self.cost_t - (self.cost_t >> 6) + ct as u64;
         self.cost_r = self.cost_r - (self.cost_r >> 6) + cr as u64;
+        self.last_other = if use_t { cr } else { ct };
         (v, if use_t { ct } else { cr })
+    }
+
+    /// Like [`Self::compress_scored`], and also appends to `other` the cost
+    /// the *unused* model would have paid for each sample (both models
+    /// evaluate every sample; only the cheaper one on recent samples codes
+    /// it). Same frame as `compress`.
+    pub fn compress_scored_both(
+        &mut self,
+        samples: &[u16],
+        surprise: &mut Vec<u32>,
+        other: &mut Vec<u32>,
+    ) -> Vec<u8> {
+        let mut out = Vec::with_capacity(4 + samples.len());
+        put_varint(&mut out, samples.len() as u64);
+        let mut enc = Encoder::new(samples.len());
+        {
+            let mut io = Io::Enc(&mut enc);
+            for &s in samples {
+                assert!(
+                    (s as u32) >> self.bits == 0,
+                    "sample {s} does not fit in {} bits",
+                    self.bits
+                );
+                surprise.push(self.sample(s as u32, &mut io).1);
+                other.push(self.last_other);
+            }
+        }
+        out.extend_from_slice(&enc.finish_short());
+        out
     }
 
     /// Compress one packet and learn from it.

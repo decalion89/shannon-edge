@@ -18,6 +18,7 @@ not fix a number; 100 is the tolerance commonly used.
 | **Matrix-profile discord** (stumpy, window m) | **134/250 (0.536)** |
 | Combination fixed in advance (committed before the matrix-profile results): per file, the method whose top score stands out more | 134/250 (0.536) |
 | Either one correct (an oracle, not a method) | 160/250 (0.640) |
+| Second combination rule, designed **after** the first failed: per file, the method whose test peak is the larger multiple of its own maximum on the anomaly-free training part | **141/250 (0.564)** |
 
 m is the period estimated on the training prefix: the first
 autocorrelation peak, clipped to 10..500.
@@ -35,6 +36,14 @@ autocorrelation peak, clipped to 10..500.
   picked the surprise in 79 files, but gains and losses cancelled exactly
   (134 = 134). Choosing per file between detectors without training is an
   open problem.
+* A second rule, designed after seeing the first fail, does better: 141
+  (+7 over the matrix profile). It compares how far each method's test
+  peak rises above that method's own anomaly-free training range. It is
+  post hoc, so it is a lead for a pre-registered test on other data, not
+  a result.
+* The training margin is informative on its own. When the surprise's
+  test peak exceeds its training maximum, it is right in 60 of 180 files,
+  against 7 of 70 otherwise.
 
 This bounds the claim made from ESA-ADB. The compressor's surprise is a
 strong, training-free detector of abrupt events in multichannel

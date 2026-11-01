@@ -1,6 +1,8 @@
 //! Write the flight profile's per-sample surprise for a stream of samples.
 //!
-//!     cargo run --release --example flight_surprise -- SAMPLES.u16 OUT.u32 [TABLE_BITS]
+//!     cargo run --release --example flight_surprise -- SAMPLES.u16 OUT.u32 [TABLE_BITS] [OTHER.u32]
+//!
+//! With OTHER.u32, also writes the cost the unused model would have paid.
 //!
 //! Compresses SAMPLES (16-bit little-endian) in 256-sample packets with a
 //! `FlightSession`, checks the receiver decodes every packet and computes
@@ -24,9 +26,10 @@ fn main() {
         FlightSession::new(bits, table_bits),
     );
     let (mut sent, mut received) = (Vec::with_capacity(samples.len()), Vec::new());
+    let mut other = Vec::with_capacity(samples.len());
     let mut bytes = 0usize;
     for packet in samples.chunks(256) {
-        let frame = tx.compress_scored(packet, &mut sent);
+        let frame = tx.compress_scored_both(packet, &mut sent, &mut other);
         bytes += frame.len() + 1;
         received.clear();
         assert_eq!(rx.decompress_scored(&frame, &mut received).unwrap(), packet);
@@ -34,6 +37,10 @@ fn main() {
     }
     let out: Vec<u8> = sent.iter().flat_map(|c| c.to_le_bytes()).collect();
     std::fs::write(&args[1], out).expect("write surprise");
+    if let Some(p) = args.get(3) {
+        let o: Vec<u8> = other.iter().flat_map(|c| c.to_le_bytes()).collect();
+        std::fs::write(p, o).expect("write other");
+    }
     eprintln!(
         "{} samples ({bits}-bit) -> {bytes} bytes; surprise written to {}",
         samples.len(),

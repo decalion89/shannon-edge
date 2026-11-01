@@ -71,6 +71,9 @@ def load(z: zipfile.ZipFile, member: str) -> pd.Series:
     return SafeUnpickler(io.BytesIO(inner.read(inner.namelist()[0]))).load().iloc[:, 0]
 
 
+MIN_COST = False  # --min-cost: score each sample by the cheaper of the two flight models
+
+
 def surprise(series: pd.Series) -> np.ndarray:
     uniq, codes = np.unique(series.to_numpy().astype(np.float32), return_inverse=True)
     if len(uniq) > 65536:
@@ -80,11 +83,14 @@ def surprise(series: pd.Series) -> np.ndarray:
         codes = (codes.astype(np.int64) * 65536 // len(uniq))
         print(f"{series.name}: {len(uniq):,} distinct values binned to 65,536 for scoring", file=sys.stderr)
     with tempfile.TemporaryDirectory() as t:
-        cp, sp = Path(t) / "c.u16", Path(t) / "s.u32"
+        cp, sp, op = Path(t) / "c.u16", Path(t) / "s.u32", Path(t) / "o.u32"
         codes.astype("<u2").tofile(cp)
-        subprocess.run([str(ROOT / "target/release/examples/flight_surprise"), str(cp), str(sp)],
+        subprocess.run([str(ROOT / "target/release/examples/flight_surprise"), str(cp), str(sp), "14", str(op)],
                        check=True, capture_output=True)
-        return np.fromfile(sp, dtype="<u4").astype(np.float64) / 256.0
+        c = np.fromfile(sp, dtype="<u4").astype(np.float64) / 256.0
+        if MIN_COST:
+            c = np.minimum(c, np.fromfile(op, dtype="<u4").astype(np.float64) / 256.0)
+        return c
 
 
 def slow_surprise(series: pd.Series) -> np.ndarray:
@@ -319,6 +325,9 @@ def main() -> None:
                          "log2(past rate of cost >= b + m) + m, over margins seen at least 10 times, floored at 0. "
                          "Costs are lowered by D before the Kraft tests (the bound with a model off by D bits is "
                          "2^(D - t))")
+    ap.add_argument("--min-cost", action="store_true",
+                    help="score each sample by the cheaper of the flight profile's two models (both are evaluated "
+                         "on every sample; the codec uses one). Still a valid Kraft score: min <= each code length")
     ap.add_argument("--report", type=Path, default=None,
                     help="write, for the rule chosen on validation, every test event (detected or not, first "
                          "flag relative to its start, channels flagged) and every detection that overlaps no "
@@ -331,8 +340,9 @@ def main() -> None:
     ap.add_argument("--split", default="2007-01-01", help="train/test split (Mission 2: 2001-10-01)")
     ap.add_argument("--validation", default="2006-10-01", help="validation start (Mission 2: 2001-07-01)")
     args = ap.parse_args()
-    global SPLIT, VALIDATION
+    global SPLIT, VALIDATION, MIN_COST
     SPLIT, VALIDATION = pd.Timestamp(args.split), pd.Timestamp(args.validation)
+    MIN_COST = args.min_cost
 
     z = zipfile.ZipFile(args.mission_zip)
     root = next(n.split("/")[0] for n in z.namelist() if n.endswith("labels.csv"))

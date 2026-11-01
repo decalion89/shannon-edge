@@ -874,3 +874,28 @@ better than an exponential in all three, but the exponents differ (0.12,
 0.61, 0.15), so there is no Omori-like universal exponent here. The
 result supports "information concentrated near onset" and rejects a
 universal decay law.
+
+## The flight profile's discarded model (`--min-cost`, `compress_scored_both`)
+
+The flight profile evaluates **two** models on every sample:
+* the residual model;
+* the transition model.
+It codes each sample with the one that was cheaper on recent samples, so
+the other model's cost is computed and then thrown away.
+`FlightSession::compress_scored_both` now returns it, with an unchanged
+frame.
+
+* **As a filter for false alarms: no.** Scoring each sample by the
+  cheaper of the two costs is still a valid Kraft score (min ≤ each code
+  length).
+  * Kraft auto on Mission 1 lightweight finds **nothing**: 0 detections,
+    against 21 with the coded cost. At nearly every anomaly one of the two
+    models half-expected the value.
+  * The trained rule is unchanged: 0.691 against 0.690.
+* **For compression: almost nothing.** Over Mission 1 channels 41–46 and
+  Mission 2 channels 18–28, 128.10 MB coded:
+  * a soft two-model mixture, weighted by the recent cost difference,
+    gives 127.57 MB (−0.41%);
+  * the per-sample oracle minimum gives 119.57 MB (−6.7%). It is not
+    achievable without sending which model wins, which costs about what
+    it saves.
