@@ -167,6 +167,38 @@ better. Its strength is precision: thresholds at the extremes of what the
 model has seen keep false alarms rare where the published methods raise
 thousands.
 
+### Newer published results (literature check, 2026-11)
+
+"Best published" above means ESA-ADB's own Table 2 (Kotowski et al.,
+revised August 2025). Later work, found by a literature search in
+November 2026:
+
+* **Alcarria et al., SPAICE 2026** (arXiv:2609.10017; co-funded by GMV).
+  * Unsupervised: monthly retraining of an LSTM autoencoder (Mission 1)
+    or clustering (Mission 2), with EVT thresholds.
+  * Evaluated over the whole mission from the second month, all target
+    channels, detections grouped within 6 h.
+  * F0.5 **0.700** (Mission 1) and **0.698** (Mission 2).
+  * Not the ESA-ADB split, so not comparable with the table above. Our
+    measurement under their protocol is in
+    `bench/results/esa_chronological_preregistration.md`.
+* **PitIA** (GMV's industrial unsupervised system; Tejedor et al.,
+  BiDS'25). Cited by Alcarria et al. as 0.424 (Mission 1) and **0.882**
+  (Mission 2) "under static train/test configurations". The paper itself
+  was not found, so the channel set and split are unverified. If 0.882
+  is Mission 2 full on the ESA-ADB split, it is above our 0.798, and
+  "1st" on Mission 2 full no longer holds.
+* **Nguyen et al., 2026** (arXiv:2607.07335). Supervised graph and CNN
+  models, plus ECOD and an elliptic envelope; a supervised GAT reaches
+  F0.5 0.781 on Mission 1 full. The split and the metric code differ
+  from ESA-ADB's (not stated to be the corrected event-wise score), so
+  the numbers are not comparable.
+* The Kaggle "ESA-ADB challenge" (e.g. arXiv:2605.06681) is supervised,
+  with its own leaderboard metric.
+
+The claims "1st" and "N x the best published" therefore hold against
+ESA-ADB Table 2 only.
+
 ## Every ESA-ADB metric, computed with ESA-ADB's own code
 
 `--official PATH` imports ESA-ADB's metric modules (`ESAScores`,

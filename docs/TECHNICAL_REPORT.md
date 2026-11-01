@@ -38,8 +38,10 @@ samples), the flight profile is 38% smaller than CCSDS 121 in total and
 smaller on all 75 channels measured. Its per-sample "surprise", computed
 identically on both ends at no extra cost, is also an anomaly detector: on
 ESA's own benchmark (ESA-ADB, corrected event-wise F0.5, test sets
-matching the paper's event counts) it beats every published algorithm on
-the full channel sets of both missions — 0.279 vs 0.061 (Mission 1) and
+matching the paper's event counts) it beats every algorithm in ESA-ADB's
+Table 2 on the full channel sets of both missions (later methods, with
+monthly retraining or supervision and other protocols, score higher; see
+`bench/results/esa_adb.md`) — 0.279 vs 0.061 (Mission 1) and
 0.798 vs 0.079 (Mission 2) — while ranking 2nd and 3rd on the small
 lightweight subsets. The report also lists the ideas that did not work,
 with their measurements.
