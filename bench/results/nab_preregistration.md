@@ -33,3 +33,26 @@ measurement only.
 **Success criterion.** The combination beats the matrix profile alone on
 the number of correct files. A tie or a loss counts as a failure of the
 rule, and will be reported as such.
+
+## Result (run after the protocol above was committed, unchanged)
+
+`python3 bench/nab_combination.py NAB/data NAB/labels/combined_windows.json`
+
+| Method | Correct files (52) |
+|---|---:|
+| Random test point (expected, from window coverage) | 5.8 (0.111) |
+| Compressor surprise | 15 (0.288) |
+| Matrix-profile discord | 16 (0.308) |
+| **Combination by training margin (pre-registered)** | **23 (0.442)** |
+| Either one correct (oracle, not a method) | 28 (0.538) |
+
+**The success criterion is met.** The combination beats the matrix
+profile alone by 7 files (+44% relative) and captures 23 of the 28 files
+where either detector is right. Both detectors are about 2.6–2.8x the
+random baseline, and the combination about 4x.
+
+Taken with UCR (141/250 against 134/250), this supports the rule out of
+sample. Each detector's own anomaly-free training range calibrates its
+evidence well enough to choose between them, with no training and no
+information from other series. The strength of the claim is bounded by
+NAB's size (52 files) and by its known label issues.
