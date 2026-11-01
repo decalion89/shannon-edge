@@ -118,6 +118,8 @@ def main():
     ap.add_argument("--margins", nargs="*", type=float, default=[],
                     help="extra margins t (bits) to report for reference; auto is always reported first")
     ap.add_argument("--cache", type=Path, default=None)
+    ap.add_argument("--dump", type=Path, default=None,
+                    help="write the grouped detections of the a-priori rule (first grouping) to this CSV")
     ap.add_argument("--window-hours", type=float, default=0.0,
                     help="windowed e-value rule: alarm when log2 of the mixture e-process restarted every "
                          "this many hours reaches ceil(log2 W), W = channel-windows scored (Ville); "
@@ -207,6 +209,8 @@ def main():
                 else:
                     grouped.append([a, e])
             glob = change_list([(a, e) for a, e in grouped], lo, hi)
+            if args.dump is not None and t == t_auto and mm == args.merge_minutes[0]:
+                pd.DataFrame(grouped, columns=["start", "end"]).to_csv(args.dump, index=False)
             pc = {ch: change_list(v, lo, hi) for ch, v in per_channel.items()}
             quiet = contextlib.redirect_stdout(io.StringIO())
             with quiet:

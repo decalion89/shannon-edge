@@ -58,3 +58,22 @@ telemetry.
 All results are reported, whatever they are. The rule, t_w, the windows
 and the e grid will not be changed after seeing results. If a variant is
 tried later, it will be labelled post hoc.
+
+## Outcome (added after the runs)
+
+Results are in `esa_chronological.md`. Event-wise F0.5 (windowed vs
+per-sample):
+
+| Mission | Windowed | Per-sample |
+|---|---:|---:|
+| 1 | 0.432 | 0.427 |
+| 2 | **0.724** | 0.217 |
+| 3 | 0.492 | 0.135 |
+
+* **H1 holds**, on 3 of 3 missions (marginally on Mission 1).
+* **H2 holds on Mission 2** (0.724 ≥ 0.698), not on Mission 1 (0.432 <
+  0.700).
+* Every score is above all 20 circular time shifts of its own
+  detections.
+
+The rule was not changed after any result.

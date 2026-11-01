@@ -28,6 +28,7 @@ limits are linked next to the claims.
 | Same, error-bounded (≤ 1 σ of sensor noise), rare values exact | **61% smaller than CCSDS 124**; keeping rare values exact costs 0.1% | `bench/results/near_lossless.md` |
 | Rare-exact rule on ESA-labelled events | 90% of events contain exact values; 0.1% of all values are exact | `bench/results/near_lossless.md` |
 | Anomaly detection on ESA-ADB, **no training**, false alarms bounded by a theorem | Mission 1 full: **0.576 vs 0.061** in ESA-ADB's Table 2; Mission 2 full: **0.249 vs 0.079**. Newer, retrained or supervised methods score higher under other protocols (see esa_adb.md) | `docs/KRAFT_DETECTION.md`, `bench/results/esa_adb.md` |
+| Whole ESA missions, chronological, **no training**, pre-registered rule | Mission 2: **0.724** vs 0.698 for a monthly-retrained method (Alcarria et al. 2026); Mission 1: 0.432 vs 0.700 | `bench/results/esa_chronological.md` |
 | Same detector, thresholds trained on nominal data | first on both full sets under ESA-ADB's own metric code (0.284, 0.798) | `bench/results/esa_adb.md` |
 | Field laws learned on the ground (12-lead ECG) | the derived leads found with no ECG knowledge: **2.77x → 3.82x** | `bench/results/general_data.md` |
 | On board without Rust | C99 libraries for the fast and flight profiles, bit-exact with Rust on 157 M samples, no malloc or float, ASan/UBSan clean | `c/README.md` |

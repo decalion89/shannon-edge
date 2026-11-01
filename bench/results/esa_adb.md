@@ -181,7 +181,9 @@ November 2026:
   * F0.5 **0.700** (Mission 1) and **0.698** (Mission 2).
   * Not the ESA-ADB split, so not comparable with the table above. Our
     measurement under their protocol is in
-    `bench/results/esa_chronological_preregistration.md`.
+    `bench/results/esa_chronological.md`: the pre-registered training-free
+    windowed e-value rule scores **0.724 on Mission 2** (above 0.698)
+    and 0.432 on Mission 1 (below 0.700).
 * **PitIA** (GMV's industrial unsupervised system; Tejedor et al.,
   BiDS'25). Cited by Alcarria et al. as 0.424 (Mission 1) and **0.882**
   (Mission 2) "under static train/test configurations". The paper itself
