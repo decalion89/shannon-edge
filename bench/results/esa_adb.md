@@ -809,3 +809,31 @@ labelled channels was sent.
   first *within* each channel, round-robin across channels.
 * **This is a regime result, not a universal one:** surprise-first wins
   when the downlink is scarce and anomalies are short.
+
+## How much information do anomalies carry? (`bench/analysis/anomaly_information.py`)
+
+**Question.** We measured what share of a mission's information, in bits
+paid by the flight profile online, falls inside labelled events, and
+compared it with the share of time they take.
+
+| Mission (channels) | Category | Share of samples | Share of information | Concentration | Bits/sample inside | Bits/sample overall |
+|---|---|---:|---:|---:|---:|---:|
+| 1 (41–46) | Anomaly | 0.433% | 0.466% | 1.1x | 4.22 | 3.92 |
+| 1 | Rare Event | 0.769% | 0.812% | 1.1x | 4.14 | 3.92 |
+| 2 (18–28) | Anomaly | 1.111% | 1.064% | 1.0x | 7.81 | 8.15 |
+| 2 | Rare Event | 1.707% | 1.985% | 1.2x | 9.48 | 8.15 |
+
+**Finding, on these data.** Labelled events carry about as much
+information per sample as normal operation (1.0–1.2x). Yet the same
+events are detected by single-sample peaks of 18–31 bits above b. The two
+facts fit only one way: **an event's information is concentrated in a
+few dozen bits at its onset, and the rest of its labelled interval is as
+ordinary to the model as any other time.**
+
+This one observation accounts for several other results:
+* timing that is never early (ADTQC after-ratio about 1);
+* slow events that are missed;
+* no early-warning signal;
+* rare values kept exact for about 0.1% of the downlink.
+
+It is a measurement on two missions with one model, not yet a general law.
