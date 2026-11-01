@@ -21,6 +21,9 @@ precision, adapted from ESA-ADB's `ESAScores`
 (github.com/kplabs-pl/ESA-ADB, timeeval/metrics/ESA_ADB_metrics.py, MIT
 License, Copyright (c) 2024 Airbus, KP Labs; 2020-2021 P. Wenig, S. Schmidl).
 
+Defaults are Mission 1's dates; for Mission 2 pass --split 2001-10-01
+--validation 2001-07-01 (ESA-ADB's Mission 2 protocol).
+
 Usage:
     cargo build --release --example flight_surprise
     pip install portion
@@ -115,7 +118,11 @@ def main() -> None:
     ap.add_argument("--channels", nargs="+", type=int, required=True)
     ap.add_argument("--quantiles", nargs="+", type=float, default=[0.99999, 0.999999, 1.0])
     ap.add_argument("--merge-minutes", type=float, default=10.0)
+    ap.add_argument("--split", default="2007-01-01", help="train/test split (Mission 2: 2001-10-01)")
+    ap.add_argument("--validation", default="2006-10-01", help="validation start (Mission 2: 2001-07-01)")
     args = ap.parse_args()
+    global SPLIT, VALIDATION
+    SPLIT, VALIDATION = pd.Timestamp(args.split), pd.Timestamp(args.validation)
 
     z = zipfile.ZipFile(args.mission_zip)
     root = next(n.split("/")[0] for n in z.namelist() if n.endswith("labels.csv"))
