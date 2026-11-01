@@ -238,6 +238,97 @@ are kept exact.
 Acceptable error is a mission decision per parameter; a deployment would
 take field types and tolerances from the mission's telemetry database.
 
+### 3.8 Distance to the strongest known compressor, and numeric prediction (`packet_fast.md`, `packet_v2.md`)
+
+paq8px -8 on the whole Venus Express file is extrapolated at ≈2.39 MB
+(it stopped at 96.2%). sedge CM on the whole file gives 2,849,785 (+19%),
+so the remainder is *not* all noise.
+
+Column by column, the gap concentrates in about ten columns. An ablation
+of paq8px's models, each muted in turn, then keeping one model only,
+shows that **numeric prediction** is the piece sedge lacked: paq8px with
+only its linear-prediction model reaches 12,953 bytes on column 59,
+against 27,980 for sedge CM.
+
+`PacketSession::v2_lp` (opt-in) adds it to v2, integer-only:
+* 14 predictors per column, including 16-bit byte-pair predictors that
+  paq8px does not have;
+* residual histograms, selected by each predictor's recent error;
+* per-column mixer weights.
+
+| Dataset | v2 | v2_lp |
+|---|---:|---:|
+| Venus Express, 2^18 | 2,999,548 | **2,874,663 (−4.16%; −45.7% vs CCSDS 124)** |
+| ECG / power / AIS / MetroPT | | −4.41% / −1.75% / −5.62% / −5.98% |
+
+It closes about 21% of the paq8px gap, at about 3x the time.
+
+The fast profile's own losses were measured too. It codes within 1.3% of
+its model, and that 1.3% is the per-packet flush. Model v2 of the fast
+profile adds:
+* two-speed flags;
+* ground-learned windows per column;
+* checked slope-following columns.
+Together they cut Venus Express by 2.3% with learned layouts, at the same
+speed class. All of it is ported to C, bit-exact.
+
+### 3.9 Training-free anomaly detection with a provable false-alarm bound (`docs/KRAFT_DETECTION.md`, `esa_adb.md`)
+
+For any sequential lossless code with a 2^b alphabet, P(cost ≥ b + t) ≤
+2^(D−t), where D is the max-divergence of the truth from the code (Kraft).
+With t fixed by a formula (t = log2 N, at most one expected false alarm)
+and no training, ESA-ADB's own metric code gives:
+
+| Setting | Corrected event-wise F0.5 | Best published |
+|---|---:|---:|
+| Mission 1, full set | **0.576** | 0.061 |
+| Mission 2, full set | **0.249** | 0.079 |
+| Mission 1, lightweight | 0.705; cumulative rule 0.766 | 0.786 |
+| Mission 2, lightweight | 0.200 | 0.949 |
+
+Limits found:
+* the strict guarantee is too strict on dense, frequent events;
+* the cumulative rule needs a calibrated model;
+* channel attribution stays weak, even with a Kraft attribution step
+  (0.205 → 0.289 / 0.363);
+* the surprise does not predict anomalies days ahead.
+
+The flight profile and the detector are in C99, bit-exact with Rust on
+157 M ESA samples.
+
+### 3.10 Ground-learned field relations (`general_data.md`, `fields`)
+
+On 12-lead ECG the ground finds, with no ECG knowledge, the derived leads
+(Einthoven/Goldberger) as exact integer relations. With per-field deltas,
+packet v2 goes from 2.77x to 3.82x. `fields::RecordTransform` is a 60-byte
+uplink, also in C99 and fuzzed.
+
+### 3.11 What anomalies look like to a compressor (`esa_adb.md`, `ecg_kraft.md`, `kepler.md`, `ucr_anomaly.md`)
+
+* **Information.** Across ESA, UCR, MIT-BIH and Kepler, labelled
+  anomalies carry about as much information per sample as normal
+  operation (1.0–1.2x). What sets them apart is that it is concentrated
+  near their onset: a spike at lag 0 of 6–22x the pre-onset level.
+* **Consequences, measured:**
+  * Keeping rare values exact in the error-bounded mode costs about 0.1%,
+    and 90% of ESA's labelled events contain such values.
+  * Downlinking the largest compressed packets first brings about 2x the
+    anomalies to the ground under tight budgets.
+* **Rarity limit.** A detector with false-alarm rate α can only flag
+  events about as rare as α. Frequent clinical abnormalities (ventricular
+  beats are 15–34% of some records) are not rare. With a beat-shape code,
+  85% of ventricular beats are flagged on held-out MIT-BIH records at a
+  loose bound.
+* **Not universal.** On the UCR archive the surprise scores 0.27–0.35,
+  against 0.54 for the matrix profile. A per-file choice based on each
+  detector's training margin reaches 0.564; that rule was designed after
+  seeing the first one fail.
+* **Planets.** In Kepler data a compression-based search finds Kepler-10b
+  and 10c with no astronomy in the code. With cotrending, split-half
+  evidence and depth-consistency vetting it rejects 62 of 62 quiet stars,
+  but recovers only 11 of 40 injected 150-ppm planets. No discovery is
+  claimed.
+
 ## 4. What did not work (measured)
 
 | Idea | Result | Write-up |
@@ -246,16 +337,22 @@ take field types and tolerances from the mission's telemetry database.
 | Slepian–Wolf: XOR-only encoder, model on the ground | ideal −28%; real code −13.8% only with per-packet feedback; worse than CCSDS 124 without feedback, even with a ground-uplinked rate table | `slepian_wolf.md` |
 | Mixing the two bit models instead of choosing per column | +4% and +23% | `packet_v2.md` |
 | Cross-channel dependency contexts (best predictor column) | −0.7% overall | `packet_fast.md` |
-| Numeric-field deltas as a transform | worse (+0.5% fast, +10% v2) | `packet_fast.md` |
+| Numeric-field deltas as a transform (Venus, heuristic byte layout) | worse (+0.5% fast, +10% v2); with a declared field layout (`fields`) they help v2 by 3–6% on other data, and numeric prediction inside v2 helps everywhere (3.8) | `packet_fast.md`, `general_data.md` |
 | Coding the packet change mask as flips; batch-learned tables | +5%; no faster and +0.3% | `packet_fast.md` |
 | Telecommand timeline as shared side information | no excess surprise after commands | `side_information.md` |
 | Fleet knowledge (models learned elsewhere) | bounded by the learning cost: 0.02% on long missions | `side_information.md` |
 | Hidden structure in the remaining "noise" | none found: heavy-tailed spikes | `side_information.md` |
 
-The common conclusion: once the history is modelled well, what remains in
-this telemetry is sensor noise, which neither end can predict; lossless
-gains beyond the figures above are small, and the large remaining lever is
-the optional error bound.
+An earlier version concluded that, once history is modelled well, what
+remains is sensor noise. That is **corrected** by the paq8px comparison
+(3.8): about 19% of headroom remains at the whole-file level, and numeric
+prediction recovers part of it. What is noise is the per-sample remainder
+*after* a strong model. Further measured dead ends:
+* the 24-h orbit as a context (−1.9% worse);
+* habituation, relation-break detection and early warning in the anomaly
+  work;
+* every "unlabelled anomaly" candidate examined, each explained by a
+  near-miss label, a selection effect or the base rate.
 
 ## 5. Limitations and threats to validity
 
@@ -289,6 +386,9 @@ the optional error bound.
 ## 7. Next steps
 
 1. Replicate on other missions' housekeeping packet streams.
+1. Speed up v2_lp, with ground-learned predictor subsets, and port it to
+   C.
+1. Detector combination with a guarantee (UCR: the oracle reaches 0.64).
 2. Time the fast profile on flight-class hardware (NOEL-V/LEON).
 3. Burst-loss evaluation with interleaved erasure-code groups.
 4. Error-bounded mode inside the codecs, driven by a telemetry database.
