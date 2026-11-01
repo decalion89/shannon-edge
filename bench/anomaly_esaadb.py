@@ -108,6 +108,28 @@ def slow_surprise(series: pd.Series) -> np.ndarray:
     return -np.log2((pair + 0.5) / (ctx + 1.0))
 
 
+def budget_threshold(ts: np.ndarray, cost: np.ndarray, allowed: int, merge) -> float:
+    """Smallest threshold such that the samples above it form at most
+    `allowed` detections (flags closer than `merge` merged into one)."""
+    top = np.argsort(cost)[::-1][: 20000]
+    best = cost[top[0]]
+    lo, hi = 0, len(top)  # number of top samples flagged
+    while lo < hi:  # largest n with events(n) <= allowed
+        mid = (lo + hi + 1) // 2
+        t = np.sort(ts[top[:mid]])
+        events = 1 + int(np.count_nonzero(np.diff(t) > merge)) if mid else 0
+        if events <= allowed:
+            lo = mid
+        else:
+            hi = mid - 1
+    n = lo
+    if n == 0:
+        return float(best)
+    if n >= len(top):
+        return float(cost[top[-1]])
+    return float(cost[top[n]])  # flag exactly the top n samples (ties aside)
+
+
 def esa_event_scores(y_true: pd.DataFrame, events_pred: P.Interval, full_range, beta=0.5) -> dict:
     """Event-wise part of ESA-ADB's ESAScores.score (see module docstring)."""
     selected = y_true[y_true["Category"].isin(["Rare Event", "Anomaly"])]
@@ -156,6 +178,9 @@ def main() -> None:
     ap.add_argument("--channels", nargs="+", type=int, required=True)
     ap.add_argument("--quantiles", nargs="+", type=float, default=[0.99999, 0.999999, 1.0])
     ap.add_argument("--merge-minutes", type=float, default=10.0)
+    ap.add_argument("--budgets", nargs="*", type=float, default=[],
+                    help="also try thresholds that allow at most this many detections per year in the "
+                         "nominal training data (an operational false-alarm budget)")
     ap.add_argument("--factors", nargs="+", type=float, default=[1.0],
                     help="threshold multipliers to try (chosen on validation)")
     ap.add_argument("--resample", default=None,
@@ -182,6 +207,7 @@ def main() -> None:
     lab = labels[labels["Channel"].isin(names)]
 
     data = {}
+    merge_ns = np.timedelta64(int(args.merge_minutes * 60e9), "ns")
     for ch in names:
         s = load(z, f"{root}/channels/{ch}.zip")
         if args.resample:
@@ -212,6 +238,11 @@ def main() -> None:
                 for key, arr in (("fast", b), ("slow", sl)):
                     if arr is not None:
                         thr[(fit_end, q, key)] = np.quantile(arr[fit], q) if q < 1 else arr[fit].max()
+            for k in args.budgets:
+                years = (ts[fit][-1] - ts[fit][0]) / np.timedelta64(365 * 86400, "s")
+                for key, arr in (("fast", b), ("slow", sl)):
+                    if arr is not None:
+                        thr[(fit_end, -k, key)] = budget_threshold(ts[fit], arr[fit], int(k * years), merge_ns)
         keep = ts >= np.datetime64(VALIDATION - pd.DateOffset(months=3))
         data[ch] = (ts[keep], b[keep].astype(np.float32), None if sl is None else sl[keep].astype(np.float32), thr)
         del b, sl, in_event
@@ -263,9 +294,10 @@ def main() -> None:
                    for a, e in to_events(channel_flags(ch, q, factor, fit_end, lo, hi, slow))]
         return P.Interval(*iv), len(muted)
 
-    rules = [(q, f, m, sl) for q in args.quantiles for f in args.factors
+    rules = [(q, f, m, sl) for q in list(args.quantiles) + [-k for k in args.budgets] for f in args.factors
              for m in ([False, True] if args.mute else [False]) for sl in ([False, True] if args.slow else [False])]
-    name = lambda r: (f"q={r[0]}" + (f", x{r[1]}" if r[1] != 1 else "") + (", mute" if r[2] else "")  # noqa: E731
+    name = lambda r: ((f"q={r[0]}" if r[0] >= 0 else f"budget {-r[0]:g}/year")  # noqa: E731
+                      + (f", x{r[1]}" if r[1] != 1 else "") + (", mute" if r[2] else "")
                       + (", +slow memory" if r[3] else ""))
 
     # Choose the rule on the validation months only (thresholds fitted before them).
