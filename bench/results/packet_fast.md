@@ -127,3 +127,29 @@ Scripts: `bench/analysis/parents.py`, `recipes2.py`, `flags.py`.
   recipes added to the learned recipes (−0.3%); "same?" decisions 260,163
   → 245,866 bytes with "parent changed" added (−5.5% of the flags). About
   −0.7% of the total: not worth a reordered coding loop. Not implemented.
+
+## Numeric fields: a negative result
+
+The Venus Express packets carry multi-byte numbers: a CCSDS primary header
+(APID 212, sequence count +2 per packet), a time field at bytes 6–9 (+4
+per packet), and many 24- and 32-bit big-endian values. Every model here,
+like CCSDS 124, sees bytes; a value crossing a 256 boundary changes two
+bytes. `bench/analysis/fields.py` finds the field layout from history
+alone (18 fields of 2–4 bytes, all big-endian) and estimates −2.9% from
+coding numeric deltas. (No packet error control field: the last bytes
+are constant.)
+
+Measured instead with a reversible transform — every field replaced by its
+numeric delta from the previous packet, zigzag-coded so small changes give
+small numbers and carries disappear — and the real codecs:
+
+| Input | Fast profile | v2, 2^14 |
+|---|---:|---:|
+| original packets | 3,845,622 | 3,251,718 |
+| field deltas, zigzag | 3,866,563 (+0.5%) | 3,577,483 (+10.0%) |
+| field deltas, plain | 4,082,276 (+6.2%) | 3,683,399 (+13.3%) |
+
+Worse: the models already predict each byte from the byte above, and the
+delta transform removes the absolute value that the transition model
+("which value follows which") uses. Carries are rare enough not to
+matter.
