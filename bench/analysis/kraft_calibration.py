@@ -13,7 +13,7 @@ root = next(n.split("/")[0] for n in z.namelist() if n.endswith("labels.csv"))
 lab = pd.read_csv(io.BytesIO(z.read(f"{root}/labels.csv")))
 for c in ("StartTime", "EndTime"):
     lab[c] = pd.to_datetime(lab[c]).dt.tz_localize(None)
-T = [4, 8, 12, 16, 20, 24, 28, 32]
+T = [1, 2, 4, 8, 12, 16, 20, 24]
 print("| channel | b | nominal train samples | " + " | ".join(f"t={t}" for t in T) + " | max-b |")
 print("|---|---:|---:|" + "---:|" * (len(T) + 1))
 for c in chans:

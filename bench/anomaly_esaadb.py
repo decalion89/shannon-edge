@@ -222,7 +222,7 @@ def write_report(path, rule, rule_name, data, labels, lab, channel_flags, to_eve
         if ch in muted:
             continue
         key = (pd.Timestamp(SPLIT), q, "fast")
-        th = thr[key] * factor if not timed else None
+        th = thr.get(key, 0.0) * factor if not timed else None
         out = []
         for a, e in to_events(channel_flags(ch, q, factor, SPLIT, SPLIT, hi, slow, timed)):
             i, j = np.searchsorted(ts, a), np.searchsorted(ts, e, "right")
@@ -305,6 +305,12 @@ def main() -> None:
                     help="also try adding the never-forgetting transition-rarity detector (OR-combined)")
     ap.add_argument("--mute", action="store_true",
                     help="also try muting channels that raised a false alarm in the 3 months before the evaluated period")
+    ap.add_argument("--kraft-cusum", action="store_true",
+                    help="also try the cumulative Kraft rule: per channel, CUSUMs of log2((1-e) + e 2^(cost-b)) "
+                         "for e in 2^-1, 2^-4, 2^-8, 2^-12; alarm when any exceeds t + 2 bits, t = "
+                         "ceil(log2(test samples over all channels)). Each increment is an e-value under a "
+                         "calibrated model, so the expected number of false alarms is at most 1, as for --kraft "
+                         "auto, but evidence from several moderately surprising samples adds up")
     ap.add_argument("--report", type=Path, default=None,
                     help="write, for the rule chosen on validation, every test event (detected or not, first "
                          "flag relative to its start, channels flagged) and every detection that overlaps no "
@@ -375,6 +381,14 @@ def main() -> None:
             for fit_end in (VALIDATION - pd.DateOffset(months=3), VALIDATION, SPLIT):
                 thr[(fit_end, 1000 + t, "fast")] = code_bits + t  # no training data used
         thr["code_bits"] = code_bits
+        if args.kraft_cusum:
+            # S_i = max(0, S_{i-1} + x_i) = C_i - min(0, min_{j<=i} C_j), C = cumsum(x)
+            score = np.full(len(b), -np.inf)
+            for e in (2.0 ** -1, 2.0 ** -4, 2.0 ** -8, 2.0 ** -12):
+                x = np.log2((1 - e) + e * np.exp2(np.minimum(b - code_bits, 1000.0)))
+                cum = np.cumsum(x)
+                score = np.maximum(score, cum - np.minimum(np.minimum.accumulate(cum), 0.0))
+            thr["cusum"] = score - 2.0  # union over 4 values of e
         # Kind of interval since the previous sample: 0 shorter than usual,
         # 1 usual, 2 gap (relative to the channel's median interval).
         dt = np.diff(ts, prepend=ts[:1]).astype(np.int64)
@@ -390,6 +404,8 @@ def main() -> None:
                         thr[(fit_end, q, "fast", kd)] = ((np.quantile(b[sel], q) if q < 1 else b[sel].max())
                                                         if sel.any() else np.inf)
         keep = ts >= np.datetime64(VALIDATION - pd.DateOffset(months=3))
+        if "cusum" in thr:
+            thr["cusum"] = thr["cusum"][keep].astype(np.float32)
         data[ch] = (ts[keep], b[keep].astype(np.float32), None if sl is None else sl[keep].astype(np.float32), thr,
                     kind[keep])
         med_dt[ch] = np.timedelta64(int(med), "ns")
@@ -406,6 +422,9 @@ def main() -> None:
         for d in data.values():
             for fit_end in (VALIDATION - pd.DateOffset(months=3), VALIDATION, SPLIT):
                 d[3][(fit_end, 1000 + t_auto, "fast")] = d[3]["code_bits"] + t_auto
+    if args.kraft_cusum:
+        n_test = sum(int((d[0] >= np.datetime64(SPLIT)).sum()) for d in data.values())
+        t_cusum = float(np.ceil(np.log2(n_test)))
     full_range = (SPLIT, pd.Timestamp(test_end))
     y_true = lab[lab["EndTime"] > SPLIT].copy()
     y_true["StartTime"] = y_true["StartTime"].clip(lower=SPLIT)
@@ -422,6 +441,8 @@ def main() -> None:
             per_kind = np.array([thr[(pd.Timestamp(fit_end), q, "fast", kd)] * factor for kd in (0, 1, 2)],
                                 dtype=np.float32)
             flag = b > per_kind[kind]
+        elif q >= 2000:
+            flag = thr["cusum"] >= np.float32(q - 2000)
         else:
             flag = b > np.float32(thr[(pd.Timestamp(fit_end), q, "fast")] * factor)
         if slow:
@@ -457,10 +478,12 @@ def main() -> None:
         return P.Interval(*iv), len(muted)
 
     rules = [(q, f, m, sl, tm) for q in list(args.quantiles) + [-k for k in args.budgets] + [1000 + t for t in kraft_t]
+             + ([2000 + t_cusum] if args.kraft_cusum else [])
              for f in args.factors
              for m in ([False, True] if args.mute else [False]) for sl in ([False, True] if args.slow else [False])
              for tm in ([False, True] if args.time_aware and 0 <= q < 1000 else [False])]
-    name = lambda r: ((f"Kraft b+{r[0] - 1000:g} bits (no training)" if r[0] >= 1000  # noqa: E731
+    name = lambda r: ((f"cumulative Kraft, t={r[0] - 2000:g} bits (no training)" if r[0] >= 2000  # noqa: E731
+                       else f"Kraft b+{r[0] - 1000:g} bits (no training)" if r[0] >= 1000
                        else f"q={r[0]}" if r[0] >= 0 else f"budget {-r[0]:g}/year")
                       + (f", x{r[1]}" if r[1] != 1 else "") + (", mute" if r[2] else "")
                       + (", +slow memory" if r[3] else "") + (", time-aware" if r[4] else ""))
