@@ -309,6 +309,11 @@ def main() -> None:
                     help="write, for the rule chosen on validation, every test event (detected or not, first "
                          "flag relative to its start, channels flagged) and every detection that overlaps no "
                          "labelled event in any channel, ranked by its evidence in bits")
+    ap.add_argument("--attribute", action="store_true",
+                    help="with --official: once a detection fires, also name every channel whose cost reaches "
+                         "b + t_attr bits within the merge window around it, t_attr = log2(samples examined in "
+                         "that window over all channels): at most one expected false channel per detection "
+                         "under the Kraft bound (no training, no tuning)")
     ap.add_argument("--split", default="2007-01-01", help="train/test split (Mission 2: 2001-10-01)")
     ap.add_argument("--validation", default="2006-10-01", help="validation start (Mission 2: 2001-07-01)")
     args = ap.parse_args()
@@ -515,9 +520,43 @@ def main() -> None:
                     k = np.searchsorted(ts, e, "right")
                     end = ts[k] if k < len(ts) else e + med_dt[ch]  # a flag covers [t, next sample)
                     iv.append((pd.Timestamp(a), pd.Timestamp(end)))
-            per_channel[ch] = change_list(iv, test_lo, test_hi)
-        glob = change_list([(a, e) for ch in names for a, e in zip(per_channel[ch][1:-1:2, 0], per_channel[ch][2:-1:2, 0])],
-                           test_lo, test_hi)
+            per_channel[ch] = iv
+        glob = change_list([(a, e) for ch in names for a, e in per_channel[ch]], test_lo, test_hi)
+        if args.attribute:
+            # Kraft attribution: the global detections are fixed; around each one, count the samples
+            # examined (all channels, +-merge window) and name the channels whose cost reaches
+            # b + log2(that count). Expected false channels per detection <= 1 if the model is calibrated.
+            pad = pd.Timedelta(minutes=args.merge_minutes)
+            union = P.Interval(*[P.closed(a, e) for ch in names for a, e in per_channel[ch]])
+            added, t_used = 0, []
+            for atom in union:
+                lo, hi = np.datetime64(atom.lower - pad), np.datetime64(atom.upper + pad)
+                wins = {}
+                for ch in names:
+                    if ch in muted:
+                        continue
+                    ts, cost, _sl, thr_ch, _k = data[ch]
+                    i, j = np.searchsorted(ts, lo), np.searchsorted(ts, hi, "right")
+                    wins[ch] = (i, j)
+                n = sum(j - i for i, j in wins.values())
+                if n == 0:
+                    continue
+                t_attr = float(np.log2(n))
+                t_used.append(t_attr)
+                for ch, (i, j) in wins.items():
+                    ts, cost, _sl, thr_ch, _k = data[ch]
+                    hit = np.nonzero(cost[i:j] >= thr_ch["code_bits"] + t_attr)[0]
+                    if len(hit) == 0:
+                        continue
+                    a, e = ts[i + hit[0]], ts[i + hit[-1]]
+                    k = np.searchsorted(ts, e, "right")
+                    end = ts[k] if k < len(ts) else e + med_dt[ch]
+                    if not any(pd.Timestamp(a) <= y and pd.Timestamp(end) >= x for x, y in per_channel[ch]):
+                        per_channel[ch].append((pd.Timestamp(a), pd.Timestamp(end)))
+                        added += 1
+            print(f"Kraft attribution: {added} channel intervals added around {len(t_used)} detections "
+                  f"(t_attr median {np.median(t_used) if t_used else float('nan'):.1f} bits)", file=sys.stderr)
+        per_channel = {ch: change_list(sorted(iv), test_lo, test_hi) for ch, iv in per_channel.items()}
         sel = {"Category": ["Rare Event", "Anomaly"]}
         out = {}
         import contextlib  # ESA-ADB's affiliation code prints debug lists; keep stdout clean
