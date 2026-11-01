@@ -311,6 +311,8 @@ def main() -> None:
                          "ceil(log2(test samples over all channels)). Each increment is an e-value under a "
                          "calibrated model, so the expected number of false alarms is at most 1, as for --kraft "
                          "auto, but evidence from several moderately surprising samples adds up")
+    ap.add_argument("--cusum-offsets", nargs="*", type=float, default=[0.0],
+                    help="with --kraft-cusum: also try thresholds t + offset (bits); validation picks")
     ap.add_argument("--self-calibrate", action="store_true",
                     help="Kraft rules only: each channel estimates online, from its own past and no labels, how "
                          "overconfident its model is: D = max over margins m in 4..24 (step 4) of "
@@ -501,7 +503,7 @@ def main() -> None:
         return P.Interval(*iv), len(muted)
 
     rules = [(q, f, m, sl, tm) for q in list(args.quantiles) + [-k for k in args.budgets] + [1000 + t for t in kraft_t]
-             + ([2000 + t_cusum] if args.kraft_cusum else [])
+             + ([2000 + t_cusum + o for o in args.cusum_offsets] if args.kraft_cusum else [])
              for f in args.factors
              for m in ([False, True] if args.mute else [False]) for sl in ([False, True] if args.slow else [False])
              for tm in ([False, True] if args.time_aware and 0 <= q < 1000 else [False])]

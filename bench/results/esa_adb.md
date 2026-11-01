@@ -327,6 +327,17 @@ On Mission 1 lightweight the official code gives:
 * ADTQC 0.580, down from 1.000. Accumulated evidence can cross the
   threshold before the labelled start.
 
+**Can validation pick a better margin? No.** With `--cusum-offsets -6 -4
+-2 0 2 4` on Mission 1 lightweight, the test scores are:
+
+| Margin t (bits) | 20 | 22 | 24 | **26 (a priori)** | 28 | 30 |
+|---|---:|---:|---:|---:|---:|---:|
+| Test event-wise F0.5 | 0.717 | 0.742 | 0.751 | **0.766** | 0.747 | 0.666 |
+
+Validation, with only 3 events, picks t = 30, which scores 0.666 on test.
+No margin reaches the best published 0.786. The a-priori margin is the
+best of the grid, but choosing it after seeing the test would not count.
+
 **Why it collapses elsewhere.** The guarantee assumes calibration, and
 accumulation punishes even mild overconfidence. On Mission 2, channels
 18–20 exceed b + t bits about 4 times more often than 2^−t at t ≥ 16
