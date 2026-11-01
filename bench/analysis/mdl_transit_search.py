@@ -29,6 +29,10 @@ ap.add_argument("fits")
 ap.add_argument("--pmin", type=float, default=0.5)
 ap.add_argument("--pmax", type=float, default=20.0)
 ap.add_argument("--planets", type=int, default=3)
+ap.add_argument("--cotrend", nargs="*", default=[],
+                help="other stars' light curves of the same quarter: subtract their common-mode (median of "
+                     "their detrended, normalised flux, interpolated to this star's times), scaled by least "
+                     "squares. A signal shared by all stars is the instrument, not a planet")
 a = ap.parse_args()
 d = fits.open(a.fits)[1].data
 t, f = d["TIME"], d["PDCSAP_FLUX"]
@@ -36,6 +40,19 @@ ok = np.isfinite(t) & np.isfinite(f)
 t, f = t[ok].astype(np.float64), f[ok].astype(np.float64) / np.median(f[ok])
 cad = np.median(np.diff(t))
 r = f - median_filter(f, size=max(3, int(round(1.0 / cad))), mode="nearest")
+if a.cotrend:
+    others = []
+    for path in a.cotrend:
+        dd = fits.open(path)[1].data
+        tt, ff = dd["TIME"], dd["PDCSAP_FLUX"]
+        k = np.isfinite(tt) & np.isfinite(ff)
+        tt, ff = tt[k].astype(np.float64), ff[k].astype(np.float64) / np.median(ff[k])
+        rr = ff - median_filter(ff, size=max(3, int(round(1.0 / cad))), mode="nearest")
+        rr /= 1.4826 * np.median(np.abs(np.diff(rr))) / np.sqrt(2)  # each star in its own noise units
+        others.append(np.interp(t, tt, rr))
+    cm = np.median(np.array(others), axis=0)
+    beta = float(np.dot(cm, r) / max(np.dot(cm, cm), 1e-30))
+    r = r - beta * cm
 sigma = 1.4826 * np.median(np.abs(np.diff(r))) / np.sqrt(2)
 T = t[-1] - t[0]
 durs = [d_ for d_ in (1.0 / 24, 2.0 / 24, 4.0 / 24, 8.0 / 24)]
@@ -68,6 +85,18 @@ for k in range(a.planets):
         n_hyp += nb_tot
     desc = np.log2(n_hyp)
     net, P, ph, D, depth, n = best
+    # Consistency (as in transit vetting): the same box must save bits in each half of the
+    # time series separately. A one-off instrumental event can only be in one half.
+    phall = ((t - t[0]) / P) % 1.0
+    inbox = mask & (phall >= ph) & (phall < ph + D / P)
+    half = t < t[0] + (t[-1] - t[0]) / 2
+    halves = []
+    for hmask in (half, ~half):
+        sel = inbox & hmask
+        c_ = sel.sum()
+        s_ = r[sel].sum()
+        halves.append(s_ * s_ / (2 * sigma ** 2 * np.log(2) * c_) - 0.5 * np.log2(max(c_, 1)) if c_ > 2 and s_ < 0 else 0.0)
+    print(f"  consistency: bits saved in each half {halves[0]:.1f} / {halves[1]:.1f} (weaker half {min(halves):.1f})")
     print(f"planet search #{k + 1}: best P = {P:.5f} d, phase {ph:.3f}, duration {D * 24:.0f} h, depth {depth * 1e6:.0f} ppm, "
           f"{n} points in box; bits saved {net + desc:.1f} - description {desc:.1f} = net {net:.1f} bits "
           f"(false-alarm bound 2^-{max(net, 0):.0f})")

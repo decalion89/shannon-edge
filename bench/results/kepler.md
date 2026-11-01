@@ -82,3 +82,44 @@ depth, and vetting. Without those, **no new-planet claim can be made
 from this code.** The finding stands as stated: compression accounting
 recovers both known planets of Kepler-10, and its false-alarm bound needs
 a calibrated noise model.
+
+### Making the evidence honest: cotrending and split-half consistency
+
+Two vetting steps, both standard in transit searches, were added to
+`mdl_transit_search.py`.
+
+**Cotrending (`--cotrend`).** The other stars of the same quarter give a
+common mode: the median of their detrended flux, each in its own noise
+units, interpolated to this star's times. It is subtracted, scaled by
+least squares. A signal shared by every star is the instrument, not a
+planet.
+
+**Split-half consistency.** The best box must save bits in *each half*
+of the quarter separately. A one-off instrumental event can only be in
+one half.
+
+Search over 0.5–20 days, quarter 3, each star cotrended against the
+other nine:
+
+| Star | Best period | Net bits | **Weaker half** |
+|---|---:|---:|---:|
+| **Kepler-10** (Kepler-10b) | 0.83730 d | 2,127.7 | **901.3** |
+| KIC 8006161 | 14.957 d | 261.4 | 114.5 |
+| KIC 12069449 | 18.914 d | 715.2 | 98.6 |
+| KIC 10454113 | 18.408 d | 195.8 | 40.3 |
+| KIC 9139151 | 8.114 d | 63.3 | 27.2 |
+| KIC 7510397 | 12.508 d | 29.9 | 4.7 |
+| KIC 3427720, 6106415, 6225718, 8379927 | — | 92–390 | ≤ 0.7 |
+
+**Result.**
+* Cotrending cut the false evidence by 2–5x (e.g. 1,780 → 715 bits) and
+  left Kepler-10b unchanged.
+* The weaker-half test then drops every false signal to at most 115
+  bits, while Kepler-10b keeps 901: a margin of about 8x.
+* On these ten stars a threshold of a few hundred bits in the weaker
+  half separates the real planet from instrument effects.
+
+Ten stars and one quarter are far too few to set a threshold or to claim
+a false-alarm rate. A real search would need hundreds of quiet stars and
+all quarters to calibrate it, and then candidates would still need
+vetting by astronomers.
