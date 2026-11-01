@@ -8,7 +8,9 @@
 //! With SEDGE_FAST_RECIPES=1: the first 10% of the packets play the
 //! history held on the ground; it chooses per-column context recipes
 //! (`learn_recipes`) and both ends are primed with it. Reported on the
-//! remaining 90%: default recipes vs learned recipes.
+//! remaining 90%: default recipes, learned recipes, and learned recipes
+//! plus coding classes (`learn_classes`; thresholds from
+//! SEDGE_FAST_CLASSES=static_max,always_min, default 0.01,0.9).
 
 use shannon_edge::packet_fast::FastPacketSession;
 use std::time::Instant;
@@ -27,11 +29,28 @@ fn main() {
         for &r in &recipes {
             counts[r as usize] += 1;
         }
-        for (name, r) in [
-            ("default recipes", vec![0u8; len]),
-            ("learned recipes", recipes),
-        ] {
-            let mut base = FastPacketSession::with_recipes(&r);
+        let (smax, amin) = std::env::var("SEDGE_FAST_CLASSES")
+            .ok()
+            .and_then(|v| {
+                let (a, b) = v.split_once(',')?;
+                Some((a.parse().ok()?, b.parse().ok()?))
+            })
+            .unwrap_or((0.01, 0.9));
+        let classes = FastPacketSession::learn_classes(len, history, smax, amin);
+        let normal = vec![0u8; len];
+        let runs = [
+            ("default recipes", vec![0u8; len], normal.clone()),
+            ("learned recipes", recipes.clone(), normal),
+            ("learned recipes + classes", recipes, classes.clone()),
+        ];
+        let only: Option<usize> = std::env::var("SEDGE_FAST_ONLY")
+            .ok()
+            .and_then(|v| v.parse().ok());
+        for (i, (name, r, cl)) in runs.into_iter().enumerate() {
+            if only.is_some_and(|o| o != i) {
+                continue;
+            }
+            let mut base = FastPacketSession::with_layout(&r, &cl);
             base.prime(history.iter().copied());
             let (mut tx, mut rx) = (base.clone(), base);
             let t = Instant::now();
@@ -48,7 +67,11 @@ fn main() {
                 (test.len() * len) as f64 / enc / 1e6
             );
         }
-        println!("recipes per kind {counts:?}, learned in {learn:.2}s");
+        let ccount = [0u8, 1, 2].map(|c| classes.iter().filter(|&&x| x == c).count());
+        println!(
+            "recipes per kind {counts:?}, learned in {learn:.2}s; classes normal/static/always \
+             {ccount:?} (SEDGE_FAST_CLASSES={smax},{amin})"
+        );
         return;
     }
     let (mut tx, mut rx) = (FastPacketSession::new(len), FastPacketSession::new(len));

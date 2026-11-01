@@ -170,3 +170,33 @@ fn learned_recipes_roundtrip_and_help() {
 fn unknown_recipe_is_rejected() {
     FastPacketSession::with_recipes(&[0, 9]);
 }
+
+#[test]
+fn coding_classes_roundtrip() {
+    use shannon_edge::packet_fast::class;
+    let all = packets(2_000, 32, 21);
+    let (history, test) = all.split_at(200);
+    let hist: Vec<&[u8]> = history.iter().map(Vec::as_slice).collect();
+    let classes = FastPacketSession::learn_classes(32, &hist, 0.01, 0.9);
+    assert!(
+        classes.contains(&class::STATIC) && classes.contains(&class::ALWAYS),
+        "{classes:?}"
+    );
+    let recipes = FastPacketSession::learn_recipes(32, &hist);
+    // Learned classes, and every class forced on every column (including
+    // "static" columns that do change and "always" columns that do not).
+    for cl in [classes, vec![class::STATIC; 32], vec![class::ALWAYS; 32]] {
+        let mut base = FastPacketSession::with_layout(&recipes, &cl);
+        base.prime(hist.iter().copied());
+        let (mut tx, mut rx) = (base.clone(), base);
+        for p in test {
+            assert_eq!(&rx.decompress(&tx.compress(p)).unwrap(), p);
+        }
+    }
+}
+
+#[test]
+#[should_panic(expected = "unknown class")]
+fn unknown_class_is_rejected() {
+    FastPacketSession::with_layout(&[0, 0], &[0, 7]);
+}

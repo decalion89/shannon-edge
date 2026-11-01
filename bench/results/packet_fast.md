@@ -153,3 +153,52 @@ Worse: the models already predict each byte from the byte above, and the
 delta transform removes the absolute value that the transition model
 ("which value follows which") uses. Carries are rare enough not to
 matter.
+
+## Work per byte, not only bits: coding classes, and instruction counts
+
+Wall-clock speeds on this shared machine vary by ±30% between identical
+runs, so speed is also measured as **instructions executed per input byte**
+(valgrind/callgrind, x86-64), which does not depend on machine load and is
+closer to what matters on simple in-order flight processors (about one
+instruction per cycle).
+
+**Coding classes** (`packet_fast::class`, chosen by the ground with
+`learn_classes` from the change rate of each column in the history, one
+byte per column to uplink like the recipes):
+
+* `STATIC` (changes in < 1% of packets): all static columns share one "any
+  changed?" decision per packet and cost nothing else when none changed;
+* `ALWAYS` (changes in > 90%): the delta is coded directly, 0 included,
+  without a separate decision;
+* `NORMAL`: as before.
+
+Venus Express, layout learned on the first 10%, measured on the other 90%
+(sizes) and on all packets (instructions in `compress`, priming included):
+
+| Fast profile | Bytes (test 90%) | Instructions / byte |
+|---|---:|---:|
+| default | 3,463,245 | 181.4 |
+| learned recipes | 3,237,111 | 183.6 |
+| learned recipes + classes (static < 1%, always > 90%: 39 static, 20 always) | 3,250,871 (+0.4%) | **153.2 (−16.6%)** |
+| learned recipes + classes (static < 0.2%, always > 95%: 29 static, 12 always) | **3,234,200 (−0.1%)** | 163.5 (−11.0%) |
+
+**Against CCSDS 124.** The open C implementation compiled from source with
+`-O3` (no LTO, so the compressor can be isolated), callgrind restricted to
+`ccsds124_compress_packet` on the same 136,080 test packets: **1,288
+instructions per byte**, 7–8x more than the fast profile. In wall-clock
+time on a desktop core the gap is only ~2x (26 vs ~50 MB/s), because its
+word-level bit-vector loops run at a much higher instructions-per-cycle on
+an out-of-order x86 than our branchy model code does. On an in-order flight
+CPU the instruction count should matter more, but this has not been
+measured on one; it is also an open reference implementation, not
+necessarily the fastest CCSDS 124 code that flies. One caveat on our side
+for a flight port: `encode_freq` divides 64-bit integers, which 32-bit
+flight CPUs (LEON3) do in software; a 32-bit range-coder formulation
+(`range / total` once per symbol) would avoid it.
+
+Reproduce: `SEDGE_FAST_RECIPES=1 SEDGE_FAST_ONLY=<0|1|2>
+SEDGE_FAST_CLASSES=0.01,0.9 valgrind --tool=callgrind
+--toggle-collect='*FastPacketSession*::compress'
+target/release/examples/packet_fast_bench venus-express.ccsds 90`; for
+CCSDS 124, build `bench/c/ccsds124_loss.c` with the library sources and
+`--toggle-collect=ccsds124_compress_packet`.

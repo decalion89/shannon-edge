@@ -28,6 +28,8 @@ const SYMS: usize = 255;
 /// Adaptive frequencies of the 255 possible deltas, with a Fenwick tree.
 #[derive(Clone)]
 struct Freq {
+    /// Number of symbols: 255 (deltas 1..=255) or 256 (deltas 0..=255).
+    syms: u16,
     f: [u16; 256],
     /// Fenwick tree; partial sums never exceed `LIMIT`, so 16 bits suffice.
     tree: [u16; 257],
@@ -35,13 +37,14 @@ struct Freq {
 }
 
 impl Freq {
-    fn new() -> Self {
+    fn new(syms: usize) -> Self {
         let mut s = Self {
+            syms: syms as u16,
             f: [0; 256],
             tree: [0; 257],
             total: 0,
         };
-        for f in &mut s.f[..SYMS] {
+        for f in &mut s.f[..syms] {
             *f = 1;
         }
         s.rebuild();
@@ -88,13 +91,13 @@ impl Freq {
             }
             mask >>= 1;
         }
-        (pos.min(SYMS - 1), cum)
+        (pos.min(self.syms as usize - 1), cum)
     }
 
     #[inline]
     fn update(&mut self, s: usize) {
         if self.total + INC > LIMIT {
-            for f in &mut self.f[..SYMS] {
+            for f in &mut self.f[..self.syms as usize] {
                 *f = (*f >> 1).max(1);
             }
             self.rebuild();
@@ -109,6 +112,41 @@ impl Freq {
     }
 }
 
+/// Code one symbol with an adaptive frequency table: `sym` is the symbol
+/// when encoding (`None` when decoding). Returns the symbol and updates the
+/// table.
+#[inline]
+fn code_symbol(f: &mut Freq, sym: Option<usize>, io: &mut Io) -> usize {
+    let s = match io {
+        Io::Enc(e) => {
+            let s = sym.expect("encoder knows the symbol");
+            let cum = f.cum(s);
+            if !e.encode_freq(cum, f.f[s] as u32, f.total) {
+                for i in (0..8).rev() {
+                    e.encode((s as u32 >> i) & 1, 2048);
+                }
+            }
+            s
+        }
+        Io::Dec(d) => match d.decode_target(f.total) {
+            Some(v) => {
+                let (s, cum) = f.find(v);
+                d.decode_freq(cum, f.f[s] as u32, f.total);
+                s
+            }
+            None => {
+                let mut s = 0;
+                for _ in 0..8 {
+                    s = (s << 1) | d.decode(2048) as usize;
+                }
+                s.min(f.syms as usize - 1)
+            }
+        },
+    };
+    f.update(s);
+    s
+}
+
 /// Per-column state.
 #[derive(Clone, Copy, Default)]
 struct Column {
@@ -120,6 +158,24 @@ struct Column {
     /// Context recipe and the index of its first frequency table.
     recipe: u8,
     base: u32,
+    /// Coding class (see [`class`]).
+    class: u8,
+}
+
+/// Column coding classes, chosen by the ground from the history
+/// ([`FastPacketSession::learn_classes`]) like the recipes: they decide how
+/// much work each byte costs, not only how many bits.
+pub mod class {
+    /// "Same as above?" decision, then the delta if it changed (default).
+    pub const NORMAL: u8 = 0;
+    /// Rarely changes: all static columns share one "any changed?" decision
+    /// per packet and cost nothing else when none changed.
+    pub const STATIC: u8 = 1;
+    /// Nearly always changes: the delta is coded directly, 0 included, with
+    /// no separate decision.
+    pub const ALWAYS: u8 = 2;
+    /// Number of classes.
+    pub const COUNT: u8 = 3;
 }
 
 /// Context recipes for a column's delta tables. The ground, which holds the
@@ -186,6 +242,11 @@ pub struct FastPacketSession {
     /// Packets processed (both ends) and, receiver only, lost sync.
     count: u64,
     desynced: bool,
+    /// Whether any column is static; the group decision's probabilities
+    /// (by whether the group changed in the previous packet).
+    has_static: bool,
+    group: [u16; 2],
+    group_last: bool,
 }
 
 enum Io<'a, 'b> {
@@ -209,27 +270,84 @@ impl FastPacketSession {
     /// # Panics
     /// If the length is out of range or a recipe is unknown.
     pub fn with_recipes(recipes: &[u8]) -> Self {
+        Self::with_layout(recipes, &vec![class::NORMAL; recipes.len()])
+    }
+
+    /// A session with a context recipe ([`recipe`]) and a coding class
+    /// ([`class`]) per column; the packet length is `recipes.len()`. Both
+    /// ends must use the same layout.
+    ///
+    /// # Panics
+    /// If the length is out of range, the slices differ in length, or a
+    /// recipe or class is unknown.
+    pub fn with_layout(recipes: &[u8], classes: &[u8]) -> Self {
         let packet_len = recipes.len();
         assert!((1..=65536).contains(&packet_len), "packet_len in 1..=65536");
+        assert_eq!(classes.len(), packet_len, "one class per column");
         assert!(recipes.iter().all(|&r| r < recipe::COUNT), "unknown recipe");
+        assert!(classes.iter().all(|&c| c < class::COUNT), "unknown class");
         let mut cols = vec![Column::default(); packet_len];
-        let mut tables = 0usize;
-        for (c, &r) in cols.iter_mut().zip(recipes) {
+        let mut freq = Vec::new();
+        for ((c, &r), &cl) in cols.iter_mut().zip(recipes).zip(classes) {
             c.recipe = r;
-            c.base = tables as u32;
-            tables += recipe::tables(r);
+            c.class = cl;
+            c.base = freq.len() as u32;
+            let syms = if cl == class::ALWAYS { 256 } else { SYMS };
+            freq.extend((0..recipe::tables(r)).map(|_| Freq::new(syms)));
         }
         Self {
             len: packet_len,
             above: vec![0; packet_len],
             cols,
             same: vec![1 << 15; packet_len * 64],
-            freq: vec![Freq::new(); tables],
+            freq,
             epoch: 0,
             origin: None,
             count: 0,
             desynced: false,
+            has_static: classes.contains(&class::STATIC),
+            group: [1 << 15; 2],
+            group_last: false,
         }
+    }
+
+    /// Ground side: choose each column's coding class from historical
+    /// packets by how often it changed: below 1 in `1 / static_max`
+    /// packets → [`class::STATIC`], above `always_min` →
+    /// [`class::ALWAYS`]. Typical: `learn_classes(len, history, 0.01, 0.9)`.
+    ///
+    /// # Panics
+    /// If a packet has another length.
+    pub fn learn_classes(
+        packet_len: usize,
+        history: &[&[u8]],
+        static_max: f64,
+        always_min: f64,
+    ) -> Vec<u8> {
+        let mut changes = vec![0usize; packet_len];
+        for w in history.windows(2) {
+            assert!(
+                w[0].len() == packet_len && w[1].len() == packet_len,
+                "packet length"
+            );
+            for (k, c) in changes.iter_mut().enumerate() {
+                *c += (w[0][k] != w[1][k]) as usize;
+            }
+        }
+        let n = history.len().saturating_sub(1).max(1) as f64;
+        changes
+            .iter()
+            .map(|&c| {
+                let r = c as f64 / n;
+                if r < static_max {
+                    class::STATIC
+                } else if r > always_min {
+                    class::ALWAYS
+                } else {
+                    class::NORMAL
+                }
+            })
+            .collect()
     }
 
     /// Ground side: choose each column's context recipe from historical
@@ -244,7 +362,7 @@ impl FastPacketSession {
         let mut cost = vec![[0f64; recipe::COUNT as usize]; packet_len];
         for r in 0..recipe::COUNT {
             let n = recipe::tables(r);
-            let mut freq = vec![Freq::new(); packet_len * n];
+            let mut freq = vec![Freq::new(SYMS); packet_len * n];
             let mut above = vec![0u8; packet_len];
             let mut last = vec![0u8; packet_len];
             for p in history {
@@ -333,11 +451,54 @@ impl FastPacketSession {
     // `packet` is empty when decoding, so the loop runs over the column index.
     #[allow(clippy::needless_range_loop)]
     fn code_packet(&mut self, packet: &[u8], io: &mut Io, out: &mut Vec<u8>) {
+        // 0. Did any static column change? One decision for all of them.
+        let mut group_changed = true;
+        if self.has_static {
+            let g = self.group_last as usize;
+            let p16 = self.group[g] as u32;
+            let p1 = (p16 >> 4).clamp(1, 4095);
+            let bit = match io {
+                Io::Enc(e) => {
+                    let changed = (0..self.len)
+                        .any(|k| self.cols[k].class == class::STATIC && packet[k] != self.above[k]);
+                    e.encode(changed as u32, p1);
+                    changed as u32
+                }
+                Io::Dec(d) => d.decode(p1),
+            };
+            let target = (bit << 16) as i32;
+            self.group[g] = (p16 as i32 + ((target - p16 as i32) >> 4)).clamp(0, 65535) as u16;
+            group_changed = bit == 1;
+            self.group_last = group_changed;
+        }
         let mut left_changed = false;
         let mut left_delta = 0u8;
         for k in 0..self.len {
             let above = self.above[k];
             let c = self.cols[k];
+            if c.class == class::STATIC && !group_changed {
+                left_changed = false;
+                left_delta = 0;
+                out.push(above);
+                continue;
+            }
+            if c.class == class::ALWAYS {
+                // The delta directly, 0 included.
+                let cx = recipe_context(c.recipe, left_changed, left_delta, c.last_delta, above);
+                let f = &mut self.freq[c.base as usize + cx];
+                let d = code_symbol(
+                    f,
+                    packet.get(k).map(|&b| b.wrapping_sub(above) as usize),
+                    io,
+                ) as u8;
+                left_changed = d != 0;
+                left_delta = d;
+                if d != 0 {
+                    self.cols[k].last_delta = d;
+                }
+                out.push(above.wrapping_add(d));
+                continue;
+            }
             // 1. Same as above?
             let ctx = k * 64
                 + (c.run as usize) * 4
@@ -369,33 +530,11 @@ impl FastPacketSession {
                 let cx =
                     recipe_context(col.recipe, left_changed, left_delta, col.last_delta, above);
                 let f = &mut self.freq[col.base as usize + cx];
-                let s = match io {
-                    Io::Enc(e) => {
-                        let s = packet[k].wrapping_sub(above) as usize - 1;
-                        let cum = f.cum(s);
-                        if !e.encode_freq(cum, f.f[s] as u32, f.total) {
-                            for i in (0..8).rev() {
-                                e.encode((s as u32 >> i) & 1, 2048);
-                            }
-                        }
-                        s
-                    }
-                    Io::Dec(d) => match d.decode_target(f.total) {
-                        Some(v) => {
-                            let (s, cum) = f.find(v);
-                            d.decode_freq(cum, f.f[s] as u32, f.total);
-                            s
-                        }
-                        None => {
-                            let mut s = 0;
-                            for _ in 0..8 {
-                                s = (s << 1) | d.decode(2048) as usize;
-                            }
-                            s.min(SYMS - 1)
-                        }
-                    },
-                };
-                f.update(s);
+                let s = code_symbol(
+                    f,
+                    packet.get(k).map(|&b| b.wrapping_sub(above) as usize - 1),
+                    io,
+                );
                 left_changed = true;
                 left_delta = s as u8 + 1;
                 col.last_delta = left_delta;

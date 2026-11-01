@@ -144,7 +144,11 @@ v0.1 single core: ~0.5 MiB/s. Target: 10× without losing ratio, then more.
       code −23.4% at 1% loss
 - [x] Fast profile, ground-learned per-column context recipes: −6.5% on
       held-out Venus Express packets at the same speed
-- [ ] Packet profiles: C/Python bindings, flight-hardware timing
+- [x] Fast profile, ground-chosen coding classes (static / normal /
+      always): −11 to −17% instructions per byte; ~150–185 instructions
+      per byte vs ~1,290 for the open CCSDS 124 implementation
+- [ ] Fast profile on a flight CPU (LEON3/RISC-V; 32-bit range-coder
+      arithmetic instead of 64-bit division), C/Python bindings
 - [x] Whole-mission measurement (ESA-AD Mission 1, 75 channels, 734 M
       samples, 14 years): flight profile beats CCSDS 121 on 75/75 channels,
       −38% in total; 16 channels below 1% of float32
