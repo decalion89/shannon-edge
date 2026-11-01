@@ -336,6 +336,28 @@ at a time and fatal when summed over millions of samples.
 The cumulative rule is therefore not adopted. It needs a model that
 measures and corrects its own overconfidence online.
 
+**Self-calibration (`--self-calibrate`): tried, does not rescue it.**
+Each channel estimates online, from its own past and without labels, how
+overconfident its model is. D is the largest log2(observed tail rate ×
+2^m) over margins m = 4..24 seen at least 10 times. Costs are then lowered
+by D bits.
+
+The estimate is consistent with the calibration table. The test-period
+median of D is:
+
+| Channels | D (bits) |
+|---|---:|
+| 18, 19, 20 | 5.3, 6.0, 3.6 |
+| 25–28 | 1.5–2.0 |
+| others | 0 |
+
+It does not help. On Mission 2 lightweight the per-sample rule drops to
+0.067, because the higher bar removes real detections, and the cumulative
+rule still collapses. The overconfidence is clustered in time: in bursts
+the model is far more overconfident than on average. A constant correction
+cannot fix that. A local one would also absorb the slow anomalies that the
+cumulative rule is meant to find. This is a real trade-off, not a bug.
+
 A side product: with the cumulative rule, the strongest unlabelled
 detection on Mission 2 lightweight starts at 2002-09-09 22:43. Nine
 channels (18–24, 26, 28) flag together, peaking at 39 bits, for hours,

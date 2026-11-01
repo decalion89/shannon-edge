@@ -311,6 +311,12 @@ def main() -> None:
                          "ceil(log2(test samples over all channels)). Each increment is an e-value under a "
                          "calibrated model, so the expected number of false alarms is at most 1, as for --kraft "
                          "auto, but evidence from several moderately surprising samples adds up")
+    ap.add_argument("--self-calibrate", action="store_true",
+                    help="Kraft rules only: each channel estimates online, from its own past and no labels, how "
+                         "overconfident its model is: D = max over margins m in 4..24 (step 4) of "
+                         "log2(past rate of cost >= b + m) + m, over margins seen at least 10 times, floored at 0. "
+                         "Costs are lowered by D before the Kraft tests (the bound with a model off by D bits is "
+                         "2^(D - t))")
     ap.add_argument("--report", type=Path, default=None,
                     help="write, for the rule chosen on validation, every test event (detected or not, first "
                          "flag relative to its start, channels flagged) and every detection that overlaps no "
@@ -381,11 +387,23 @@ def main() -> None:
             for fit_end in (VALIDATION - pd.DateOffset(months=3), VALIDATION, SPLIT):
                 thr[(fit_end, 1000 + t, "fast")] = code_bits + t  # no training data used
         thr["code_bits"] = code_bits
+        kcost = b
+        if args.self_calibrate:
+            n_i = np.arange(len(b), dtype=np.float64)
+            dhat = np.zeros(len(b))
+            for m in (4, 8, 12, 16, 20, 24):
+                cnt = np.concatenate(([0], np.cumsum(b >= code_bits + m)[:-1])).astype(np.float64)
+                with np.errstate(divide="ignore", invalid="ignore"):
+                    lr = np.where(cnt >= 10, np.log2(cnt / np.maximum(n_i, 1.0)) + m, 0.0)
+                dhat = np.maximum(dhat, lr)
+            kcost = b - dhat
+            thr["dhat_test_median"] = float(np.median(dhat[ts >= np.datetime64(SPLIT)])) if (ts >= np.datetime64(SPLIT)).any() else 0.0
+            del n_i
         if args.kraft_cusum:
             # S_i = max(0, S_{i-1} + x_i) = C_i - min(0, min_{j<=i} C_j), C = cumsum(x)
             score = np.full(len(b), -np.inf)
             for e in (2.0 ** -1, 2.0 ** -4, 2.0 ** -8, 2.0 ** -12):
-                x = np.log2((1 - e) + e * np.exp2(np.minimum(b - code_bits, 1000.0)))
+                x = np.log2((1 - e) + e * np.exp2(np.minimum(kcost - code_bits, 1000.0)))
                 cum = np.cumsum(x)
                 score = np.maximum(score, cum - np.minimum(np.minimum.accumulate(cum), 0.0))
             thr["cusum"] = score - 2.0  # union over 4 values of e
@@ -406,6 +424,9 @@ def main() -> None:
         keep = ts >= np.datetime64(VALIDATION - pd.DateOffset(months=3))
         if "cusum" in thr:
             thr["cusum"] = thr["cusum"][keep].astype(np.float32)
+        if args.self_calibrate:
+            thr["kcost"] = kcost[keep].astype(np.float32)
+            print(f"{ch}: self-calibration D (test median) {thr['dhat_test_median']:.2f} bits", file=sys.stderr)
         data[ch] = (ts[keep], b[keep].astype(np.float32), None if sl is None else sl[keep].astype(np.float32), thr,
                     kind[keep])
         med_dt[ch] = np.timedelta64(int(med), "ns")
@@ -443,6 +464,8 @@ def main() -> None:
             flag = b > per_kind[kind]
         elif q >= 2000:
             flag = thr["cusum"] >= np.float32(q - 2000)
+        elif q >= 1000 and "kcost" in thr:
+            flag = thr["kcost"] > np.float32(thr[(pd.Timestamp(fit_end), q, "fast")] * factor)
         else:
             flag = b > np.float32(thr[(pd.Timestamp(fit_end), q, "fast")] * factor)
         if slow:
