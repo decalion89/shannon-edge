@@ -159,6 +159,10 @@ v0.1 single core: ~0.5 MiB/s. Target: 10× without losing ratio, then more.
       recovered at 0.1/1/5%, −46.5/−45.2/−42.4% vs CCSDS 124 (which needs
       R=7 and recovers 51.9% at 5%); −39.3% with equal protection
 - [ ] Burst losses (interleaved groups); GF(2^16) groups
+- [x] Optional error-bounded mode (per-field bound relative to sensor
+      noise): −53% to −61% vs CCSDS 124 on Venus Express at ¼–1 σ
+- [ ] Error-bounded mode inside the codecs (not as preprocessing), with
+      field types and tolerances from a mission telemetry database
 - [ ] Cycles on real NOEL-V/LEON hardware; 32-bit range-coder arithmetic
       for LEON3; C/Python bindings for the packet profiles
 - [x] Whole-mission measurement (ESA-AD Mission 1, 75 channels, 734 M

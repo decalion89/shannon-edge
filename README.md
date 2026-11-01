@@ -395,6 +395,14 @@ R=7 (5,673,343 bytes, 98.75% correct at 1%) and recovers 51.9% at 5%:
 frame-level protection, CCSDS 124 is 39.3% larger at every loss rate
 ([`frame_loss.md`](bench/results/frame_loss.md)).
 
+**Optional: error-bounded mode.** Lossless coding must reproduce sensor
+noise bit for bit. Bounding the error of each numeric field by a fraction
+of its own noise (header and time exact; closed-loop quantiser as in
+JPEG-LS / CCSDS 123 near-lossless; bound verified for every value) gives,
+on Venus Express with v2: −53.3% vs CCSDS 124 at ≤ ¼ σ, −57.0% at ≤ ½ σ,
+−61.0% at ≤ 1 σ, keeping three doubtful fields exact. Acceptable error is
+the mission's call; see [`near_lossless.md`](bench/results/near_lossless.md).
+
 ### A whole mission: 14 years of a satellite's life
 
 `bench/mission.py` runs **every channel** of ESA-AD Mission 1 — 75 channels
