@@ -24,7 +24,7 @@ limits are linked next to the claims.
 
 | What | Result | Details |
 |---|---|---|
-| Spacecraft packets vs the CCSDS 124 standard (Venus Express, lossless) | **27–43% smaller**; the fast profile is also ~1.9x faster | `bench/results/packet_fast.md` |
+| Spacecraft packets vs the CCSDS 124 standard (Venus Express, lossless) | **27–46% smaller**: the fast profile, ~1.9x faster, up to v2 with numeric prediction (`v2_lp`) | `bench/results/packet_fast.md`, `bench/results/packet_v2.md` |
 | Same, error-bounded (≤ 1 σ of sensor noise), rare values exact | **61% smaller than CCSDS 124**; keeping rare values exact costs 0.1% | `bench/results/near_lossless.md` |
 | Rare-exact rule on ESA-labelled events | 90% of events contain exact values; 0.1% of all values are exact | `bench/results/near_lossless.md` |
 | Anomaly detection on ESA-ADB, **no training**, false alarms bounded by a theorem | Mission 1 full: **0.576 vs best published 0.061**; Mission 2 full: **0.249 vs 0.079** | `docs/KRAFT_DETECTION.md`, `bench/results/esa_adb.md` |

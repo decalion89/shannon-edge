@@ -5,9 +5,10 @@
 //! Sends every packet through a sender and a receiver `PacketSession`,
 //! verifies each one, and prints the total payload size (no framing: the
 //! packet length is fixed, as for CCSDS 124 output) and the speed. Set
-//! SEDGE_PACKET_V2=1 to run version 2 of the profile.
+//! SEDGE_PACKET_V2=1 to run version 2 of the profile, and SEDGE_LP=1 (or
+//! `key=value,...`, see `LpConfig::parse`) for v2 with numeric prediction.
 
-use shannon_edge::packet::PacketSession;
+use shannon_edge::packet::{LpConfig, PacketSession};
 use std::time::Instant;
 
 fn main() {
@@ -15,9 +16,12 @@ fn main() {
     let data = std::fs::read(&args[0]).expect("read packets");
     let len: usize = args[1].parse().expect("PACKET_LEN");
     let table_bits: u32 = args.get(2).map_or(16, |v| v.parse().expect("TABLE_BITS"));
-    let v2 = std::env::var_os("SEDGE_PACKET_V2").is_some();
+    let lp = std::env::var("SEDGE_LP").ok().map(|s| LpConfig::parse(&s));
+    let v2 = lp.is_some() || std::env::var_os("SEDGE_PACKET_V2").is_some();
     let make = || {
-        if v2 {
+        if let Some(cfg) = &lp {
+            PacketSession::v2_lp_with(len, table_bits, cfg.clone())
+        } else if v2 {
             PacketSession::v2(len, table_bits)
         } else {
             PacketSession::new(len, table_bits)
@@ -41,10 +45,23 @@ fn main() {
          memory {:.0} KiB, compress {:.1} MB/s, decompress {:.1} MB/s (verified), {:.2}s",
         n * len,
         (n * len) as f64 / total as f64,
-        if v2 { ", v2" } else { "" },
+        if lp.is_some() {
+            ", v2+lp"
+        } else if v2 {
+            ", v2"
+        } else {
+            ""
+        },
         tx.memory_bytes() as f64 / 1024.0,
         mb / enc,
         mb / dec,
         enc + dec
     );
+    #[cfg(feature = "colstats")]
+    if let Ok(cols) = std::env::var("SEDGE_COLS") {
+        for c in cols.split(',') {
+            let k: usize = c.parse().unwrap();
+            println!("column {k}: {} bytes (ideal)", tx.col_cost[k] / 2048);
+        }
+    }
 }

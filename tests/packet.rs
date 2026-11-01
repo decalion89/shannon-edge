@@ -247,3 +247,103 @@ fn golden_packet_v2_stream_is_stable() {
 
 const GOLDEN_V2_LEN: usize = 1603;
 const GOLDEN_V2_HASH: u64 = 0x3a40_ae5e_a585_1e4f;
+
+/// The v2_lp (numeric prediction) format is pinned too.
+#[test]
+fn golden_packet_v2_lp_stream_is_stable() {
+    let mut tx = PacketSession::v2_lp(48, 14);
+    let mut all = Vec::new();
+    for p in packets(1_000, 48, 2026) {
+        all.extend_from_slice(&tx.compress(&p));
+    }
+    let h = all.iter().fold(0xcbf2_9ce4_8422_2325u64, |h, &b| {
+        (h ^ b as u64).wrapping_mul(0x100_0000_01b3)
+    });
+    if std::env::var_os("SEDGE_BLESS").is_some() {
+        println!("GOLDEN_V2_LP {} {h:#018x}", all.len());
+        return;
+    }
+    assert_eq!(
+        (all.len(), h),
+        (GOLDEN_V2_LP_LEN, GOLDEN_V2_LP_HASH),
+        "packet v2_lp format changed"
+    );
+}
+
+const GOLDEN_V2_LP_LEN: usize = 1500;
+const GOLDEN_V2_LP_HASH: u64 = 0xb8f7_c747_4286_a508;
+
+#[test]
+fn v2_lp_roundtrips_and_beats_v2_on_ramps() {
+    use shannon_edge::packet::LpConfig;
+    // Slow ramps with fractional slopes in 16-bit fields (both byte orders)
+    // plus noise: what numeric prediction is for.
+    let mut rng = Rng(7);
+    let ps: Vec<Vec<u8>> = (0..4_000u32)
+        .map(|i| {
+            let a = (i * 13 / 4) as u16;
+            let b =
+                (2000.0f64 + 900.0 * ((i as f64) / 150.0).sin()) as u16 + (rng.next() % 3) as u16;
+            let mut p = Vec::with_capacity(12);
+            p.extend_from_slice(&a.to_le_bytes());
+            p.extend_from_slice(&b.to_be_bytes());
+            p.extend_from_slice(&b.to_le_bytes());
+            p.push((i / 7) as u8);
+            p.push((rng.next() % 5) as u8);
+            p.extend_from_slice(&[0x08, 0x1f, i as u8, 0]);
+            p
+        })
+        .collect();
+    let run = |mut tx: PacketSession, mut rx: PacketSession| -> usize {
+        ps.iter()
+            .map(|p| {
+                let payload = tx.compress(p);
+                assert_eq!(&rx.decompress(&payload).unwrap(), p);
+                payload.len()
+            })
+            .sum()
+    };
+    let v2 = run(PacketSession::v2(12, 14), PacketSession::v2(12, 14));
+    let lp = run(PacketSession::v2_lp(12, 14), PacketSession::v2_lp(12, 14));
+    assert!(lp < v2, "v2+lp {lp} vs v2 {v2}");
+    // Every predictor, pooled histograms, every option: still round trips.
+    let cfg = LpConfig {
+        preds: (1 << 14) - 1,
+        pool_bits: 8,
+        flag: true,
+        sse: true,
+        mix2: true,
+        skip_zero: false,
+        solve_every: 1,
+        ..LpConfig::default()
+    };
+    let make = || PacketSession::v2_lp_with(12, 12, cfg.clone());
+    run(make(), make());
+    // Random packets and garbage payloads.
+    let ps: Vec<Vec<u8>> = (0..300)
+        .map(|_| (0..64).map(|_| rng.next() as u8).collect())
+        .collect();
+    let (mut tx, mut rx) = (PacketSession::v2_lp(64, 12), PacketSession::v2_lp(64, 12));
+    for p in &ps {
+        assert_eq!(&rx.decompress(&tx.compress(p)).unwrap(), p);
+    }
+    let mut rx = PacketSession::v2_lp(40, 12);
+    for n in 0..64 {
+        let payload: Vec<u8> = (0..n).map(|_| rng.next() as u8).collect();
+        assert_eq!(rx.decompress(&payload).unwrap().len(), 40);
+    }
+}
+
+#[test]
+fn v2_lp_with_key_packets_and_epochs() {
+    let ps = packets(400, 32, 6);
+    let make = || {
+        let mut s = PacketSession::v2_lp(32, 12).with_key_interval(4);
+        s.prime(packets(50, 32, 7).iter().map(Vec::as_slice));
+        s.with_epochs(64)
+    };
+    let got = lossy_link(&ps, make, &[5, 136]);
+    for (i, &d) in got.iter().enumerate() {
+        assert_eq!(d, i != 5 && !(136..192).contains(&i), "packet {i}");
+    }
+}

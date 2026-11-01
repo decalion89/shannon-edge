@@ -20,6 +20,10 @@ crate-type = ["rlib", "cdylib"]
 name = "sedge"
 path = "src/main.rs"
 
+[features]
+# Measurement only: per-column ideal cost in the packet profile.
+colstats = []
+
 [dependencies]
 
 [profile.release]

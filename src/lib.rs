@@ -25,6 +25,7 @@ mod math;
 mod model;
 pub mod packet;
 pub mod packet_fast;
+mod packet_lp;
 pub mod train;
 
 use coder::{Decoder, Encoder};

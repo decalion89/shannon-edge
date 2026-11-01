@@ -98,3 +98,53 @@ bytes in the golden tests).
 Best against best: 0.1% loss −37.5% vs CCSDS 124 R=1 (v1: −31.7%); 1%
 loss −36.2% vs R=2 (v1: −30.5%); 5% loss −29.5% vs R=3 (v1: −23.7%), all
 with 100% of the packets recovered.
+
+## v2_lp: numeric prediction (`PacketSession::v2_lp`, opt-in)
+
+The paq8px ablation (`packet_fast.md`) identified numeric prediction as
+the main model sedge lacked. `src/packet_lp.rs` adds it to packet profile
+v2, integer-only and deterministic. Three pieces:
+* **14 predictors per column:** polynomial extrapolations (W, 2W−WW,
+  3W−3WW+WWW, …), a fixed-point order-4 OLS on deltas, and 16-bit pair
+  predictors. The pair predictors are not in paq8px: they predict one byte
+  of a 16-bit field from the other, carry included, in both byte orders.
+* **Residual histograms:** 256 bins of (actual − predicted) per predictor,
+  selected by the predictor's recent error. P(bit) is computed from the
+  counts still compatible with the bits already coded, as in paq8px's
+  newer version.
+* **Per-column mixer weights.**
+
+v2's own golden stream is unchanged. v2_lp has its own golden stream:
+1,500 bytes, 0xb8f7_c747_4286_a508. All results are whole files with
+every round trip verified:
+
+| Dataset | v2 | **v2 + LP** | Change |
+|---|---:|---:|---:|
+| Venus Express, 2^16 | 3,127,144 | **2,986,557** | −4.50% |
+| Venus Express, 2^18 | 2,999,548 | **2,874,663** | −4.16% |
+| ecg_incart (24 B) | 40,064,022 | 38,295,682 | −4.41% |
+| power_uci (18 B) | 6,416,625 | 6,304,260 | −1.75% |
+| ais_tracks (34 B) | 12,177,958 | 11,493,156 | −5.62% |
+| metropt_codes (26 B) | 5,184,963 | 4,874,806 | −5.98% |
+
+* On Venus Express, v2_lp 2^18 is **45.7% smaller than the best CCSDS 124
+  configuration** (5,289,939).
+* It closes about 21% of the distance to paq8px (≈2.39 MB), 125 KB of
+  607 KB. Column 59's in-file cost goes from 20,652 to 14,357 bytes;
+  paq8px alone on that column gets 11,236.
+* **Costs:** about 3x slower (Venus: 1.5 MB/s compress, 1.4 MB/s
+  decompress, against 5 MB/s) and about 1.2 MB more memory (7.4 MB at
+  2^18).
+
+**What did not matter.**
+* OLS order (2–8), forgetting rate and ridge all stay within ±0.1%, so
+  the 32-tap OLS is not where paq8px's lead comes from.
+* SSE on the best predictor, feeding predictor error into the flag, and
+  changing histogram ageing all stay under 0.1%.
+
+**Still open.**
+* Speed: computing histograms only for the 2–3 best predictors of each
+  column.
+* Choosing the pair predictors from a known field layout rather than
+  trying both byte orders.
+* The C port.

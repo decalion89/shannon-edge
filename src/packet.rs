@@ -22,6 +22,8 @@
 use crate::coder::{Decoder, Encoder};
 use crate::flight::{cost, h2, Table};
 use crate::math::{squash, stretch};
+use crate::packet_lp::Lp;
+pub use crate::packet_lp::LpConfig;
 use crate::Error;
 
 /// Per-column state.
@@ -70,8 +72,9 @@ pub struct PacketSession {
     /// v2: a byte-level "same as above" decision before the bit models.
     v2: bool,
     flag_t: [Table; 3],
-    /// v2 flag mixer weights, by whether the left byte changed.
-    wf: [[i32; 4]; 2],
+    /// v2 flag mixer weights, by whether the left byte changed (the fifth
+    /// input is the numeric-prediction context, zero without it).
+    wf: [[i32; 5]; 2],
     /// v2, per packet: did the previous byte change, how many changed so far.
     left_changed: bool,
     nchanged: u32,
@@ -81,6 +84,13 @@ pub struct PacketSession {
     apm_r: Apm,
     /// v2: SSE on the "same" decision, by column and run length.
     apm_f: Apm,
+    /// Opt-in numeric prediction ([`PacketSession::v2_lp`]).
+    lp: Option<Box<Lp>>,
+    flag_lp: Table,
+    apm_lp: Apm,
+    /// Measurement only (feature `colstats`): ideal cost per column, 1/256 bit.
+    #[cfg(feature = "colstats")]
+    pub col_cost: Vec<u64>,
 }
 
 /// Secondary estimation (SSE): refines a probability given a context.
@@ -119,6 +129,11 @@ impl Apm {
     }
 }
 
+#[cfg(feature = "colstats")]
+thread_local! {
+    static COLCOST: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
 enum Io<'a, 'b> {
     Enc(&'a mut Encoder),
     Dec(&'a mut Decoder<'b>),
@@ -131,6 +146,8 @@ impl Io<'_, '_> {
         match self {
             Io::Enc(e) => {
                 e.encode(bit, p1);
+                #[cfg(feature = "colstats")]
+                COLCOST.with(|c| c.set(c.get() + cost(p1, bit) as u64));
                 bit
             }
             Io::Dec(d) => d.decode(p1),
@@ -169,12 +186,17 @@ impl PacketSession {
             learning: true,
             v2: false,
             flag_t: [Table::new(1), Table::new(1), Table::new(1)],
-            wf: [[22_000; 4]; 2],
+            wf: [[22_000, 22_000, 22_000, 22_000, 0]; 2],
             left_changed: false,
             nchanged: 0,
             apm: Apm::new(0),
             apm_r: Apm::new(0),
             apm_f: Apm::new(0),
+            lp: None,
+            flag_lp: Table::new(1),
+            apm_lp: Apm::new(0),
+            #[cfg(feature = "colstats")]
+            col_cost: Vec::new(),
         }
     }
 
@@ -200,6 +222,34 @@ impl PacketSession {
         s
     }
 
+    /// Packet profile v2 plus numeric prediction (a different stream again):
+    /// per column, integer predictors over the column's past values
+    /// (polynomial extrapolations and a fixed-point least-squares fit over
+    /// recent deltas) feed residual histograms, selected by each
+    /// predictor's recent error, into the bit mixer of changed bytes.
+    ///
+    /// # Panics
+    /// If a parameter is out of range (as for [`PacketSession::new`]).
+    pub fn v2_lp(packet_len: usize, table_bits: u32) -> Self {
+        Self::v2_lp_with(packet_len, table_bits, LpConfig::default())
+    }
+
+    /// [`PacketSession::v2_lp`] with an explicit configuration.
+    pub fn v2_lp_with(packet_len: usize, table_bits: u32, cfg: LpConfig) -> Self {
+        let mut s = Self::v2(packet_len, table_bits);
+        if cfg.flag {
+            s.flag_lp = Table::new(table_bits - 2);
+            for w in &mut s.wf {
+                w[4] = 16_000;
+            }
+        }
+        if cfg.sse {
+            s.apm_lp = Apm::new(packet_len * 8 * 2 * 2 * 4);
+        }
+        s.lp = Some(Box::new(Lp::new(cfg, packet_len)));
+        s
+    }
+
     /// v2: code "byte k equals the byte above" (1) or not (0).
     fn same_flag(&mut self, k: usize, same: u32, io: &mut Io) -> u32 {
         let c = self.cols[k];
@@ -213,11 +263,19 @@ impl PacketSession {
                 9,
             )),
         ];
+        let lp_slot = match &self.lp {
+            Some(lp) if lp.cfg.flag => Some(
+                self.flag_lp
+                    .slot(h2(h2(col, lp.flag_ctx(k) * 2 + lc as u64 + 1), 13)),
+            ),
+            _ => None,
+        };
         let x = [
             stretch(self.flag_t[0].t[s[0]].p12() as i32),
             stretch(self.flag_t[1].t[s[1]].p12() as i32),
             stretch(self.flag_t[2].t[s[2]].p12() as i32),
             256,
+            lp_slot.map_or(0, |sl| stretch(self.flag_lp.t[sl].p12() as i32)),
         ];
         let w = &mut self.wf[lc];
         let dot: i64 = x
@@ -237,6 +295,9 @@ impl PacketSession {
             }
             for (t, &sk) in self.flag_t.iter_mut().zip(&s) {
                 t.t[sk].update(bit);
+            }
+            if let Some(sl) = lp_slot {
+                self.flag_lp.t[sl].update(bit);
             }
         }
         bit
@@ -323,11 +384,23 @@ impl PacketSession {
             .map(|t| t.t.len() * 4)
             .sum();
         let apms = (self.apm.t.len() + self.apm_r.t.len() + self.apm_f.t.len()) * 2;
-        tables + apms + self.len * (1 + std::mem::size_of::<Column>())
+        let lp = self.lp.as_ref().map_or(0, |lp| {
+            lp.memory_bytes()
+                + if lp.cfg.flag {
+                    self.flag_lp.t.len() * 4
+                } else {
+                    0
+                }
+                + self.apm_lp.t.len() * 2
+        });
+        tables + apms + self.len * (1 + std::mem::size_of::<Column>()) + lp
     }
 
     /// Transition model for byte `k` with left neighbour `left`.
     fn transition(&mut self, k: usize, left: u8, value: u32, io: &mut Io) -> (u32, u32) {
+        if self.lp.is_some() {
+            return self.transition_lp(k, left, value, io);
+        }
         let above = self.above[k] as u64;
         let above2 = self.cols[k].above2 as u64;
         let col = k as u64 + 1;
@@ -384,6 +457,93 @@ impl PacketSession {
             }
             node = (node << 1) | bit;
         }
+        (node & 0xff, total)
+    }
+
+    /// Transition model mixed with the numeric predictors' histograms.
+    fn transition_lp(&mut self, k: usize, left: u8, value: u32, io: &mut Io) -> (u32, u32) {
+        let mut lp = self.lp.take().expect("lp");
+        let above = self.above[k] as u64;
+        let above2 = self.cols[k].above2 as u64;
+        let col = k as u64 + 1;
+        let ca = h2(col, above + 1);
+        let ctx = [col, ca, h2(ca, above2 + 7), h2(ca, left as u64 + 3)];
+        let ni = lp.ni;
+        let mut x = [0i32; 5 + 2 * crate::packet_lp::NPMAX];
+        let mut node = 1u32;
+        let mut total = 0;
+        for i in (0..8).rev() {
+            let n = node as u64;
+            let depth = 7 - i;
+            let s = [
+                self.t[0].slot(h2(ctx[0], n)),
+                self.t[1].slot(h2(ctx[1], n)),
+                self.t[2].slot(h2(ctx[2], n)),
+                self.t[3].slot(h2(ctx[3], n)),
+            ];
+            for j in 0..4 {
+                x[j] = stretch(self.t[j].t[s[j]].p12() as i32);
+            }
+            x[4] = 256;
+            lp.inputs(node, depth, &mut x[5..ni]);
+            let ws = lp.wset(k, depth as usize);
+            let dot: i64 = x[..ni]
+                .iter()
+                .zip(&lp.w[ws..ws + ni])
+                .map(|(&a, &b)| a as i64 * b as i64)
+                .sum();
+            let st1 = ((dot >> 16) as i32).clamp(-2047, 2047);
+            let mix2 = lp.cfg.mix2;
+            let ws2 = (depth as usize * 16 + lp.best_bucket as usize) * ni;
+            let st2 = if mix2 {
+                let dot2: i64 = x[..ni]
+                    .iter()
+                    .zip(&lp.w2[ws2..ws2 + ni])
+                    .map(|(&a, &b)| a as i64 * b as i64)
+                    .sum();
+                ((dot2 >> 16) as i32).clamp(-2047, 2047)
+            } else {
+                st1
+            };
+            let p1 = squash(st1).clamp(1, 4095) as u32;
+            let p2 = squash(st2).clamp(1, 4095) as u32;
+            let p0 = squash((st1 + st2) >> 1).clamp(1, 4095) as u32;
+            let pm = node as u64 == (1 << depth) | (above >> (i + 1));
+            let cx = (k * 8 + depth as usize) * 2 + pm as usize;
+            let a = self.apm.pp(p0, cx);
+            let p = if lp.cfg.sse {
+                let pb = node == (1 << depth) | (lp.best_pred as u32 >> (i + 1));
+                let cx2 = (cx * 2 + pb as usize) * 4 + (lp.best_bucket as usize / 3).min(3);
+                let a2 = self.apm_lp.pp(p0, cx2);
+                ((2 * p0 + 3 * a + 3 * a2) >> 3).clamp(1, 4095)
+            } else {
+                ((p0 + 3 * a) >> 2).clamp(1, 4095)
+            };
+            let bit = io.bit(p, (value >> i) & 1);
+            total += cost(p, bit);
+            if self.learning {
+                self.apm.update(bit);
+                if lp.cfg.sse {
+                    self.apm_lp.update(bit);
+                }
+                let err = ((bit as i32) << 12) - p1 as i32;
+                let w = &mut lp.w[ws..ws + ni];
+                for (wk, &xk) in w.iter_mut().zip(&x[..ni]) {
+                    *wk += (xk * err) >> 10;
+                }
+                if mix2 {
+                    let err = ((bit as i32) << 12) - p2 as i32;
+                    for (wk, &xk) in lp.w2[ws2..ws2 + ni].iter_mut().zip(&x[..ni]) {
+                        *wk += (xk * err) >> 10;
+                    }
+                }
+                for (t, &sk) in self.t.iter_mut().zip(&s) {
+                    t.t[sk].update(bit);
+                }
+            }
+            node = (node << 1) | bit;
+        }
+        self.lp = Some(lp);
         (node & 0xff, total)
     }
 
@@ -448,6 +608,16 @@ impl PacketSession {
     }
 
     fn byte(&mut self, k: usize, left: u8, value: u32, io: &mut Io) -> u8 {
+        let v = self.byte_inner(k, left, value, io);
+        if self.learning && v != self.above[k] {
+            if let Some(lp) = &mut self.lp {
+                lp.learn_byte(v);
+            }
+        }
+        v
+    }
+
+    fn byte_inner(&mut self, k: usize, left: u8, value: u32, io: &mut Io) -> u8 {
         if self.v2 {
             let above = self.above[k];
             let same = self.same_flag(k, (value == above as u32) as u32, io);
@@ -467,6 +637,9 @@ impl PacketSession {
             }
             self.left_changed = true;
             self.nchanged += 1;
+            if let Some(lp) = &mut self.lp {
+                lp.begin(k, above, left);
+            }
         }
         let c = self.cols[k];
         let use_t = c.cost_t <= c.cost_r;
@@ -503,6 +676,13 @@ impl PacketSession {
             self.cols[k].above2 = self.above[k];
             self.above[k] = b;
         }
+        if let Some(lp) = &mut self.lp {
+            let mut left = 0;
+            for (k, &b) in packet.iter().enumerate() {
+                lp.end_column(k, b, left);
+                left = b;
+            }
+        }
     }
 
     /// Compress one packet (exactly `packet_len` bytes) and learn from it.
@@ -521,7 +701,15 @@ impl PacketSession {
             let mut io = Io::Enc(&mut enc);
             let mut left = 0u8;
             for (k, &b) in packet.iter().enumerate() {
+                #[cfg(feature = "colstats")]
+                let before = COLCOST.with(|c| c.get());
                 self.byte(k, left, b as u32, &mut io);
+                #[cfg(feature = "colstats")]
+                {
+                    let after = COLCOST.with(|c| c.get());
+                    self.col_cost.resize(self.len, 0);
+                    self.col_cost[k] += after - before;
+                }
                 left = b;
             }
         }
