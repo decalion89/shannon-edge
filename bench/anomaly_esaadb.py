@@ -214,7 +214,12 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("mission_zip", type=Path)
     ap.add_argument("--channels", nargs="+", type=int, required=True)
-    ap.add_argument("--quantiles", nargs="+", type=float, default=[0.99999, 0.999999, 1.0])
+    ap.add_argument("--quantiles", nargs="*", type=float, default=[0.99999, 0.999999, 1.0])
+    ap.add_argument("--kraft", nargs="*", default=[],
+                    help="also try training-free thresholds of b + t bits, b the channel's code width: a "
+                         "calibrated model exceeds b + t bits with probability at most 2^-t (Kraft). Values of "
+                         "t, or 'auto' for t = ceil(log2(test samples over all channels)), i.e. at most one "
+                         "expected false sample-alarm in the whole test set if the model is calibrated")
     ap.add_argument("--merge-minutes", type=float, default=10.0)
     ap.add_argument("--budgets", nargs="*", type=float, default=[],
                     help="also try thresholds that allow at most this many detections per year in the "
@@ -268,6 +273,7 @@ def main() -> None:
             s = s[~s.index.duplicated(keep="last")].reindex(grid, method="ffill")
             s.iloc[0] = first
         b = surprise(s)
+        code_bits = max(1, (min(len(np.unique(s.to_numpy().astype(np.float32))), 65536) - 1).bit_length())
         if args.persist:
             b = np.minimum(b, np.r_[b[1:], b[-1:]])
         ts = s.index.values.astype("datetime64[ns]")
@@ -293,6 +299,10 @@ def main() -> None:
                 for key, arr in (("fast", b), ("slow", sl)):
                     if arr is not None:
                         thr[(fit_end, -k, key)] = budget_threshold(ts[fit], arr[fit], int(k * years), merge_ns)
+        for t in (float(v) for v in args.kraft if v != "auto"):
+            for fit_end in (VALIDATION - pd.DateOffset(months=3), VALIDATION, SPLIT):
+                thr[(fit_end, 1000 + t, "fast")] = code_bits + t  # no training data used
+        thr["code_bits"] = code_bits
         # Kind of interval since the previous sample: 0 shorter than usual,
         # 1 usual, 2 gap (relative to the channel's median interval).
         dt = np.diff(ts, prepend=ts[:1]).astype(np.int64)
@@ -315,6 +325,15 @@ def main() -> None:
         print(f"{ch}: {n_samples:,} samples", file=sys.stderr, flush=True)
 
     test_end = max(d[0][-1] for d in data.values())
+    kraft_t = [float(v) for v in args.kraft if v != "auto"]
+    if "auto" in args.kraft:
+        n_test = sum(int((d[0] >= np.datetime64(SPLIT)).sum()) for d in data.values())
+        t_auto = float(np.ceil(np.log2(n_test)))
+        print(f"Kraft auto: {n_test:,} test samples over all channels -> t = {t_auto:g} bits", file=sys.stderr)
+        kraft_t.append(t_auto)
+        for d in data.values():
+            for fit_end in (VALIDATION - pd.DateOffset(months=3), VALIDATION, SPLIT):
+                d[3][(fit_end, 1000 + t_auto, "fast")] = d[3]["code_bits"] + t_auto
     full_range = (SPLIT, pd.Timestamp(test_end))
     y_true = lab[lab["EndTime"] > SPLIT].copy()
     y_true["StartTime"] = y_true["StartTime"].clip(lower=SPLIT)
@@ -365,10 +384,12 @@ def main() -> None:
                    for a, e in to_events(channel_flags(ch, q, factor, fit_end, lo, hi, slow, timed))]
         return P.Interval(*iv), len(muted)
 
-    rules = [(q, f, m, sl, tm) for q in list(args.quantiles) + [-k for k in args.budgets] for f in args.factors
+    rules = [(q, f, m, sl, tm) for q in list(args.quantiles) + [-k for k in args.budgets] + [1000 + t for t in kraft_t]
+             for f in args.factors
              for m in ([False, True] if args.mute else [False]) for sl in ([False, True] if args.slow else [False])
-             for tm in ([False, True] if args.time_aware and q >= 0 else [False])]
-    name = lambda r: ((f"q={r[0]}" if r[0] >= 0 else f"budget {-r[0]:g}/year")  # noqa: E731
+             for tm in ([False, True] if args.time_aware and 0 <= q < 1000 else [False])]
+    name = lambda r: ((f"Kraft b+{r[0] - 1000:g} bits (no training)" if r[0] >= 1000  # noqa: E731
+                       else f"q={r[0]}" if r[0] >= 0 else f"budget {-r[0]:g}/year")
                       + (f", x{r[1]}" if r[1] != 1 else "") + (", mute" if r[2] else "")
                       + (", +slow memory" if r[3] else "") + (", time-aware" if r[4] else ""))
 
