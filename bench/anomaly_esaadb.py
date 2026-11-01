@@ -22,6 +22,10 @@ detection in the 3 months before the evaluated period (--mute; for the
 test, those are the validation months); a second, never-forgetting detector
 of rare transitions, OR-combined (--slow).
 
+With --resample 30s, every channel is first resampled as in ESA-ADB's data
+preparation (30-s grid, zero-order hold), so the detector sees the same
+samples as the published algorithms.
+
 Scoring: the corrected event-wise precision/recall/F-beta and the alarming
 precision, adapted from ESA-ADB's `ESAScores`
 (github.com/kplabs-pl/ESA-ADB, timeeval/metrics/ESA_ADB_metrics.py, MIT
@@ -154,6 +158,9 @@ def main() -> None:
     ap.add_argument("--merge-minutes", type=float, default=10.0)
     ap.add_argument("--factors", nargs="+", type=float, default=[1.0],
                     help="threshold multipliers to try (chosen on validation)")
+    ap.add_argument("--resample", default=None,
+                    help="resample each channel to this grid with zero-order hold before scoring, as ESA-ADB's "
+                         "preprocessing does (e.g. 30s); default: original samples")
     ap.add_argument("--slow", action="store_true",
                     help="also try adding the never-forgetting transition-rarity detector (OR-combined)")
     ap.add_argument("--mute", action="store_true",
@@ -177,6 +184,15 @@ def main() -> None:
     data = {}
     for ch in names:
         s = load(z, f"{root}/channels/{ch}.zip")
+        if args.resample:
+            # As ESA-ADB's data preparation: a regular grid from the floor of
+            # the first timestamp to the ceiling of the last, forward-filled
+            # (zero-order hold), first sample kept.
+            rule = pd.Timedelta(args.resample)
+            grid = pd.date_range(s.index[0].floor(rule), s.index[-1].ceil(rule), freq=rule)
+            first = s.iloc[0]
+            s = s[~s.index.duplicated(keep="last")].reindex(grid, method="ffill")
+            s.iloc[0] = first
         b = surprise(s)
         ts = s.index.values.astype("datetime64[ns]")
         in_event = np.zeros(len(ts), dtype=bool)
