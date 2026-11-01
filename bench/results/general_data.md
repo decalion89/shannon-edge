@@ -105,3 +105,58 @@ The converter usage lines are in each `conv_*.py`. To benchmark, run
 and `run_cm.sh`. `python3 -I table.py G/results <names>` prints the
 tables. `run_extra.sh` also needs the one-stream measurement patch, which
 is not in the repository.
+
+## Ground-learned field relations (`bench/analysis/relations.py`)
+
+A question prompted by the ECG data: are some fields an exact function of
+others? In a 12-lead ECG, four leads are, by definition, combinations of
+two others: Einthoven's III = II − I, and Goldberger's aVR, aVL and aVF.
+The ground can discover such relations and upload them; the spacecraft or
+device then sends only what cannot be deduced.
+
+**How the relations are found.** On the first 10% of the records only,
+for every integer field k, the script tries
+r = x_k − ⌊(a·x_i + b·x_j)/2⌋ for pairs of other fields and a, b in −4..4.
+It keeps the candidate whose residual has the lowest empirical entropy,
+when that is below 2 bits. Targets are never used as predictors, so
+decoding has a fixed order. The transform is exact and reversible; the
+script verifies the inverse on every record.
+
+**INCART ECG.** With no ECG knowledge given to it, the search finds three
+relations:
+* lead I from II and III, exact up to a per-record constant (the ADC
+  offset);
+* aVR from II and aVF (residual entropy 0.86 bits);
+* aVL from II and III (0.57 bits).
+
+All results are verified bit for bit:
+
+| | Original | Relations | Relations + field delta (16-bit, zigzag, record by record) |
+|---|---:|---:|---:|
+| sedge v2 2^16, packet by packet | 40,064,022 (2.77x) | 30,840,871 (3.60x) | **29,372,154 (3.78x)** |
+| sedge fast, packet by packet | 42,619,401 (2.61x) | **33,263,886 (3.34x)** | 34,707,406 (3.20x) |
+| xz -9e, whole file | 49,144,136 (2.26x) | 40,841,060 (2.72x) | — |
+| fieldΔ + planes + xz -9e, whole file | 37,822,840 (2.94x) | **28,905,944 (3.84x)** | — |
+
+* The relations cut every codec by 17–24%. They are a property of the
+  data, not of sedge.
+* With the relations and a numeric field delta, sedge v2, coding packet by
+  packet at about 5 MB/s, is within 1.6% of the best whole-file archiver,
+  which runs at 1.4 MB/s and sees the whole file at once.
+* The fast profile prefers the relations without the field delta.
+
+**Other datasets.**
+* Household power: no relation found.
+* MetroPT-3 codebook file: four relations among identical digital
+  signals, with no measurable effect (5,184,963 → 5,184,096 bytes). v2's
+  cross-column contexts already capture identical columns.
+
+Relations pay where the data carry physically derived signals, as in the
+derived ECG leads. Elsewhere they cost nothing.
+
+**What it implies for the codec.** Two additions would carry this into
+sedge itself, both computed record by record with integer arithmetic:
+* a ground-uploaded "relations" step before the packet codec;
+* a numeric field-delta step.
+They are not implemented yet; the numbers above come from the reversible
+Python transforms plus the existing codecs.
