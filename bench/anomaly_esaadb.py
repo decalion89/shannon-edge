@@ -133,6 +133,41 @@ def budget_threshold(ts: np.ndarray, cost: np.ndarray, allowed: int, merge) -> f
     return float(cost[top[n]])  # flag exactly the top n samples (ties aside)
 
 
+def load_official_metrics(checkout: Path):
+    """Import ESA-ADB's metric modules (ESAScores, ChannelAwareFScore, ADTQC)
+    from a checkout, unmodified, as a standalone package."""
+    import importlib
+    import shutil
+    src = checkout / "timeeval" / "metrics"
+    pkg = Path(tempfile.mkdtemp()) / "esaadb_metrics"
+    pkg.mkdir()
+    for f in ("ESA_ADB_metrics.py", "metric.py", "utils.py", "latency_metrics.py", "ranking_metrics.py"):
+        shutil.copy(src / f, pkg / f)
+    shutil.copytree(src / "affiliation_based_metrics_repo", pkg / "affiliation_based_metrics_repo")
+    (pkg / "__init__.py").write_text("")
+    sys.path.insert(0, str(pkg.parent))
+    esa = importlib.import_module("esaadb_metrics.ESA_ADB_metrics")
+    rank = importlib.import_module("esaadb_metrics.ranking_metrics")
+    lat = importlib.import_module("esaadb_metrics.latency_metrics")
+    return esa.ESAScores, rank.ChannelAwareFScore, lat.ADTQC
+
+
+def change_list(intervals, lo, hi):
+    """[(start, end)) intervals -> ESA-ADB's (timestamp, is_anomaly) list over [lo, hi]."""
+    iv = sorted(intervals)
+    merged = []
+    for a, e in iv:
+        if merged and a <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], e)
+        else:
+            merged.append([a, e])
+    out = [[lo, 0]]
+    for a, e in merged:
+        out += [[max(a, lo), 1], [min(e, hi), 0]]
+    out.append([hi, 0])
+    return np.array([[pd.Timestamp(t), v] for t, v in out], dtype=object)
+
+
 def esa_event_scores(y_true: pd.DataFrame, events_pred: P.Interval, full_range, beta=0.5) -> dict:
     """Event-wise part of ESA-ADB's ESAScores.score (see module docstring)."""
     selected = y_true[y_true["Category"].isin(["Rare Event", "Anomaly"])]
@@ -189,6 +224,9 @@ def main() -> None:
     ap.add_argument("--resample", default=None,
                     help="resample each channel to this grid with zero-order hold before scoring, as ESA-ADB's "
                          "preprocessing does (e.g. 30s); default: original samples")
+    ap.add_argument("--official", type=Path, default=None,
+                    help="path to a checkout of github.com/kplabs-pl/ESA-ADB: also score the rule chosen on "
+                         "validation with ESA-ADB's own metric code (all its metrics), unmodified")
     ap.add_argument("--persist", action="store_true",
                     help="score each sample by min(cost of it, cost of the next sample): an isolated spike "
                          "(e.g. a resampling artefact) vanishes, a lasting anomaly does not (one sample of delay)")
@@ -216,6 +254,7 @@ def main() -> None:
     lab = labels[labels["Channel"].isin(names)]
 
     data = {}
+    med_dt = {}
     merge_ns = np.timedelta64(int(args.merge_minutes * 60e9), "ns")
     for ch in names:
         s = load(z, f"{root}/channels/{ch}.zip")
@@ -271,6 +310,7 @@ def main() -> None:
         keep = ts >= np.datetime64(VALIDATION - pd.DateOffset(months=3))
         data[ch] = (ts[keep], b[keep].astype(np.float32), None if sl is None else sl[keep].astype(np.float32), thr,
                     kind[keep])
+        med_dt[ch] = np.timedelta64(int(med), "ns")
         del b, sl, in_event
         print(f"{ch}: {n_samples:,} samples", file=sys.stderr, flush=True)
 
@@ -357,6 +397,54 @@ def main() -> None:
         print(f"| {name(r)}{mark} | {n_muted} | {len(list(events))} | {res['tp']} | {res['fp']} | {res['fn']} | "
               f"{res['precision']:.3f} | {res['recall']:.3f} | **{res['f05']:.3f}** | {res['alarming']:.3f} |",
               flush=True)
+
+
+    if args.official is not None:
+        ESAScores, ChannelAwareFScore, ADTQC = load_official_metrics(args.official)
+        # Test labels exactly as ESA-ADB builds them: target channels, events
+        # entirely inside the test period, anomaly-type columns attached.
+        test_lo = pd.Timestamp(min(d[0][np.searchsorted(d[0], np.datetime64(SPLIT))] for d in data.values()))
+        test_hi = pd.Timestamp(test_end)
+        yt = labels[labels["Channel"].isin(names)]
+        yt = yt[(yt["StartTime"] >= test_lo) & (yt["EndTime"] <= test_hi)].drop(columns=["Category"])
+        cols = list(types.columns[-4:])
+        yt = yt.merge(types[["ID"] + cols], on="ID", how="left")
+        chans = pd.read_csv(io.BytesIO(z.read(f"{root}/channels.csv")))
+        subsystems = {sub: [*v] for sub, v in chans[chans["Channel"].isin(names)].groupby("Subsystem")["Channel"]}
+        q, factor, mute, slow, timed = best
+        muted = muted_channels(q, factor, SPLIT, slow, timed) if mute else set()
+        per_channel = {}
+        for ch in names:
+            ts = data[ch][0]
+            iv = []
+            if ch not in muted:
+                flag_t = channel_flags(ch, q, factor, SPLIT, SPLIT, test_hi + pd.Timedelta(seconds=1), slow, timed)
+                for a, e in to_events(flag_t):
+                    k = np.searchsorted(ts, e, "right")
+                    end = ts[k] if k < len(ts) else e + med_dt[ch]  # a flag covers [t, next sample)
+                    iv.append((pd.Timestamp(a), pd.Timestamp(end)))
+            per_channel[ch] = change_list(iv, test_lo, test_hi)
+        glob = change_list([(a, e) for ch in names for a, e in zip(per_channel[ch][1:-1:2, 0], per_channel[ch][2:-1:2, 0])],
+                           test_lo, test_hi)
+        sel = {"Category": ["Rare Event", "Anomaly"]}
+        out = {}
+        import contextlib  # ESA-ADB's affiliation code prints debug lists; keep stdout clean
+        quiet = contextlib.redirect_stdout(io.StringIO())
+        quiet.__enter__()
+        out.update({f"ESA {k}": v for k, v in ESAScores(betas=0.5, select_labels=sel).score(
+            yt.drop(columns=["Channel"]), glob).items()})
+        out.update({f"ChannelAware {k}": v for k, v in ChannelAwareFScore(beta=0.5, select_labels=sel).score(
+            yt.copy(), dict(per_channel), subsystems).items()})
+        ytg = yt.copy()
+        ytg["Channel"] = "global"
+        out.update({f"ADTQC {k}": v for k, v in ADTQC(select_labels=sel).score(ytg, {"global": glob}).items()})
+        quiet.__exit__(None, None, None)
+        n_ev = yt[yt["Category"].isin(sel["Category"])]["ID"].nunique()
+        print(f"\nESA-ADB's own metric code, rule chosen on validation ({name(best)}), {n_ev} test events:\n")
+        print("| Metric | Value |\n|---|---:|")
+        for k, v in out.items():
+            print(f"| {k} | {v:.3f} |" if isinstance(v, float) else f"| {k} | {v} |")
+
 
 
 if __name__ == "__main__":
