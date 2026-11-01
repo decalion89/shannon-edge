@@ -8,6 +8,8 @@ gaps do not, but detections inside them are not false positives); multivariate
 scoring on the logical OR of detections across the target channels.
 
 Detector: for every channel, the flight profile's per-sample cost in bits
+(channels with more than 65,536 distinct values are scored on their values
+merged into 65,536 ordered bins)
 (`examples/flight_surprise`, online: each sample is scored by a model that
 has seen only the past) is compared with a per-channel threshold chosen on
 the training part only, as the q-quantile of the cost of training samples
@@ -61,7 +63,11 @@ def load(z: zipfile.ZipFile, member: str) -> pd.Series:
 def surprise(series: pd.Series) -> np.ndarray:
     uniq, codes = np.unique(series.to_numpy().astype(np.float32), return_inverse=True)
     if len(uniq) > 65536:
-        raise SystemExit(f"{series.name}: more than 65,536 distinct values, not supported by flight_surprise")
+        # The flight profile takes 16-bit codes. For detection only, merge
+        # neighbouring distinct values into 65,536 ordered bins (a lossy view
+        # of the channel; the compressor's own lossless results never do this).
+        codes = (codes.astype(np.int64) * 65536 // len(uniq))
+        print(f"{series.name}: {len(uniq):,} distinct values binned to 65,536 for scoring", file=sys.stderr)
     with tempfile.TemporaryDirectory() as t:
         cp, sp = Path(t) / "c.u16", Path(t) / "s.u32"
         codes.astype("<u2").tofile(cp)
