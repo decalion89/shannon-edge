@@ -105,6 +105,11 @@ v0.1 single core: ~0.5 MiB/s. Target: 10× without losing ratio, then more.
       (identical on both ends). ESA Mission 1, 4 target channels, 213
       labelled events: 138 found at 0.1% false alarms vs 82 for a z-score
       and 49 for a jump detector; 87 vs 42 vs 19 at 0.01%
+- [x] Whole-mission measurement (ESA-AD Mission 1, 75 channels, 734 M
+      samples, 14 years): flight profile beats CCSDS 121 on 75/75 channels,
+      −38% in total; 16 channels below 1% of float32
+- [ ] Missions 2 and 3, and a public "where 1% is possible" scoreboard of
+      real-world data streams
 - [ ] Anomaly scoring with a label-free threshold, ESA-ADB's own metrics,
       and comparison with its learned detectors
 - [ ] Time the flight profile on flight-class hardware (LEON3/4, RISC-V)

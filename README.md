@@ -277,6 +277,31 @@ flight CPU with room to spare — still an estimate until it is timed on
 flight-class hardware. `examples/telemetry_lite.rs` keeps the floating-point
 research prototype and `examples/flight_bench.rs` reproduces the table.
 
+### A whole mission: 14 years of a satellite's life
+
+`bench/mission.py` runs **every channel** of ESA-AD Mission 1 — 75 channels
+(one skipped: more than 65,536 distinct values), 734 million samples from
+2000 to 2013 — through CCSDS 121 and the flight profile (tables 2^14,
+~0.2 MiB), every packet verified. Full per-channel table:
+[`bench/results/esa_mission1.md`](bench/results/esa_mission1.md).
+
+| | Bytes | % of float32 values |
+|---|---:|---:|
+| Telemetry values as published (float32) | 2,937,374,236 | 100% |
+| CCSDS 121 | 275,956,412 | 9.4% |
+| **flight profile** | **171,123,388** | **5.8%** |
+
+* The flight profile beats CCSDS 121 on **75 of 75 channels** (from −0.6%
+  to −52%), −38% in total.
+* **16 channels end below 1%** of their float32 size (CCSDS 121: 13), the
+  lowest at 0.43%; median 3.9%.
+* As a lossless code, 171 MB is a verifiable upper bound on the new
+  information in 14 years of these telemetry values.
+
+The float32 baseline is the dataset's published representation; the raw
+onboard samples were likely narrower, so the comparison that matters is
+against CCSDS 121, not the percentages.
+
 ### The compressor is also an anomaly detector — for free
 
 To compress, the flight profile already computes how surprising every
@@ -429,6 +454,7 @@ The file format is specified in [`docs/FORMAT.md`](docs/FORMAT.md).
 | `bench/small_messages.py` | Many small records: sedge vs zstd with a trained dictionary |
 | `bench/streams.py`, `examples/session_bench.rs` | Record streams: sedge sessions vs zstd streaming |
 | `bench/telemetry.py` | ESA spacecraft telemetry: sedge vs CCSDS 121 and zstd |
+| `bench/mission.py`, `bench/results/` | Every channel of an ESA mission through CCSDS 121 and the flight profile |
 | `bench/anomaly.py`, `examples/flight_surprise.rs` | Anomaly detection from the compressor's surprise (ESA labels) |
 | `docs/THEORY.md` | The limits, with proofs, and how to move them honestly |
 | `docs/FORMAT.md` | `.sedge` format specification |
