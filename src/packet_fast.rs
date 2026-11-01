@@ -29,7 +29,8 @@ const SYMS: usize = 255;
 #[derive(Clone)]
 struct Freq {
     f: [u16; 256],
-    tree: [u32; 257],
+    /// Fenwick tree; partial sums never exceed `LIMIT`, so 16 bits suffice.
+    tree: [u16; 257],
     total: u32,
 }
 
@@ -54,7 +55,7 @@ impl Freq {
             self.total += self.f[i] as u32;
             let mut j = i + 1;
             while j <= 256 {
-                self.tree[j] += self.f[i] as u32;
+                self.tree[j] += self.f[i];
                 j += j & j.wrapping_neg();
             }
         }
@@ -66,7 +67,7 @@ impl Freq {
         let mut j = s;
         let mut c = 0;
         while j > 0 {
-            c += self.tree[j];
+            c += self.tree[j] as u32;
             j &= j - 1;
         }
         c
@@ -80,10 +81,10 @@ impl Freq {
         let mut mask = 256;
         while mask > 0 {
             let next = pos + mask;
-            if next <= 256 && self.tree[next] <= v {
+            if next <= 256 && (self.tree[next] as u32) <= v {
                 pos = next;
-                v -= self.tree[next];
-                cum += self.tree[next];
+                v -= self.tree[next] as u32;
+                cum += self.tree[next] as u32;
             }
             mask >>= 1;
         }
@@ -102,7 +103,7 @@ impl Freq {
         self.total += INC;
         let mut j = s + 1;
         while j <= 256 {
-            self.tree[j] += INC;
+            self.tree[j] += INC as u16;
             j += j & j.wrapping_neg();
         }
     }
@@ -114,6 +115,59 @@ struct Column {
     /// Packets since the column last changed (capped at 15).
     run: u8,
     changed_last: bool,
+    /// Delta of the column's last change (0 before the first).
+    last_delta: u8,
+    /// Context recipe and the index of its first frequency table.
+    recipe: u8,
+    base: u32,
+}
+
+/// Context recipes for a column's delta tables. The ground, which holds the
+/// history, can choose one per column ([`FastPacketSession::learn_recipes`])
+/// and uplink the choice (one byte per column); the encoder only follows it.
+pub mod recipe {
+    /// Did the left neighbour change in this packet? (2 tables; default)
+    pub const LEFT_CHANGED: u8 = 0;
+    /// Size and sign of the left neighbour's delta (10 tables).
+    pub const LEFT_DELTA: u8 = 1;
+    /// Size and sign of this column's last delta (10 tables).
+    pub const LAST_DELTA: u8 = 2;
+    /// High nibble of the byte above (16 tables).
+    pub const ABOVE_HIGH: u8 = 3;
+    /// Left neighbour changed × last delta (20 tables).
+    pub const LEFT_CHANGED_LAST_DELTA: u8 = 4;
+    /// Number of recipes.
+    pub const COUNT: u8 = 5;
+
+    pub(crate) fn tables(r: u8) -> usize {
+        [2, 10, 10, 16, 20][r as usize]
+    }
+}
+
+/// Size and sign class of a delta: 0 (none), 1, 2..3, 4..15, 16+; x2 sign.
+#[inline]
+fn delta_class(d: u8) -> usize {
+    let s = d as i8;
+    let a = s.unsigned_abs();
+    let b = match a {
+        0 => 0,
+        1 => 1,
+        2..=3 => 2,
+        4..=15 => 3,
+        _ => 4,
+    };
+    b * 2 + (s < 0) as usize
+}
+
+#[inline]
+fn recipe_context(r: u8, left_changed: bool, left_delta: u8, last_delta: u8, above: u8) -> usize {
+    match r {
+        recipe::LEFT_CHANGED => left_changed as usize,
+        recipe::LEFT_DELTA => delta_class(left_delta),
+        recipe::LAST_DELTA => delta_class(last_delta),
+        recipe::ABOVE_HIGH => (above >> 4) as usize,
+        _ => left_changed as usize * 10 + delta_class(last_delta),
+    }
 }
 
 /// One end of a link carrying fixed-length packets (fast profile).
@@ -124,7 +178,7 @@ pub struct FastPacketSession {
     cols: Vec<Column>,
     /// "Same" probabilities (16-bit), 64 contexts per column.
     same: Vec<u16>,
-    /// Delta frequencies, two tables per column (left neighbour changed or not).
+    /// Delta frequencies: per column, the tables of its recipe.
     freq: Vec<Freq>,
     /// Epoch length in packets (0 = none) and the state to restart from.
     epoch: u64,
@@ -145,18 +199,82 @@ impl FastPacketSession {
     /// # Panics
     /// If `packet_len` is out of range.
     pub fn new(packet_len: usize) -> Self {
+        Self::with_recipes(&vec![recipe::LEFT_CHANGED; packet_len])
+    }
+
+    /// A session whose column `k` uses context recipe `recipes[k]` (see
+    /// [`recipe`]); the packet length is `recipes.len()`. Both ends must use
+    /// the same recipes.
+    ///
+    /// # Panics
+    /// If the length is out of range or a recipe is unknown.
+    pub fn with_recipes(recipes: &[u8]) -> Self {
+        let packet_len = recipes.len();
         assert!((1..=65536).contains(&packet_len), "packet_len in 1..=65536");
+        assert!(recipes.iter().all(|&r| r < recipe::COUNT), "unknown recipe");
+        let mut cols = vec![Column::default(); packet_len];
+        let mut tables = 0usize;
+        for (c, &r) in cols.iter_mut().zip(recipes) {
+            c.recipe = r;
+            c.base = tables as u32;
+            tables += recipe::tables(r);
+        }
         Self {
             len: packet_len,
             above: vec![0; packet_len],
-            cols: vec![Column::default(); packet_len],
+            cols,
             same: vec![1 << 15; packet_len * 64],
-            freq: vec![Freq::new(); packet_len * 2],
+            freq: vec![Freq::new(); tables],
             epoch: 0,
             origin: None,
             count: 0,
             desynced: false,
         }
+    }
+
+    /// Ground side: choose each column's context recipe from historical
+    /// packets, by the ideal cost of its changed bytes under every recipe.
+    /// The result (one byte per column) is what both ends pass to
+    /// [`FastPacketSession::with_recipes`].
+    ///
+    /// # Panics
+    /// If `packet_len` is out of range or a packet has another length.
+    pub fn learn_recipes(packet_len: usize, history: &[&[u8]]) -> Vec<u8> {
+        assert!((1..=65536).contains(&packet_len), "packet_len in 1..=65536");
+        let mut cost = vec![[0f64; recipe::COUNT as usize]; packet_len];
+        for r in 0..recipe::COUNT {
+            let n = recipe::tables(r);
+            let mut freq = vec![Freq::new(); packet_len * n];
+            let mut above = vec![0u8; packet_len];
+            let mut last = vec![0u8; packet_len];
+            for p in history {
+                assert_eq!(p.len(), packet_len, "packet length");
+                let (mut lc, mut ld) = (false, 0u8);
+                for k in 0..packet_len {
+                    let d = p[k].wrapping_sub(above[k]);
+                    if d == 0 {
+                        lc = false;
+                        ld = 0;
+                        continue;
+                    }
+                    let f = &mut freq[k * n + recipe_context(r, lc, ld, last[k], above[k])];
+                    let s = d as usize - 1;
+                    cost[k][r as usize] += (f.total as f64 / f.f[s] as f64).log2();
+                    f.update(s);
+                    lc = true;
+                    ld = d;
+                    last[k] = d;
+                }
+                above.copy_from_slice(p);
+            }
+        }
+        cost.iter()
+            .map(|c| {
+                (0..recipe::COUNT)
+                    .min_by(|&a, &b| c[a as usize].total_cmp(&c[b as usize]))
+                    .unwrap_or(0)
+            })
+            .collect()
     }
 
     /// Learn from historical packets before the link starts (both ends must
@@ -216,6 +334,7 @@ impl FastPacketSession {
     #[allow(clippy::needless_range_loop)]
     fn code_packet(&mut self, packet: &[u8], io: &mut Io, out: &mut Vec<u8>) {
         let mut left_changed = false;
+        let mut left_delta = 0u8;
         for k in 0..self.len {
             let above = self.above[k];
             let c = self.cols[k];
@@ -241,12 +360,15 @@ impl FastPacketSession {
                 col.run = (col.run + 1).min(15);
                 col.changed_last = false;
                 left_changed = false;
+                left_delta = 0;
                 above
             } else {
                 col.run = 0;
                 col.changed_last = true;
                 // 2. The delta from above, one symbol.
-                let f = &mut self.freq[k * 2 + left_changed as usize];
+                let cx =
+                    recipe_context(col.recipe, left_changed, left_delta, col.last_delta, above);
+                let f = &mut self.freq[col.base as usize + cx];
                 let s = match io {
                     Io::Enc(e) => {
                         let s = packet[k].wrapping_sub(above) as usize - 1;
@@ -275,7 +397,9 @@ impl FastPacketSession {
                 };
                 f.update(s);
                 left_changed = true;
-                above.wrapping_add(s as u8 + 1)
+                left_delta = s as u8 + 1;
+                col.last_delta = left_delta;
+                above.wrapping_add(left_delta)
             };
             out.push(value);
         }

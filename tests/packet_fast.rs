@@ -132,3 +132,41 @@ fn golden_fast_stream_is_stable() {
 
 const GOLDEN_LEN: usize = 2091;
 const GOLDEN_HASH: u64 = 0xb626_82a3_244f_e674;
+
+#[test]
+fn learned_recipes_roundtrip_and_help() {
+    use shannon_edge::packet_fast::recipe;
+    let all = packets(3_000, 32, 11);
+    let (history, test) = all.split_at(300);
+    let hist: Vec<&[u8]> = history.iter().map(Vec::as_slice).collect();
+    let recipes = FastPacketSession::learn_recipes(32, &hist);
+    assert_eq!(
+        recipes,
+        FastPacketSession::learn_recipes(32, &hist),
+        "deterministic"
+    );
+    assert!(recipes.iter().all(|&r| r < recipe::COUNT));
+    let size = |r: &[u8]| -> usize {
+        let mut base = FastPacketSession::with_recipes(r);
+        base.prime(hist.iter().copied());
+        let (mut tx, mut rx) = (base.clone(), base);
+        test.iter()
+            .map(|p| {
+                let payload = tx.compress(p);
+                assert_eq!(&rx.decompress(&payload).unwrap(), p);
+                payload.len()
+            })
+            .sum()
+    };
+    // Every recipe works; the learned ones are not worse than the default.
+    for r in 0..recipe::COUNT {
+        size(&[r; 32]);
+    }
+    assert!(size(&recipes) <= size(&[recipe::LEFT_CHANGED; 32]) + 32);
+}
+
+#[test]
+#[should_panic(expected = "unknown recipe")]
+fn unknown_recipe_is_rejected() {
+    FastPacketSession::with_recipes(&[0, 9]);
+}

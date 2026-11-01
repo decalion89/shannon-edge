@@ -302,7 +302,7 @@ codes the packets **one by one, as they arrive**; every packet verified:
 | **sedge packet profile v2, tables 2^12** | **372 KiB** | **3,350,925** | 4.06× | **−36.7%** |
 | sedge packet profile v2, tables 2^14 | 648 KiB | 3,251,718 | 4.18× | −38.5% |
 | **sedge packet profile v2, tables 2^18** | 6.0 MiB | **2,999,548** | **4.54×** | **−43.3%** |
-| **sedge fast packet profile** (~50 MB/s, ~1.9x CCSDS 124's speed) | 283 KiB | **3,845,622** | 3.54× | **−27.3%** |
+| **sedge fast packet profile** (~50 MB/s, ~1.9x CCSDS 124's speed) | 193 KiB | **3,845,622** | 3.54× | **−27.3%** |
 
 **The packet profile** (`shannon_edge::packet::PacketSession`) is the
 flight-class answer: integer-only, golden-pinned, one coder per packet, no
@@ -330,8 +330,12 @@ compression for speed: one cheap "same?" decision per byte and a single
 adaptive symbol (the delta) per changed byte. Measured in-process on the
 same core, it compresses at ~50 MB/s against ~26 MB/s for the open
 CCSDS 124 implementation, while being 27% smaller — the first sedge codec
-that beats CCSDS 124 on both size and speed (with 283 KiB of memory
+that beats CCSDS 124 on both size and speed (with 193 KiB of memory
 instead of a few hundred bytes; [`packet_fast.md`](bench/results/packet_fast.md)).
+*The ground thinks, the spacecraft executes:* the ground can choose a
+context recipe per column from the history (`learn_recipes`, one byte per
+column to uplink), which cut another 6.5% on the 90% of Venus Express not
+used to learn them (−32.2% vs CCSDS 124 there) at the same speed.
 
 The idea came from a clue in the data: on the whole file, xz (4.0 MB) beat
 sedge (4.3 MB), so sedge was ignoring structure — the column, which POCKET+

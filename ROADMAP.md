@@ -142,6 +142,8 @@ v0.1 single core: ~0.5 MiB/s. Target: 10× without losing ratio, then more.
 - [x] Fast packet profile: −27.3% vs best CCSDS 124 on Venus Express at
       ~1.9x its compression speed (in-process, same core); with erasure
       code −23.4% at 1% loss
+- [x] Fast profile, ground-learned per-column context recipes: −6.5% on
+      held-out Venus Express packets at the same speed
 - [ ] Packet profiles: C/Python bindings, flight-hardware timing
 - [x] Whole-mission measurement (ESA-AD Mission 1, 75 channels, 734 M
       samples, 14 years): flight profile beats CCSDS 121 on 75/75 channels,

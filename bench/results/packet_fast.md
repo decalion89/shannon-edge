@@ -26,13 +26,13 @@ included (`examples/packet_fast_bench.rs`).
 |---|---:|---:|---:|---:|---:|
 | CCSDS 124, best of sweep (R=0, pt=14, ft=10⁵, rt=10⁶) | < 1 KiB | 5,289,939 | — | 26 MB/s | — |
 | CCSDS 124, R=2 (robust) | < 1 KiB | 5,679,592 | +7.4% | 25 MB/s | — |
-| **sedge fast profile** | 283 KiB | **3,845,622** | **−27.3%** | **~50 MB/s** | ~31 MB/s |
+| **sedge fast profile** | 193 KiB | **3,845,622** | **−27.3%** | **~50 MB/s** | ~31 MB/s |
 | sedge packet profile v2, 2^12 | 372 KiB | 3,350,925 | −36.7% | 7.0 MB/s | 6.0 MB/s |
 | sedge packet profile v2, 2^18 | 6.0 MiB | 2,999,548 | −43.3% | 5.2 MB/s | 4.8 MB/s |
 
 The fast profile is the first sedge codec that is both smaller **and**
 faster than CCSDS 124 on this data (~1.9x at compression). It needs more
-memory (283 KiB vs a few hundred bytes), and the CCSDS 124 implementation
+memory (193 KiB vs a few hundred bytes), and the CCSDS 124 implementation
 measured is an open reference implementation, not necessarily the fastest
 flight code. Not timed on flight hardware.
 
@@ -78,3 +78,31 @@ R=2; 5% loss −16.7% vs R=3; all with 100% of the packets recovered.
 Venus Express, first N packets: 100 → 3,591; 300 → 10,382; 1,000 →
 30,797; 10,000 → 260,341 bytes (v2 2^14: 3,126 / 8,846 / 26,024 /
 224,425).
+
+## The ground thinks, the spacecraft executes: learned context recipes
+
+The spacecraft has a small CPU; the ground has unlimited compute and the
+whole history. So the ground chooses, for every column, which context
+the delta tables use — a *recipe* (`packet_fast::recipe`): left neighbour
+changed (default), size/sign of the left neighbour's delta, of the
+column's last delta, high nibble of the byte above, or left-changed ×
+last delta. `FastPacketSession::learn_recipes` scores every recipe on the
+history by ideal cost and keeps the cheapest per column; the result is
+one byte per column to uplink, and the encoder's work per byte does not
+change.
+
+Venus Express, recipes learned on the first 10% (15,120 packets, 0.09 s),
+both ends primed with that history, measured on the other 136,080 packets
+(`SEDGE_FAST_RECIPES=1 examples/packet_fast_bench`):
+
+| Fast profile, test 90% | Memory | Bytes | Compress |
+|---|---:|---:|---:|
+| default recipes | 193 KiB | 3,463,245 | ~47–51 MB/s |
+| **learned recipes** | 808 KiB | **3,237,111 (−6.5%)** | ~46 MB/s |
+| (CCSDS 124 R=0, same packets) | < 1 KiB | 4,772,219 | ~26 MB/s |
+
+Learned recipes: 35 columns left-changed, 8 left-delta, 22 last-delta,
+20 above-high, 5 combined. On these packets the fast profile with learned
+recipes is −32.2% vs CCSDS 124 R=0, at ~1.8x its speed. The estimate
+before writing code (Python, `per-column recipe chosen on the first 10%`)
+was −8.0% on the changed bytes; the codec got −6.5% overall.
