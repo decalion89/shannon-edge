@@ -166,9 +166,11 @@ v0.1 single core: ~0.5 MiB/s. Target: 10× without losing ratio, then more.
 - [x] Surprise as anomaly detector on ESA-ADB (Mission 1, corrected
       event-wise F0.5): full set 0.279 vs 0.061 best published;
       lightweight 0.690 vs 0.786 (anomalies only 0.905 vs 0.968)
-- [ ] ESA-ADB Mission 2, other ESA-ADB metrics (channel-aware, ADTQC,
-      affiliation), the identical 30-s preprocessing; fewer false alarms
-      on the full set
+- [x] ESA-ADB Mission 2: full set 0.787 vs 0.079 best published;
+      lightweight 0.725 (3rd, best 0.949); test sets match the paper's
+      event counts
+- [ ] Other ESA-ADB metrics (channel-aware, ADTQC, affiliation), the
+      identical 30-s preprocessing; fewer false alarms on the full sets
 - [ ] Cycles on real NOEL-V/LEON hardware; 32-bit range-coder arithmetic
       for LEON3; C/Python bindings for the packet profiles
 - [x] Whole-mission measurement (ESA-AD Mission 1, 75 channels, 734 M

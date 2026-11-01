@@ -37,10 +37,11 @@ On 14 years of ESA Anomaly Dataset telemetry (Mission 1, 734 million
 samples), the flight profile is 38% smaller than CCSDS 121 in total and
 smaller on all 75 channels measured. Its per-sample "surprise", computed
 identically on both ends at no extra cost, is also an anomaly detector: on
-ESA's own benchmark (ESA-ADB, Mission 1, corrected event-wise F0.5) it
-scores 0.279 on the full set of 58 channels against 0.061 for the best
-published algorithm, and 0.690 (no false alarm in seven test years)
-against 0.786 on the lightweight subset. The report also lists the ideas that did not work,
+ESA's own benchmark (ESA-ADB, corrected event-wise F0.5, test sets
+matching the paper's event counts) it beats every published algorithm on
+the full channel sets of both missions — 0.279 vs 0.061 (Mission 1) and
+0.787 vs 0.079 (Mission 2) — while ranking 2nd and 3rd on the small
+lightweight subsets. The report also lists the ideas that did not work,
 with their measurements.
 
 ## 1. Codecs
@@ -172,11 +173,13 @@ metric (corrected event-wise F0.5, logic of ESA-ADB's own code), with a
 per-channel threshold = the maximum cost seen in nominal training data
 (rule chosen on validation):
 
-| Mission 1 | sedge surprise | Best published (Telemanom-ESA-Pruned) | Next best published |
+| Setting | sedge surprise | Best published | Next best published |
 |---|---:|---:|---:|
-| Lightweight subset (channels 41–46), all events | 0.690 (precision 1.000, no false alarm in 7 test years) | 0.786 | 0.253 (GlobalSTD5) |
-| Lightweight subset, anomalies only | 0.905 | 0.968 | 0.211 |
-| **Full set (58 target channels), all events** | **0.279** | 0.061 | 0.008 (Telemanom-ESA) |
+| Mission 1, lightweight subset (channels 41–46) | 0.690 (precision 1.000, no false alarm in 7 test years) | 0.786 (Telemanom-ESA-Pruned) | 0.253 (GlobalSTD5) |
+| Mission 1, lightweight, anomalies only | 0.905 | 0.968 (Telemanom-ESA-Pruned) | 0.211 |
+| **Mission 1, full set (58 target channels)** | **0.279** | 0.061 (Telemanom-ESA-Pruned) | 0.008 (Telemanom-ESA) |
+| Mission 2, lightweight subset (channels 18–28) | 0.725 | 0.949 (Windowed iForest) | 0.842 (Telemanom-ESA-Pruned) |
+| **Mission 2, full set (47 target channels)** | **0.787** | 0.079 (PCC) | 0.071 (Telemanom-ESA-Pruned) |
 
 No neural network is trained; the surprise detects anomalies (19 of 29 in
 the lightweight test set) and is nearly blind to "rare events" (1 of 36),

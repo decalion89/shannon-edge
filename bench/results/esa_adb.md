@@ -110,6 +110,82 @@ better than the published methods, far from the lightweight subset's zero.
 The same caveats apply (original samples rather than 30 s resampling;
 events clipped at the split).
 
+## Mission 2 (replication)
+
+Same detector and procedure, Mission 2 protocol of ESA-ADB: training up to
+2001-10-01, validation from 2001-07-01. Channels with more than 65,536
+distinct values (e.g. channel 18: 90,474) are scored on their values
+merged into 65,536 ordered bins (detection only). The validation dates
+printed by the run were a hard-coded label, corrected here (the
+computation used the Mission 2 dates).
+
+### Lightweight subset (channels 18–28)
+
+Validation (2001-07-01 to 2001-10-01, 27 events): F0.5 per rule 0.9999: 0.072, 0.99999: 0.498, 0.999999: 0.859, 1.0: 0.746; chosen: 0.999999
+
+| Threshold (quantile of training nominal cost) | Detections | TP | FP | FN | Corrected precision | Recall | **Corrected event-wise F0.5** | Alarming precision |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0.9999 | 3819 | 345 | 3001 | 5 | 0.103 | 0.986 | **0.126** | 0.426 |
+| 0.99999 | 649 | 299 | 159 | 51 | 0.653 | 0.854 | **0.685** | 0.615 |
+| 0.999999 (chosen on validation) | 187 | 139 | 13 | 211 | 0.914 | 0.397 | **0.725** | 0.808 |
+| 1.0 | 107 | 91 | 1 | 259 | 0.989 | 0.260 | **0.634** | 0.867 |
+
+Published (ESA-ADB Table 2): Windowed iForest **0.949**, Telemanom-ESA-Pruned
+0.842, iForest 0.609, Telemanom-ESA 0.224, DC-VAE-ESA STD5 0.079,
+GlobalSTD5 0.075, HBOS 0.068, PCC 0.036, GlobalSTD3 0.007, DC-VAE-ESA STD3
+0.003, KNN 0.001. **The surprise (0.725) is third** here.
+
+### Full set (47 target channels)
+
+Validation (2001-07-01 to 2001-10-01, 27 events): F0.5 per rule 0.999999: 0.551, 0.9999999: 0.739, 1.0: 0.714; chosen: 0.9999999
+
+| Threshold (quantile of training nominal cost) | Detections | TP | FP | FN | Corrected precision | Recall | **Corrected event-wise F0.5** | Alarming precision |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0.999999 | 648 | 313 | 110 | 49 | 0.740 | 0.865 | **0.762** | 0.570 |
+| 0.9999999 (chosen on validation) | 330 | 203 | 29 | 159 | 0.875 | 0.561 | **0.787** | 0.651 |
+| 1.0 | 288 | 176 | 24 | 186 | 0.880 | 0.486 | **0.757** | 0.640 |
+
+Published (ESA-ADB Table 2): PCC **0.079**, Telemanom-ESA-Pruned 0.071,
+GlobalSTD5 0.064, Telemanom-ESA 0.064, Windowed iForest 0.042, iForest
+0.027, HBOS 0.020, DC-VAE-ESA STD5 0.011, GlobalSTD3 0.008, DC-VAE-ESA STD3
+0.002. **The surprise scores 0.787, about 10x the best published.**
+
+## Summary across both missions
+
+| Corrected event-wise F0.5 | sedge surprise | Best published | Rank |
+|---|---:|---:|---:|
+| Mission 1, lightweight (6 channels) | 0.690 | 0.786 (Telemanom-ESA-Pruned) | 2nd |
+| Mission 1, full set (58 channels) | **0.279** | 0.061 (Telemanom-ESA-Pruned) | **1st, 4.6x** |
+| Mission 2, lightweight (11 channels) | 0.725 | 0.949 (Windowed iForest) | 3rd |
+| Mission 2, full set (47 channels) | **0.787** | 0.079 (PCC) | **1st, ~10x** |
+
+On the realistic setting — every target channel of an operating
+spacecraft — the compressor's free by-product beats every published
+algorithm by a wide margin on both missions; on the small hand-picked
+subsets, trained neural networks or windowed isolation forests remain
+better. Its strength is precision: thresholds at the extremes of what the
+model has seen keep false alarms rare where the published methods raise
+thousands.
+
+## Are the test sets the same as the paper's?
+
+Event counts of our test and validation sets against ESA-ADB's
+Supplementary Tables 11–12:
+
+| Set | ESA-ADB | Ours |
+|---|---:|---:|
+| Mission 1 lightweight, test | 65 (29 anomalies, 36 rare events) | 65 (29, 36) |
+| Mission 1 full, test | 91 | 91 |
+| Mission 1 validation, lightweight / full | 3 / 5 | 3 / 5 |
+| Mission 2 lightweight, test | 349 | 350 |
+| Mission 2 full, test | 361 | 362 |
+| Mission 2 validation, full | 27 | 27 |
+
+Exact for Mission 1; one event more in each Mission 2 test set, most
+likely an event straddling the split that we clip to the test period
+rather than drop. The remaining difference is preprocessing (ESA-ADB's
+algorithms see 30-s resampled data; the surprise uses original samples).
+
 ## What it finds, and what it misses (lightweight subset)
 
 Breaking the 65 test events down by category (rule: cost above the

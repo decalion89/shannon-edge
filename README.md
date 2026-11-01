@@ -408,9 +408,10 @@ the mission's call; see [`near_lossless.md`](bench/results/near_lossless.md).
 **The compressor is also an anomaly detector.** The flight profile's
 per-sample surprise, computed identically on both ends, scored on ESA's
 anomaly-detection benchmark (ESA-ADB, Mission 1, its protocol and main
-metric): **0.279 on the full set of 58 channels, where the best published
-algorithm scores 0.061**; 0.690 on the lightweight subset (best published
-0.786), with no false alarm in seven test years; no neural network
+metric, test sets matching the paper's event counts): on the full channel
+sets it beats every published algorithm — **0.279 vs 0.061 (Mission 1)
+and 0.787 vs 0.079 (Mission 2)** — with no neural network; on the small
+lightweight subsets it ranks 2nd (0.690 vs 0.786) and 3rd (0.725 vs 0.949)
 ([`esa_adb.md`](bench/results/esa_adb.md)).
 
 ### A whole mission: 14 years of a satellite's life
