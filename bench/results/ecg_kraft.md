@@ -49,6 +49,33 @@ other sequential code R, the bits R saves over Q,
 Σᵢ (ℓ_Q(xᵢ) − ℓ_R(xᵢ)), form the logarithm of a nonnegative
 supermartingale (E_Q[R/Q] ≤ 1). Ville's inequality then bounds the
 probability that it *ever* exceeds t by 2^−t: monitoring is continuous,
-with no fixed horizon. This is the next experiment, with R a code that
-predicts each beat from the previous one. It is not done yet; nothing here
-shows that it works.
+with no fixed horizon. 
+## First attempt with two codes: also negative (`bench/ecg_ville.py`)
+
+Setup:
+* Q, "the rhythm repeats": each sample is predicted from the same offset
+  after the R peak of the last unflagged beat, and the residual is coded
+  with a discrete Laplace law.
+* R: the flight profile.
+* Beat evidence S = Σ(ℓ_Q − ℓ_R); alarm when S ≥ t.
+
+| t (bits) | Abnormal beats flagged (sensitivity) | SVEB | VEB | F | Normal beats flagged (FPR) | False beat alarms per hour | Bound: beats * 2^-t |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| auto (ceil log2 beats per record) | 0.999 (10601/10608) | 0.999 (2779/2781) | 0.999 (7005/7009) | 0.999 (802/803) | 0.9990 (90031/90125) | 4079.73 | 44.0 |
+| 4 | 0.999 (10601/10608) | 0.999 (2779/2781) | 0.999 (7005/7009) | 0.999 (802/803) | 0.9990 (90031/90125) | 4079.73 | 6,295.8 |
+| 8 | 0.999 (10601/10608) | 0.999 (2779/2781) | 0.999 (7005/7009) | 0.999 (802/803) | 0.9990 (90031/90125) | 4079.73 | 393.5 |
+| 16 | 0.999 (10601/10608) | 0.999 (2779/2781) | 0.999 (7005/7009) | 0.999 (802/803) | 0.9990 (90031/90125) | 4079.73 | 1.5 |
+| 32 | 0.999 (10601/10608) | 0.999 (2779/2781) | 0.999 (7005/7009) | 0.999 (802/803) | 0.9990 (90031/90125) | 4079.73 | 0.0 |
+
+Every beat is flagged, normal ones included, at every t. The 44 expected
+false alarms become 90,031. **The guarantee did not fail; its premise
+did.** The bound holds only if the data follow Q, and here Q is a poor
+code even for normal beats. Beat-to-beat residuals carry baseline wander
+and ±1-sample jitter on the steep QRS, so the flight profile's
+sample-to-sample prediction beats Q on every beat. Then S is large
+everywhere.
+
+Lesson: in the two-code test, the training-free guarantee is only as good
+as the "normal" code Q, which must be at least as good as the general
+code on normal data. Building such a Q for ECG morphology, without
+training, is the open problem. It is not solved here.
