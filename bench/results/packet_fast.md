@@ -43,6 +43,35 @@ Variants not kept: delta tables also split by the size of the column's
 last change (3,827,607, −0.5%, twice the memory); a second "same"
 estimate by bytes changed so far (3,836,807, −0.2%, slower).
 
+## How far from the strongest known compressor?
+
+The reference is paq8px v217 `-8` (Mahoney et al.; built from
+github.com/hxim/paq8px), the strongest known general compressor family. It
+compresses the whole 13.6 MB Venus Express file offline, at roughly 3 KB/s
+on this machine.
+
+The first run stopped at 96.2% of the input, after writing 2,301,952
+bytes. The process ended without an error message; the cause is unknown.
+Extrapolated at the same rate, the whole file comes to about **2.39 MB**.
+A second run is in progress to confirm the final size and the round trip.
+
+| Codec | Setting | Bytes | vs paq8px (≈2.39 MB) |
+|---|---|---:|---:|
+| paq8px -8 | whole file, offline, ~3 KB/s | ≈2,392,000 (extrapolated) | — |
+| sedge CM (`sedge bench -b 0 -t 1 -r 90`) | whole file, 0.4 MB/s, verified | 2,849,785 | +19% |
+| sedge packet v2, 2^18 | packet by packet, 5 MB/s | 2,999,548 | +25% |
+| sedge packet v2, 2^12 | packet by packet, 7 MB/s, 372 KiB | 3,350,925 | +40% |
+| sedge fast | packet by packet, ~50 MB/s, 193 KiB | 3,845,622 | +61% |
+| CCSDS 124, best of sweep | packet by packet, 26 MB/s | 5,289,939 | +121% |
+
+**There is real headroom.** Even sedge's whole-file model is about 19%
+above what the strongest known model reaches, so the remaining bits are not
+all noise. The earlier noise-floor analysis (`side_information.md`) bounded
+only per-field first-order structure. Coding packet by packet in flight
+costs only another ~5%: v2 2^18 against sedge CM on the whole file. The
+rest of the gap is model capacity, bought at about 1,000 times the work per
+byte.
+
 ## Under packet loss (fast profile + erasure code)
 
 `SEDGE_PACKET_FAST=1 examples/packet_fec` (same setup as `venus_fec.md`):
