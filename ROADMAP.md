@@ -46,8 +46,9 @@ v0.1 single core: ~0.5 MiB/s. Target: 10× without losing ratio, then more.
 
 - [ ] Bit-history state machines instead of raw counters (better handling of
       deterministic and non-stationary contexts)
-- [ ] Indirect and record/column models (tables, spreadsheets, binary
-      structures — today `ptt5` and `sum` still lose to xz)
+- [x] Record/column model with auto-detected record length (spreadsheets,
+      fax scanlines, telemetry packets): `ptt5` now beats xz by 20%
+- [ ] Indirect models, and a model for executables (`sum` still loses to xz)
 - [ ] Data transforms: x86 call/jump (E8/E9) filter for executables, 2-D image
       models, delta coding for numeric series
 - [ ] Higher-precision coder probabilities (removes the ~0.0003 bit/bit floor
