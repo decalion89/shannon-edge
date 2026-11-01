@@ -123,3 +123,41 @@ Ten stars and one quarter are far too few to set a threshold or to claim
 a false-alarm rate. A real search would need hundreds of quiet stars and
 all quarters to calibrate it, and then candidates would still need
 vetting by astronomers.
+
+### Calibration on 62 quiet stars (Kepler LEGACY asteroseismic sample)
+
+**Setup.** Three changes from the runs above:
+* Cadences the pipeline flags (`SAP_QUALITY` ≠ 0) are now dropped. An
+  earlier run without this step let flagged instrument events pass as
+  transits.
+* Each star is cotrended against 20 others.
+* A per-transit check was added: for each predicted transit with data,
+  is that transit's own mean dip below −2σ?
+
+The search covers 0.5–20 days in quarter 3.
+
+| | Bits in the weaker half |
+|---|---:|
+| 62 quiet stars: median | 12.1 |
+| 62 quiet stars: 90th percentile | 94.8 |
+| 61 of 62 quiet stars: at most | 174.9 |
+| **Kepler-10b** (98 of 100 predicted transits show the dip) | **842.1** |
+| KIC 11081729 (4 of 5 predicted "transits" show a dip) | 1,061.9 |
+
+**Kepler-10b clears every quiet star but one.** The exception, KIC
+11081729, is a variable F star (6,630 K). Its raw flux scatters by
+220 ppm, against 31 ppm of white noise. Its deepest 8-hour dips fall
+7.6, 6.9, 8.1, 27.7 and 17.9 days apart, which is not periodic, yet 4 of
+the 5 epochs predicted at 17.93 days line up with a dip. With only five
+epochs, the per-transit check cannot reject it.
+
+At a threshold of 300 weaker-half bits, the empirical rate is about one
+false positive per 62 star-quarters. Kepler observed ~150,000 stars, so
+that is far too many for discovery. A usable search would also need
+stellar-variability filtering, transit shape (U versus V), odd/even depth
+and centroid tests, all of which the NASA pipeline applies.
+
+**Where this leaves the idea.** The compression framing is sound and
+finds a 1.4-Earth-radius planet. Vetting is what makes a planet search
+trustworthy, and this code has only the first steps of it. No discovery
+is claimed.

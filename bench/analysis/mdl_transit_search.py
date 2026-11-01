@@ -36,7 +36,9 @@ ap.add_argument("--cotrend", nargs="*", default=[],
 a = ap.parse_args()
 d = fits.open(a.fits)[1].data
 t, f = d["TIME"], d["PDCSAP_FLUX"]
-ok = np.isfinite(t) & np.isfinite(f)
+# Keep only cadences the pipeline marks as good (SAP_QUALITY == 0): flagged cadences (momentum dumps,
+# manual excludes, cosmic rays, ...) produce dips that look like transits.
+ok = np.isfinite(t) & np.isfinite(f) & (d["SAP_QUALITY"] == 0)
 t, f = t[ok].astype(np.float64), f[ok].astype(np.float64) / np.median(f[ok])
 cad = np.median(np.diff(t))
 r = f - median_filter(f, size=max(3, int(round(1.0 / cad))), mode="nearest")
@@ -45,7 +47,7 @@ if a.cotrend:
     for path in a.cotrend:
         dd = fits.open(path)[1].data
         tt, ff = dd["TIME"], dd["PDCSAP_FLUX"]
-        k = np.isfinite(tt) & np.isfinite(ff)
+        k = np.isfinite(tt) & np.isfinite(ff) & (dd["SAP_QUALITY"] == 0)
         tt, ff = tt[k].astype(np.float64), ff[k].astype(np.float64) / np.median(ff[k])
         rr = ff - median_filter(ff, size=max(3, int(round(1.0 / cad))), mode="nearest")
         rr /= 1.4826 * np.median(np.abs(np.diff(rr))) / np.sqrt(2)  # each star in its own noise units
@@ -97,6 +99,17 @@ for k in range(a.planets):
         s_ = r[sel].sum()
         halves.append(s_ * s_ / (2 * sigma ** 2 * np.log(2) * c_) - 0.5 * np.log2(max(c_, 1)) if c_ > 2 and s_ < 0 else 0.0)
     print(f"  consistency: bits saved in each half {halves[0]:.1f} / {halves[1]:.1f} (weaker half {min(halves):.1f})")
+    # Every transit must be there: for each predicted epoch with at least 2 good points in the
+    # box, is that epoch's mean below -2 sigma of its own mean? A planet dims the star at every
+    # transit; stellar spots and instrument events do not line up at a strict period.
+    ep = np.floor((t - t[0]) / P - ph).astype(np.int64)
+    seen = hit = 0
+    for e_ in np.unique(ep[inbox]):
+        sel = inbox & (ep == e_)
+        if sel.sum() >= 2:
+            seen += 1
+            hit += int(r[sel].mean() < -2 * sigma / np.sqrt(sel.sum()))
+    print(f"  per-transit check: {hit} of {seen} predicted transits show the dip")
     print(f"planet search #{k + 1}: best P = {P:.5f} d, phase {ph:.3f}, duration {D * 24:.0f} h, depth {depth * 1e6:.0f} ppm, "
           f"{n} points in box; bits saved {net + desc:.1f} - description {desc:.1f} = net {net:.1f} bits "
           f"(false-alarm bound 2^-{max(net, 0):.0f})")
