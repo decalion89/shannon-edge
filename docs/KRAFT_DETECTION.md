@@ -2,11 +2,11 @@
 
 A note on the result in `bench/results/esa_adb.md` ("Training-free
 thresholds"). The statement is elementary: it rests on the Kraft
-inequality (1949). Its use is new to us. Every lossless compressor
+inequality (1949), and compression-based anomaly tests built on it exist
+(see "Related work"). Every lossless compressor
 becomes an anomaly detector whose false-alarm rate is fixed by a formula
-before any data is seen, with no training. We do not know of prior work
-that uses it this way for on-board telemetry, but have not searched
-exhaustively. Related ideas: likelihood-ratio and e-value tests,
+before any data is seen, with no training. We found no prior application of it to on-board spacecraft telemetry or
+to ESA-ADB. Related ideas: likelihood-ratio and e-value tests,
 minimum-description-length tests, and Barron's no-hypercompression
 inequality.
 
@@ -67,6 +67,32 @@ far too strict: most of its 350 short labelled events stay below b + 26
 bits. Detection power depends on how far anomalies push the cost above
 the model's normal range. That is a property of the data, which no bound
 can promise.
+
+## Related work (literature check, 2026-11)
+
+The core idea is **not new**, and the closest prior work should be cited:
+* **Atypicality** (Høst-Madsen, Sabeti and Walton; arXiv:1709.03189 and
+  arXiv:2103.08765). A segment is flagged when a universal code describes
+  it in fewer bits than the code trained on typical data, by more than a
+  threshold. This is the two-code test of `bench/results/ecg_kraft.md`.
+* **Universal Levin tests** (arXiv:2502.08593) use the Kraft inequality to
+  show that a code-length gap is an e-test in log form: the theoretical
+  basis of the bound above.
+* Compression-based individual-sequence detection (Entropy 22(6):649,
+  2020) and one-class classification by compression set code-length
+  thresholds, from training data or Cantelli's inequality, not from Kraft.
+* Non-compression detectors with analytic false-alarm bounds exist too,
+  e.g. FAR ≤ e^(−ω0·h) for video (arXiv:2010.07110).
+
+**What this repository adds** is empirical and engineering, not a new
+theorem:
+* the per-sample bound applied with a formula-chosen t and no training
+  to a public spacecraft benchmark (ESA-ADB), with the owner's metric
+  code;
+* the comparison against the published methods there;
+* its limits measured (calibration, rarity, shape anomalies);
+* the detector shipped as a by-product of a flight compressor in
+  bit-exact C99.
 
 ## Why it matters
 

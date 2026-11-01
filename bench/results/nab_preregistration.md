@@ -56,3 +56,11 @@ sample. Each detector's own anomaly-free training range calibrates its
 evidence well enough to choose between them, with no training and no
 information from other series. The strength of the claim is bounded by
 NAB's size (52 files) and by its known label issues.
+
+**Related work.** Unsupervised per-series model selection for time-series
+anomaly detection was studied by Goswami et al., "Unsupervised Model
+Selection for Time-series Anomaly Detection", ICLR 2023 (arXiv:2210.01078).
+They rank detectors with surrogate metrics (prediction error, centrality,
+injected synthetic anomalies) and evaluate on the UCR archive. The
+training-margin rule here is a simpler member of that family. It is
+tested on NAB, but not compared with their method.

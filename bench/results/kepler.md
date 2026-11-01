@@ -197,3 +197,11 @@ step is a depth-consistency model that accounts for partial overlap and
 red noise, with thresholds set on one set of quiet stars and validated on
 a held-out set. Until then the pipeline can confirm known planets but
 cannot claim new ones.
+
+**Related work.** The two-part code search is in substance Box Least
+Squares (Kovács, Zucker and Mazeh 2002, astro-ph/0206099), the standard
+transit search, with a description-length penalty for the number of
+hypotheses. Transit Least Squares (arXiv:1901.02015) and recent Bayesian
+and GPU searches (arXiv:2504.18706, arXiv:2503.20875) are stronger. No
+explicit MDL framing of transit search was found, but this does not
+amount to a new method.
