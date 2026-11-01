@@ -186,7 +186,7 @@ def main() -> None:
             val_f[q] = float("nan")
     best = max(args.quantiles, key=lambda q: (val_f[q] if val_f[q] == val_f[q] else -1, q))
     n_val = y_val[y_val["Category"].isin(["Rare Event", "Anomaly"])]["ID"].nunique()
-    print(f"Validation (2006-10-01 to 2007-01-01, {n_val} events): F0.5 per rule "
+    print(f"Validation ({VALIDATION.date()} to {SPLIT.date()}, {n_val} events): F0.5 per rule "
           + ", ".join(f"{q}: {v:.3f}" for q, v in val_f.items()) + f"; chosen: {best}\n")
 
     print("| Threshold (quantile of training nominal cost) | Detections | TP | FP | FN | "
