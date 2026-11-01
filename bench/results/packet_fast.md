@@ -105,10 +105,38 @@ Hypotheses tested and rejected:
   the streams as generic binary (`default`), so its audio and image models
   are not involved.
 
-paq8px wins with its generic model mix, not a special-purpose model.
-Finding which of its components matters is the next step (ablation of its
-open-source models). Scripts and data: session scratchpad (`cols/`), not in
-the repository.
+**Ablation of paq8px.** On column 59, each of paq8px's generic models
+was silenced in turn: its mixer inputs are forced to zero and its context
+selections are kept, so the network shape is unchanged. Silencing any
+single model changes little (11,176–11,566 bytes against 11,236), because
+the models are redundant. Keeping *only* some models tells more:
+
+| paq8px with only… | Column 59 bytes |
+|---|---:|
+| all models | 11,236 |
+| linear prediction | **12,953** |
+| order-n contexts + linear prediction | 12,372 |
+| indirect + sparse + record + match | 13,083 |
+| order-n contexts (the kind of model sedge CM has) | 23,271 |
+| DMC forest | 28,204 |
+| (sedge CM, for comparison) | 27,980 |
+
+**The missing piece is numeric prediction.** paq8px's
+`LinearPredictionModel` does three things:
+* it predicts the next byte value with three adaptive least-squares (OLS)
+  fits over the last 32 values, at strides 1, 2 and 3;
+* it adds polynomial extrapolations, such as 2W−WW and 3W−3WW+WWW;
+* it codes each byte against those predictions, in contexts of the
+  prediction and of its recent error.
+
+Alone, that model compresses column 59 to 46% of sedge CM's size. Our
+order-n contexts reach about what paq8px's own order-n contexts reach.
+This is the third independent pointer to numeric prediction:
+* the ECG records;
+* the everyday-data study (`general_data.md`);
+* now the paq8px ablation.
+
+It is the most promising model to add to sedge.
 
 ## Under packet loss (fast profile + erasure code)
 
