@@ -300,3 +300,120 @@ It doubles the events found (40 vs 20 of 65) but raises 524 false
 detections: in noisy channels almost every value pair is rare in history.
 Validation rejected it on its own (0.556 vs 0.909); recorded as a negative
 result.
+
+
+## With ESA-ADB's own preprocessing (30-s grid)
+
+The published algorithms see every channel resampled to a 30-s grid with
+zero-order hold (ESA-ADB's data preparation); the results above used the
+original samples. Re-run with `--resample 30s`, so the detector sees
+exactly the samples the published algorithms saw (same rules searched,
+choice on validation):
+
+| Setting (30-s grid) | sedge surprise | (original samples) | Best published | Rank |
+|---|---:|---:|---:|---|
+| **Mission 1, full set** | **0.292** | 0.279 | 0.061 | **1st, 4.8x** |
+| **Mission 2, full set** | **0.815** | 0.798 | 0.079 | **1st, ~10x** |
+| Mission 2, lightweight | 0.691 | 0.725 | 0.949 | 3rd |
+| Mission 1, lightweight | **0.103** | 0.690 | 0.786 | far behind |
+
+On both full sets the result holds — slightly better, even — with the
+exact preprocessing. The Mission 1 lightweight subset collapses.
+
+**Why.** In Mission 1 the grid drops a sample whenever two arrive within
+one 30-s bin, which happens sporadically (channel 41: 4.8% of samples,
+median interval 30 s). Each dropped sample turns an ordinary step into an
+unusual jump; those artefacts produce the highest costs in the training
+years (channel 41: maximum 46.3 bits at a point where samples were 12.9 s
+apart, against 32.2 bits on the original samples) and push the threshold
+above every real event (0 of 106 event rows exceed it, against 9 on the
+original samples). Mission 2 loses far more samples to the grid (50%:
+median interval 18 s) but **regularly**, a pattern the model learns; it
+is unaffected. A first prediction — that Mission 2 would lose few samples
+— was wrong and refined the explanation: what hurts is *irregular* loss,
+not the amount. A detector on board sees the original samples.
+
+### Full tables (30-s grid)
+
+Mission 1, full set (chosen: q=1.0, x1.25, mute):
+
+| Rule | Muted channels | Detections | TP | FP | FN | Corrected precision | Recall | **Corrected event-wise F0.5** | Alarming precision |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| q=0.999999 | 0 | 540 | 40 | 346 | 51 | 0.104 | 0.440 | **0.122** | 0.202 |
+| q=0.999999, mute | 9 | 439 | 32 | 288 | 59 | 0.100 | 0.352 | **0.117** | 0.208 |
+| q=0.999999, x1.25 | 0 | 119 | 26 | 56 | 65 | 0.317 | 0.286 | **0.310** | 0.394 |
+| q=0.999999, x1.25, mute | 2 | 116 | 25 | 54 | 66 | 0.316 | 0.275 | **0.307** | 0.385 |
+| q=0.9999999 | 0 | 152 | 28 | 88 | 63 | 0.241 | 0.308 | **0.252** | 0.431 |
+| q=0.9999999, mute | 2 | 148 | 24 | 87 | 67 | 0.216 | 0.264 | **0.224** | 0.393 |
+| q=0.9999999, x1.25 | 0 | 43 | 11 | 16 | 80 | 0.407 | 0.121 | **0.276** | 0.407 |
+| q=0.9999999, x1.25, mute | 0 | 43 | 11 | 16 | 80 | 0.407 | 0.121 | **0.276** | 0.407 |
+| q=1.0 | 0 | 113 | 24 | 59 | 67 | 0.289 | 0.264 | **0.284** | 0.436 |
+| q=1.0, mute | 2 | 109 | 20 | 58 | 71 | 0.256 | 0.220 | **0.248** | 0.392 |
+| q=1.0, x1.25 | 0 | 33 | 10 | 10 | 81 | 0.500 | 0.110 | **0.292** | 0.435 |
+| q=1.0, x1.25, mute (chosen on validation) | 0 | 33 | 10 | 10 | 81 | 0.500 | 0.110 | **0.292** | 0.435 |
+
+Mission 2, full set (chosen: q=0.999999, mute):
+
+| Rule | Muted channels | Detections | TP | FP | FN | Corrected precision | Recall | **Corrected event-wise F0.5** | Alarming precision |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| q=0.999999 | 0 | 468 | 252 | 60 | 110 | 0.808 | 0.696 | **0.783** | 0.606 |
+| q=0.999999, mute (chosen on validation) | 14 | 395 | 239 | 37 | 123 | 0.866 | 0.660 | **0.815** | 0.653 |
+| q=0.999999, x1.25 | 0 | 51 | 36 | 1 | 326 | 0.973 | 0.099 | **0.353** | 0.667 |
+| q=0.999999, x1.25, mute | 0 | 51 | 36 | 1 | 326 | 0.973 | 0.099 | **0.353** | 0.667 |
+| q=0.9999999 | 0 | 277 | 168 | 29 | 194 | 0.853 | 0.464 | **0.730** | 0.656 |
+| q=0.9999999, mute | 6 | 230 | 149 | 25 | 213 | 0.856 | 0.412 | **0.704** | 0.703 |
+| q=0.9999999, x1.25 | 0 | 23 | 19 | 0 | 343 | 1.000 | 0.052 | **0.217** | 0.760 |
+| q=0.9999999, x1.25, mute | 0 | 23 | 19 | 0 | 343 | 1.000 | 0.052 | **0.217** | 0.760 |
+| q=1.0 | 0 | 263 | 160 | 25 | 202 | 0.865 | 0.442 | **0.726** | 0.653 |
+| q=1.0, mute | 6 | 213 | 141 | 20 | 221 | 0.876 | 0.390 | **0.701** | 0.709 |
+| q=1.0, x1.25 | 0 | 18 | 17 | 0 | 345 | 1.000 | 0.047 | **0.198** | 0.850 |
+| q=1.0, x1.25, mute | 0 | 18 | 17 | 0 | 345 | 1.000 | 0.047 | **0.198** | 0.850 |
+
+Mission 1, lightweight (chosen: q=1.0, x1.25, mute):
+
+| Rule | Muted channels | Detections | TP | FP | FN | Corrected precision | Recall | **Corrected event-wise F0.5** | Alarming precision |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| q=0.999999 | 0 | 82 | 12 | 27 | 53 | 0.308 | 0.185 | **0.271** | 0.222 |
+| q=0.999999, mute | 5 | 28 | 4 | 11 | 61 | 0.267 | 0.062 | **0.160** | 0.235 |
+| q=0.999999, x1.25 | 0 | 30 | 7 | 17 | 58 | 0.292 | 0.108 | **0.217** | 0.538 |
+| q=0.999999, x1.25, mute | 2 | 27 | 7 | 14 | 58 | 0.333 | 0.108 | **0.235** | 0.538 |
+| q=0.9999999 | 0 | 20 | 5 | 15 | 60 | 0.250 | 0.077 | **0.172** | 1.000 |
+| q=0.9999999, mute | 2 | 16 | 4 | 12 | 61 | 0.250 | 0.062 | **0.155** | 1.000 |
+| q=0.9999999, x1.25 | 0 | 12 | 4 | 8 | 61 | 0.333 | 0.062 | **0.177** | 1.000 |
+| q=0.9999999, x1.25, mute | 0 | 12 | 4 | 8 | 61 | 0.333 | 0.062 | **0.177** | 1.000 |
+| q=1.0 | 0 | 19 | 5 | 14 | 60 | 0.263 | 0.077 | **0.177** | 1.000 |
+| q=1.0, mute | 2 | 15 | 4 | 11 | 61 | 0.267 | 0.062 | **0.160** | 1.000 |
+| q=1.0, x1.25 | 0 | 8 | 2 | 6 | 63 | 0.250 | 0.031 | **0.103** | 1.000 |
+| q=1.0, x1.25, mute (chosen on validation) | 0 | 8 | 2 | 6 | 63 | 0.250 | 0.031 | **0.103** | 1.000 |
+
+Mission 2, lightweight (chosen: q=0.999999, mute):
+
+| Rule | Muted channels | Detections | TP | FP | FN | Corrected precision | Recall | **Corrected event-wise F0.5** | Alarming precision |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| q=0.999999 | 0 | 169 | 129 | 15 | 221 | 0.896 | 0.369 | **0.697** | 0.849 |
+| q=0.999999, mute (chosen on validation) | 2 | 145 | 117 | 7 | 233 | 0.944 | 0.334 | **0.691** | 0.860 |
+| q=0.999999, x1.25 | 0 | 14 | 14 | 0 | 336 | 1.000 | 0.040 | **0.172** | 1.000 |
+| q=0.999999, x1.25, mute | 0 | 14 | 14 | 0 | 336 | 1.000 | 0.040 | **0.172** | 1.000 |
+| q=0.9999999 | 0 | 111 | 95 | 4 | 255 | 0.960 | 0.271 | **0.637** | 0.896 |
+| q=0.9999999, mute | 1 | 108 | 93 | 4 | 257 | 0.959 | 0.266 | **0.630** | 0.903 |
+| q=0.9999999, x1.25 | 0 | 8 | 8 | 0 | 342 | 1.000 | 0.023 | **0.105** | 1.000 |
+| q=0.9999999, x1.25, mute | 0 | 8 | 8 | 0 | 342 | 1.000 | 0.023 | **0.105** | 1.000 |
+| q=1.0 | 0 | 111 | 94 | 4 | 256 | 0.959 | 0.269 | **0.633** | 0.887 |
+| q=1.0, mute | 1 | 108 | 92 | 4 | 258 | 0.958 | 0.263 | **0.627** | 0.893 |
+| q=1.0, x1.25 | 0 | 6 | 6 | 0 | 344 | 1.000 | 0.017 | **0.080** | 1.000 |
+| q=1.0, x1.25, mute | 0 | 6 | 6 | 0 | 344 | 1.000 | 0.017 | **0.080** | 1.000 |
+
+## Two more rules, tried and not adopted
+
+* **False-alarm budget** (`--budgets`): the threshold that allows at most k
+  detections per year in nominal training data, an operational criterion
+  robust to one extreme value. On the Mission 1 lightweight subset with the
+  30-s grid it scores 0.271 (1/year) against 0.177 for the maximum on the
+  test years, but validation (3 events, none detected under the grid)
+  cannot tell the rules apart. Not adopted.
+* **Time-aware thresholds** (`--time-aware`): separate thresholds for
+  samples after a shorter-than-usual interval, a usual one, or a gap.
+  Original samples, Mission 1 lightweight: 27 events found instead of 20,
+  but 12 false detections instead of 0 (F0.5 0.611 vs 0.690): the rare
+  short-interval class gets a low threshold from few training samples.
+  Validation tied and kept the simpler rule.

@@ -20,7 +20,8 @@ rules are reported. Nothing is tuned on the test part. Optional rules:
 threshold multipliers (--factors) and muting channels that raised a false
 detection in the 3 months before the evaluated period (--mute; for the
 test, those are the validation months); a second, never-forgetting detector
-of rare transitions, OR-combined (--slow).
+of rare transitions, OR-combined (--slow); thresholds per kind of interval
+since the previous sample — shorter than usual, usual, gap (--time-aware).
 
 With --resample 30s, every channel is first resampled as in ESA-ADB's data
 preparation (30-s grid, zero-order hold), so the detector sees the same
@@ -186,6 +187,9 @@ def main() -> None:
     ap.add_argument("--resample", default=None,
                     help="resample each channel to this grid with zero-order hold before scoring, as ESA-ADB's "
                          "preprocessing does (e.g. 30s); default: original samples")
+    ap.add_argument("--time-aware", action="store_true",
+                    help="also try thresholds per kind of interval since the previous sample "
+                         "(shorter than usual, usual, gap), each fitted on training")
     ap.add_argument("--slow", action="store_true",
                     help="also try adding the never-forgetting transition-rarity detector (OR-combined)")
     ap.add_argument("--mute", action="store_true",
@@ -243,8 +247,23 @@ def main() -> None:
                 for key, arr in (("fast", b), ("slow", sl)):
                     if arr is not None:
                         thr[(fit_end, -k, key)] = budget_threshold(ts[fit], arr[fit], int(k * years), merge_ns)
+        # Kind of interval since the previous sample: 0 shorter than usual,
+        # 1 usual, 2 gap (relative to the channel's median interval).
+        dt = np.diff(ts, prepend=ts[:1]).astype(np.int64)
+        med = np.median(dt[1:]) if len(dt) > 1 else 1
+        kind = np.where(dt < 0.75 * med, 0, np.where(dt > 2 * med, 2, 1)).astype(np.int8)
+        kind[0] = 1
+        if args.time_aware:
+            for fit_end in (VALIDATION - pd.DateOffset(months=3), VALIDATION, SPLIT):
+                fit = (ts < np.datetime64(fit_end)) & ~in_event
+                for q in args.quantiles:
+                    for kd in (0, 1, 2):
+                        sel = fit & (kind == kd)
+                        thr[(fit_end, q, "fast", kd)] = ((np.quantile(b[sel], q) if q < 1 else b[sel].max())
+                                                        if sel.any() else np.inf)
         keep = ts >= np.datetime64(VALIDATION - pd.DateOffset(months=3))
-        data[ch] = (ts[keep], b[keep].astype(np.float32), None if sl is None else sl[keep].astype(np.float32), thr)
+        data[ch] = (ts[keep], b[keep].astype(np.float32), None if sl is None else sl[keep].astype(np.float32), thr,
+                    kind[keep])
         del b, sl, in_event
         print(f"{ch}: {n_samples:,} samples", file=sys.stderr, flush=True)
 
@@ -258,10 +277,15 @@ def main() -> None:
                  for ch in data}
     all_events = P.Interval(*[P.closed(r.StartTime, r.EndTime) for r in lab.itertuples()])
 
-    def channel_flags(ch, q, factor, fit_end, lo, hi, slow=False):
-        ts, b, sl, thr = data[ch]
+    def channel_flags(ch, q, factor, fit_end, lo, hi, slow=False, timed=False):
+        ts, b, sl, thr, kind = data[ch]
         win = (ts >= np.datetime64(lo)) & (ts < np.datetime64(hi))
-        flag = b > np.float32(thr[(pd.Timestamp(fit_end), q, "fast")] * factor)
+        if timed:
+            per_kind = np.array([thr[(pd.Timestamp(fit_end), q, "fast", kd)] * factor for kd in (0, 1, 2)],
+                                dtype=np.float32)
+            flag = b > per_kind[kind]
+        else:
+            flag = b > np.float32(thr[(pd.Timestamp(fit_end), q, "fast")] * factor)
         if slow:
             flag |= sl > np.float32(thr[(pd.Timestamp(fit_end), q, "slow")] * factor)
         return ts[win & flag]
@@ -272,33 +296,34 @@ def main() -> None:
         brk = np.nonzero(np.diff(flag_t) > merge)[0]
         return list(zip(flag_t[np.r_[0, brk + 1]], flag_t[np.r_[brk, len(flag_t) - 1]]))
 
-    def muted_channels(q, factor, lo, slow=False):
+    def muted_channels(q, factor, lo, slow=False, timed=False):
         """Channels with a false detection in the 3 months before `lo` (thresholds fitted before them)."""
         pre = lo - pd.DateOffset(months=3)
         out = set()
         for ch in data:
-            for a, e in to_events(channel_flags(ch, q, factor, pre, pre, lo, slow)):
+            for a, e in to_events(channel_flags(ch, q, factor, pre, pre, lo, slow, timed)):
                 if (P.closed(pd.Timestamp(a), pd.Timestamp(e)) & all_events).empty:
                     out.add(ch)
                     break
         return out
 
-    def detect(q, factor, mute, fit_end, lo, hi, slow=False):
+    def detect(q, factor, mute, fit_end, lo, hi, slow=False, timed=False):
         """Thresholds fitted on nominal samples before fit_end; detections in [lo, hi)."""
-        muted = muted_channels(q, factor, lo, slow) if mute else set()
+        muted = muted_channels(q, factor, lo, slow, timed) if mute else set()
         iv = []
         for ch in data:
             if ch in muted:
                 continue
             iv += [P.closed(pd.Timestamp(a), pd.Timestamp(e))
-                   for a, e in to_events(channel_flags(ch, q, factor, fit_end, lo, hi, slow))]
+                   for a, e in to_events(channel_flags(ch, q, factor, fit_end, lo, hi, slow, timed))]
         return P.Interval(*iv), len(muted)
 
-    rules = [(q, f, m, sl) for q in list(args.quantiles) + [-k for k in args.budgets] for f in args.factors
-             for m in ([False, True] if args.mute else [False]) for sl in ([False, True] if args.slow else [False])]
+    rules = [(q, f, m, sl, tm) for q in list(args.quantiles) + [-k for k in args.budgets] for f in args.factors
+             for m in ([False, True] if args.mute else [False]) for sl in ([False, True] if args.slow else [False])
+             for tm in ([False, True] if args.time_aware and q >= 0 else [False])]
     name = lambda r: ((f"q={r[0]}" if r[0] >= 0 else f"budget {-r[0]:g}/year")  # noqa: E731
                       + (f", x{r[1]}" if r[1] != 1 else "") + (", mute" if r[2] else "")
-                      + (", +slow memory" if r[3] else ""))
+                      + (", +slow memory" if r[3] else "") + (", time-aware" if r[4] else ""))
 
     # Choose the rule on the validation months only (thresholds fitted before them).
     y_val = lab[(lab["EndTime"] > VALIDATION) & (lab["StartTime"] < SPLIT)].copy()
@@ -307,10 +332,10 @@ def main() -> None:
     n_val = y_val[y_val["Category"].isin(["Rare Event", "Anomaly"])]["ID"].nunique()
     val_f = {}
     for r in rules:
-        ev, _ = detect(r[0], r[1], r[2], VALIDATION, VALIDATION, SPLIT, r[3])
+        ev, _ = detect(r[0], r[1], r[2], VALIDATION, VALIDATION, SPLIT, r[3], r[4])
         val_f[r] = esa_event_scores(y_val, ev, (VALIDATION, SPLIT))["f05"] if n_val else float("nan")
     # Ties go to the more conservative rule (higher quantile, higher factor, muting).
-    best = max(rules, key=lambda r: (val_f[r] if val_f[r] == val_f[r] else -1, r[0], r[1], r[2], not r[3]))
+    best = max(rules, key=lambda r: (val_f[r] if val_f[r] == val_f[r] else -1, r[0], r[1], r[2], not r[3], not r[4]))
     print(f"Validation ({VALIDATION.date()} to {SPLIT.date()}, {n_val} events): F0.5 per rule "
           + ", ".join(f"{name(r)}: {v:.3f}" for r, v in val_f.items()) + f"; chosen: {name(best)}\n")
 
@@ -318,7 +343,8 @@ def main() -> None:
           "Corrected precision | Recall | **Corrected event-wise F0.5** | Alarming precision |")
     print("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
     for r in rules:
-        events, n_muted = detect(r[0], r[1], r[2], SPLIT, SPLIT, pd.Timestamp(test_end) + pd.Timedelta(seconds=1), r[3])
+        events, n_muted = detect(r[0], r[1], r[2], SPLIT, SPLIT, pd.Timestamp(test_end) + pd.Timedelta(seconds=1),
+                                 r[3], r[4])
         res = esa_event_scores(y_true, events, full_range)
         mark = " (chosen on validation)" if r == best else ""
         print(f"| {name(r)}{mark} | {n_muted} | {len(list(events))} | {res['tp']} | {res['fp']} | {res['fn']} | "

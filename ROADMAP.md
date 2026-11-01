@@ -173,8 +173,11 @@ v0.1 single core: ~0.5 MiB/s. Target: 10× without losing ratio, then more.
 - [x] False-alarm rules chosen on validation (threshold margin, channel
       muting): Mission 2 full 0.787 -> 0.798; Mission 1 unchanged (0.279);
       never-forgetting rarity detector rejected by validation
-- [ ] Other ESA-ADB metrics (channel-aware, ADTQC, affiliation), the
-      identical 30-s preprocessing; longer validation windows
+- [x] ESA-ADB's exact 30-s preprocessing: full sets 0.292 / 0.815 (hold);
+      Mission 1 lightweight collapses (0.103, irregular sample drops);
+      false-alarm budgets and time-aware thresholds tried, not adopted
+- [ ] Other ESA-ADB metrics (channel-aware, ADTQC, affiliation); longer
+      validation windows; a detector robust to irregular sample drops
 - [x] 32-bit range-coder arithmetic (one 32-bit division per symbol, no
       64-bit division) for LEON3-class CPUs: +0.02% size
 - [ ] Cycles on real NOEL-V/LEON hardware; C/Python bindings for the

@@ -184,9 +184,11 @@ per-channel threshold = the maximum cost seen in nominal training data
 No neural network is trained; the surprise detects anomalies (19 of 29 in
 the lightweight test set) and is nearly blind to "rare events" (1 of 36),
 which are infrequent but known operations. Caveats: the lightweight rule
-choice ties on only 3 validation events (the other tied rule scores 0.373);
-ESA-ADB's algorithms run on 30-s resampled data, the surprise on the
-original samples. Earlier simple controls (`esa_mission1_anomaly.md`): at
+choice ties on only 3 validation events (the other tied rule scores 0.373).
+With ESA-ADB's exact preprocessing (30-s grid) the full-set scores hold —
+0.292 (Mission 1) and 0.815 (Mission 2) — but the Mission 1 lightweight
+subset collapses to 0.103: the grid drops samples irregularly in Mission 1,
+and each drop looks like an anomaly to the model. Earlier simple controls (`esa_mission1_anomaly.md`): at
 0.1% false alarms it flags 2,173 of 3,520 events against 1,696 for a
 rolling z-score.
 
