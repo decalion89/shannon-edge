@@ -210,6 +210,69 @@ def esa_event_scores(y_true: pd.DataFrame, events_pred: P.Interval, full_range, 
     return dict(tp=tp, fp=fp, fn=fn, precision=precision, recall=recall, f05=f, alarming=alarming)
 
 
+def write_report(path, rule, rule_name, data, labels, lab, channel_flags, to_events, muted_channels, hi):
+    """Per test event: detected or not, lead/lag of the first flag, channels flagged. Then every
+    detection overlapping no labelled event in any channel, ranked by evidence: the largest excess
+    of a sample's cost over the channel's threshold, in bits (under the Kraft bound a calibrated
+    model exceeds b + t bits with probability at most 2^-t)."""
+    q, factor, mute, slow, timed = rule
+    muted = muted_channels(q, factor, SPLIT, slow, timed) if mute else set()
+    flags = {}  # channel -> list of (start, end, peak excess in bits over the threshold)
+    for ch, (ts, cost, _sl, thr, _kind) in data.items():
+        if ch in muted:
+            continue
+        key = (pd.Timestamp(SPLIT), q, "fast")
+        th = thr[key] * factor if not timed else None
+        out = []
+        for a, e in to_events(channel_flags(ch, q, factor, SPLIT, SPLIT, hi, slow, timed)):
+            i, j = np.searchsorted(ts, a), np.searchsorted(ts, e, "right")
+            peak = float(cost[i:j].max()) - (th if th is not None else 0.0)
+            out.append((pd.Timestamp(a), pd.Timestamp(e), peak, float(cost[i:j].max())))
+        flags[ch] = out
+    lines = [f"# Event report, rule {rule_name}", "",
+             "## Test events (target channels)", "",
+             "| Event | Category | Start | End | Detected | First flag vs start | Labelled channels | Flagged labelled channels |",
+             "|---|---|---|---|---|---:|---:|---|"]
+    test = lab[lab["EndTime"] > SPLIT]
+    for eid, g in test.groupby("ID", sort=False):
+        cat = g["Category"].iloc[0]
+        if cat not in ("Anomaly", "Rare Event"):
+            continue
+        s0, e0 = g["StartTime"].min(), g["EndTime"].max()
+        firsts, hit_ch = [], []
+        for r in g.itertuples():
+            for a, e, _p, _c in flags.get(r.Channel, []):
+                if a <= r.EndTime and e >= r.StartTime:
+                    firsts.append(a)
+                    hit_ch.append(r.Channel.replace("channel_", ""))
+        # Any target channel flagging inside the event window counts for "detected" (as the global score).
+        any_hit = [a for fl in flags.values() for a, e, _p, _c in fl if a <= e0 and e >= s0]
+        det = "yes" if any_hit else "no"
+        lead = f"{(min(any_hit) - s0).total_seconds() / 60:+.0f} min" if any_hit else ""
+        lines.append(f"| {eid} | {cat} | {s0} | {e0} | {det} | {lead} | {g['Channel'].nunique()} | "
+                     f"{', '.join(sorted(set(hit_ch), key=int)) or '-'} |")
+    lab_all = labels[labels["EndTime"] > SPLIT]
+    cand = []
+    for ch, fl in flags.items():
+        for a, e, peak, c in fl:
+            near = lab_all[(lab_all["StartTime"] <= e) & (lab_all["EndTime"] >= a)]
+            if near.empty:
+                cand.append((peak, a, e, ch, c))
+    cand.sort(key=lambda x: -x[0])
+    lines += ["", "## Detections that overlap no labelled event in any channel", "",
+              f"{len(cand)} channel-level detections; ranked by peak excess over the threshold.", "",
+              "| Rank | Channel | Start | End | Peak cost (bits) | Excess over threshold (bits) | Other channels flagging within 1 h |",
+              "|---:|---|---|---|---:|---:|---|"]
+    for k, (peak, a, e, ch, c) in enumerate(cand, 1):
+        others = sorted({o.replace("channel_", "") for o, fl in flags.items() if o != ch
+                         for a2, e2, _p, _c in fl if a2 <= e + pd.Timedelta(hours=1) and e2 >= a - pd.Timedelta(hours=1)},
+                        key=int)
+        lines.append(f"| {k} | {ch.replace('channel_', '')} | {a} | {e} | {c:.1f} | {peak:+.1f} | "
+                     f"{', '.join(others) or '-'} |")
+    Path(path).write_text("\n".join(lines) + "\n")
+    print(f"report written to {path}: {len(cand)} unlabelled detections", file=sys.stderr)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("mission_zip", type=Path)
@@ -242,6 +305,10 @@ def main() -> None:
                     help="also try adding the never-forgetting transition-rarity detector (OR-combined)")
     ap.add_argument("--mute", action="store_true",
                     help="also try muting channels that raised a false alarm in the 3 months before the evaluated period")
+    ap.add_argument("--report", type=Path, default=None,
+                    help="write, for the rule chosen on validation, every test event (detected or not, first "
+                         "flag relative to its start, channels flagged) and every detection that overlaps no "
+                         "labelled event in any channel, ranked by its evidence in bits")
     ap.add_argument("--split", default="2007-01-01", help="train/test split (Mission 2: 2001-10-01)")
     ap.add_argument("--validation", default="2006-10-01", help="validation start (Mission 2: 2001-07-01)")
     args = ap.parse_args()
@@ -419,6 +486,10 @@ def main() -> None:
               f"{res['precision']:.3f} | {res['recall']:.3f} | **{res['f05']:.3f}** | {res['alarming']:.3f} |",
               flush=True)
 
+
+    if args.report is not None:
+        write_report(args.report, best, name(best), data, labels, lab, channel_flags, to_events, muted_channels,
+                     pd.Timestamp(test_end) + pd.Timedelta(seconds=1))
 
     if args.official is not None:
         ESAScores, ChannelAwareFScore, ADTQC = load_official_metrics(args.official)
