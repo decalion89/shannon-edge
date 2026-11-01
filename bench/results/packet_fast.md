@@ -164,8 +164,8 @@ Measured improvements, every round trip verified:
 | Change | Venus (default) | With learned recipes | Instructions/byte | Format |
 |---|---:|---:|---:|---|
 | Linear-time Fenwick rebuild | identical bytes | identical | **−3.7%** (176.4 → 169.8) | unchanged, **adopted** |
-| Flags: fast 2^-4 + slow count-started estimate | −0.24% | −0.24% | +0.9% with the rebuild | changes, not adopted yet |
-| + ground-learned window (increment, limit) per column, 1 byte/column | — | **−1.62%** (3,237,712 → 3,185,236) | +4% | changes, not adopted yet |
+| Flags: fast 2^-4 + slow count-started estimate | −0.24% | −0.24% | +0.9% with the rebuild | changes, **adopted (model v2)** |
+| + ground-learned window (increment, limit) per column, 1 byte/column | — | **−1.62%** (3,237,712 → 3,185,236) | +4% | changes, **adopted (opt-in, learned layouts)** |
 
 On the everyday datasets the flag change saves 0.05–0.69%, and learned
 windows bring −0.9% to −1.3% more.
@@ -178,9 +178,10 @@ Tried and not worth it:
 * changing the global increment or limit, which does not help on every
   dataset.
 
-The two format changes would need a new golden stream: 2,064 bytes,
-0x1b52_626d_bcc3_1761. They would also need a matching update of
-`c/sedge_fast.c`, which is not done.
+Both format changes are adopted as fast-profile model v2. The new golden
+stream is 2,064 bytes, 0x1b52_626d_bcc3_1761. Venus Express with default
+recipes now codes to 3,837,092 bytes. The C port is being updated to
+match.
 
 **Conclusion.** The fast profile already codes within about 1.3% of its
 model, and that 1.3% is the per-packet flush, the price of independent

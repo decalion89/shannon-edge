@@ -10,7 +10,8 @@
 //! (`learn_recipes`) and both ends are primed with it. Reported on the
 //! remaining 90%: default recipes, learned recipes, and learned recipes
 //! plus coding classes (`learn_classes`; thresholds from
-//! SEDGE_FAST_CLASSES=static_max,always_min, default 0.01,0.9).
+//! SEDGE_FAST_CLASSES=static_max,always_min, default 0.01,0.9), each also
+//! with ground-chosen adaptation windows (`learn_windows`).
 
 use shannon_edge::packet_fast::FastPacketSession;
 use std::time::Instant;
@@ -38,19 +39,51 @@ fn main() {
             .unwrap_or((0.01, 0.9));
         let classes = FastPacketSession::learn_classes(len, history, smax, amin);
         let normal = vec![0u8; len];
+        let t = Instant::now();
+        let win_n = FastPacketSession::learn_windows(history, &recipes, &normal);
+        let win_c = FastPacketSession::learn_windows(history, &recipes, &classes);
+        let learn_w = t.elapsed().as_secs_f64() / 2.0;
+        let dw = vec![0u8; len];
         let runs = [
-            ("default recipes", vec![0u8; len], normal.clone()),
-            ("learned recipes", recipes.clone(), normal),
-            ("learned recipes + classes", recipes, classes.clone()),
+            (
+                "default recipes",
+                vec![0u8; len],
+                normal.clone(),
+                dw.clone(),
+            ),
+            (
+                "learned recipes",
+                recipes.clone(),
+                normal.clone(),
+                dw.clone(),
+            ),
+            (
+                "learned recipes + classes",
+                recipes.clone(),
+                classes.clone(),
+                dw,
+            ),
+            (
+                "learned recipes + windows",
+                recipes.clone(),
+                normal,
+                win_n.clone(),
+            ),
+            (
+                "learned recipes + classes + windows",
+                recipes,
+                classes.clone(),
+                win_c,
+            ),
         ];
         let only: Option<usize> = std::env::var("SEDGE_FAST_ONLY")
             .ok()
             .and_then(|v| v.parse().ok());
-        for (i, (name, r, cl)) in runs.into_iter().enumerate() {
+        for (i, (name, r, cl, w)) in runs.into_iter().enumerate() {
             if only.is_some_and(|o| o != i) {
                 continue;
             }
-            let mut base = FastPacketSession::with_layout(&r, &cl);
+            let mut base = FastPacketSession::with_layout_windows(&r, &cl, &w);
             base.prime(history.iter().copied());
             let (mut tx, mut rx) = (base.clone(), base);
             let t = Instant::now();
@@ -70,7 +103,8 @@ fn main() {
         let ccount = [0u8, 1, 2].map(|c| classes.iter().filter(|&&x| x == c).count());
         println!(
             "recipes per kind {counts:?}, learned in {learn:.2}s; classes normal/static/always \
-             {ccount:?} (SEDGE_FAST_CLASSES={smax},{amin})"
+             {ccount:?} (SEDGE_FAST_CLASSES={smax},{amin}); windows per kind {:?}, learned in {learn_w:.2}s",
+            (0..7u8).map(|w| win_n.iter().filter(|&&x| x == w).count()).collect::<Vec<_>>()
         );
         return;
     }

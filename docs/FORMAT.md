@@ -126,6 +126,15 @@ multi-symbol ranges on the binary coder's interval (`encode_freq`: one
 frequency total (r = 0), both ends fall back to eight bits at probability
 1/2.
 
+Model version 2 of the fast profile changes the coded bytes; the golden
+stream is now 2,064 bytes, 0x1b52_626d_bcc3_1761. It has two parts:
+* **"Same as above?" flags:** each context keeps a fast estimate (rate
+  2^-4) and a slow, state-counted one (rate 1/(n+1.5) while young,
+  settling at 2^-7), and codes with their average.
+* **Ground-learned windows** (`learn_windows`, `with_layout_windows`):
+  one byte per column selects the table's (increment, limit) pair among 7.
+  The default layout keeps (32, 2^15).
+
 ## Record transforms (`fields::RecordTransform`, uplink format)
 
 A record transform is learned on the ground and runs before a packet codec;

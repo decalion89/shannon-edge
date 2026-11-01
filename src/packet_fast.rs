@@ -5,9 +5,10 @@
 //! for speed on weak processors:
 //!
 //! * every byte first codes "same as the byte above (previous packet)?",
-//!   with one adaptive probability per column and small context (how long
+//!   with an adaptive probability per column and small context (how long
 //!   the column has been constant, whether the left neighbour just changed,
-//!   whether this column changed last time) — no hashing, no mixing;
+//!   whether this column changed last time): the average of a fast and a
+//!   slow, state-counted estimate — no hashing, no mixing;
 //! * a changed byte is coded as **one symbol**, its difference from the byte
 //!   above, with an adaptive frequency table per column (a Fenwick tree,
 //!   so coding and updating cost O(log 256)).
@@ -19,9 +20,27 @@
 use crate::coder::{Decoder, Encoder};
 use crate::Error;
 
-/// Frequency increment and the total that triggers halving.
+/// Frequency increment and the total that triggers halving (default
+/// window, see [`window`]).
 const INC: u32 = 32;
 const LIMIT: u32 = 1 << 15;
+/// "Same" decisions: two estimates per context, averaged. The fast one
+/// adapts at rate 2^-4. The slow one is state-counted: after n
+/// observations its rate is 1/(n + 1.5) (KT-like, so a new context learns
+/// quickly), down to 2^-7 from n = FLAG_WARM on.
+const FLAG_FAST: u32 = 4;
+const FLAG_SLOW: u32 = 7;
+const FLAG_WARM: u8 = 126;
+/// Slow estimate's warm-up rates, 15-bit: 2^16 / (2n + 3).
+const FLAG_RATE: [u16; FLAG_WARM as usize] = {
+    let mut t = [0u16; FLAG_WARM as usize];
+    let mut n = 0;
+    while n < FLAG_WARM as usize {
+        t[n] = (65536 / (2 * n as u32 + 3)) as u16;
+        n += 1;
+    }
+    t
+};
 /// Symbols: deltas 1..=255 (a changed byte never has delta 0).
 const SYMS: usize = 255;
 
@@ -30,16 +49,22 @@ const SYMS: usize = 255;
 struct Freq {
     /// Number of symbols: 255 (deltas 1..=255) or 256 (deltas 0..=255).
     syms: u16,
+    /// Increment and halving limit (the column's [`window`]).
+    inc: u16,
+    limit: u32,
     f: [u16; 256],
-    /// Fenwick tree; partial sums never exceed `LIMIT`, so 16 bits suffice.
+    /// Fenwick tree; partial sums never exceed `limit`, so 16 bits suffice.
     tree: [u16; 257],
     total: u32,
 }
 
 impl Freq {
-    fn new(syms: usize) -> Self {
+    fn new(syms: usize, w: u8) -> Self {
+        let (inc, limit) = window::params(w);
         let mut s = Self {
             syms: syms as u16,
+            inc: inc as u16,
+            limit,
             f: [0; 256],
             tree: [0; 257],
             total: 0,
@@ -52,7 +77,7 @@ impl Freq {
     }
 
     /// Rebuild the tree from the frequencies in linear time: each node
-    /// passes its sum on to its parent. Same tree as inserting one by one.
+    /// passes its sum on to its parent.
     fn rebuild(&mut self) {
         let mut total = 0;
         self.tree[0] = 0;
@@ -101,17 +126,18 @@ impl Freq {
 
     #[inline]
     fn update(&mut self, s: usize) {
-        if self.total + INC > LIMIT {
+        let inc = self.inc;
+        if self.total + inc as u32 > self.limit {
             for f in &mut self.f[..self.syms as usize] {
                 *f = (*f >> 1).max(1);
             }
             self.rebuild();
         }
-        self.f[s] += INC as u16;
-        self.total += INC;
+        self.f[s] += inc;
+        self.total += inc as u32;
         let mut j = s + 1;
         while j <= 256 {
-            self.tree[j] += INC as u16;
+            self.tree[j] += inc;
             j += j & j.wrapping_neg();
         }
     }
@@ -205,6 +231,31 @@ pub mod recipe {
     }
 }
 
+/// Adaptation windows of a column's delta tables (frequency increment,
+/// halving limit). Like the recipes, the ground can choose one per column
+/// ([`FastPacketSession::learn_windows`]) and uplink it; the work per byte
+/// does not change. A table forgets by halving every `limit / inc / 2` to
+/// `limit / inc` changes.
+pub mod window {
+    /// 32 / 2^15: 512-1024 changes (default).
+    pub const DEFAULT: u8 = 0;
+    /// Number of windows.
+    pub const COUNT: u8 = 7;
+    const PARAMS: [(u32, u32); COUNT as usize] = [
+        (super::INC, super::LIMIT),
+        (32, 1 << 14),
+        (32, 1 << 13),
+        (32, 1 << 12),
+        (16, 1 << 15),
+        (8, 1 << 15),
+        (4, 1 << 15),
+    ];
+    /// Increment and halving limit of window `w`.
+    pub(crate) fn params(w: u8) -> (u32, u32) {
+        PARAMS[w as usize]
+    }
+}
+
 /// Size and sign class of a delta: 0 (none), 1, 2..3, 4..15, 16+; x2 sign.
 #[inline]
 fn delta_class(d: u8) -> usize {
@@ -237,8 +288,10 @@ pub struct FastPacketSession {
     len: usize,
     above: Vec<u8>,
     cols: Vec<Column>,
-    /// "Same" probabilities (16-bit), 64 contexts per column.
-    same: Vec<u16>,
+    /// "Same" probabilities (16-bit), 64 contexts per column: fast and
+    /// slow estimates, and the slow one's observation count (to FLAG_WARM).
+    same: Vec<[u16; 2]>,
+    seen: Vec<u8>,
     /// Delta frequencies: per column, the tables of its recipe.
     freq: Vec<Freq>,
     /// Epoch length in packets (0 = none) and the state to restart from.
@@ -286,25 +339,39 @@ impl FastPacketSession {
     /// If the length is out of range, the slices differ in length, or a
     /// recipe or class is unknown.
     pub fn with_layout(recipes: &[u8], classes: &[u8]) -> Self {
+        Self::with_layout_windows(recipes, classes, &vec![window::DEFAULT; recipes.len()])
+    }
+
+    /// A session with a context recipe ([`recipe`]), a coding class
+    /// ([`class`]) and an adaptation window ([`window`]) per column. Both
+    /// ends must use the same layout.
+    ///
+    /// # Panics
+    /// If the length is out of range, the slices differ in length, or a
+    /// recipe, class or window is unknown.
+    pub fn with_layout_windows(recipes: &[u8], classes: &[u8], windows: &[u8]) -> Self {
         let packet_len = recipes.len();
         assert!((1..=65536).contains(&packet_len), "packet_len in 1..=65536");
         assert_eq!(classes.len(), packet_len, "one class per column");
+        assert_eq!(windows.len(), packet_len, "one window per column");
         assert!(recipes.iter().all(|&r| r < recipe::COUNT), "unknown recipe");
         assert!(classes.iter().all(|&c| c < class::COUNT), "unknown class");
+        assert!(windows.iter().all(|&w| w < window::COUNT), "unknown window");
         let mut cols = vec![Column::default(); packet_len];
         let mut freq = Vec::new();
-        for ((c, &r), &cl) in cols.iter_mut().zip(recipes).zip(classes) {
+        for (((c, &r), &cl), &w) in cols.iter_mut().zip(recipes).zip(classes).zip(windows) {
             c.recipe = r;
             c.class = cl;
             c.base = freq.len() as u32;
             let syms = if cl == class::ALWAYS { 256 } else { SYMS };
-            freq.extend((0..recipe::tables(r)).map(|_| Freq::new(syms)));
+            freq.extend((0..recipe::tables(r)).map(|_| Freq::new(syms, w)));
         }
         Self {
             len: packet_len,
             above: vec![0; packet_len],
             cols,
-            same: vec![1 << 15; packet_len * 64],
+            same: vec![[1 << 15; 2]; packet_len * 64],
+            seen: vec![0; packet_len * 64],
             freq,
             epoch: 0,
             origin: None,
@@ -367,7 +434,7 @@ impl FastPacketSession {
         let mut cost = vec![[0f64; recipe::COUNT as usize]; packet_len];
         for r in 0..recipe::COUNT {
             let n = recipe::tables(r);
-            let mut freq = vec![Freq::new(SYMS); packet_len * n];
+            let mut freq = vec![Freq::new(SYMS, window::DEFAULT); packet_len * n];
             let mut above = vec![0u8; packet_len];
             let mut last = vec![0u8; packet_len];
             for p in history {
@@ -396,6 +463,65 @@ impl FastPacketSession {
                 (0..recipe::COUNT)
                     .min_by(|&a, &b| c[a as usize].total_cmp(&c[b as usize]))
                     .unwrap_or(0)
+            })
+            .collect()
+    }
+
+    /// Ground side: choose each column's adaptation window ([`window`])
+    /// from historical packets, by the ideal cost of its deltas under every
+    /// window, with the layout both ends will use. The result (one byte per
+    /// column) is what both ends pass to
+    /// [`FastPacketSession::with_layout_windows`].
+    ///
+    /// # Panics
+    /// If the slices differ in length, a recipe or class is unknown, or a
+    /// packet has another length.
+    pub fn learn_windows(history: &[&[u8]], recipes: &[u8], classes: &[u8]) -> Vec<u8> {
+        let packet_len = recipes.len();
+        assert_eq!(classes.len(), packet_len, "one class per column");
+        assert!(recipes.iter().all(|&r| r < recipe::COUNT), "unknown recipe");
+        assert!(classes.iter().all(|&c| c < class::COUNT), "unknown class");
+        let mut cost = vec![[0f64; window::COUNT as usize]; packet_len];
+        for w in 0..window::COUNT {
+            let mut freq = Vec::new();
+            let mut base = Vec::with_capacity(packet_len);
+            for (&r, &cl) in recipes.iter().zip(classes) {
+                base.push(freq.len());
+                let syms = if cl == class::ALWAYS { 256 } else { SYMS };
+                freq.extend((0..recipe::tables(r)).map(|_| Freq::new(syms, w)));
+            }
+            let mut above = vec![0u8; packet_len];
+            let mut last = vec![0u8; packet_len];
+            for p in history {
+                assert_eq!(p.len(), packet_len, "packet length");
+                let (mut lc, mut ld) = (false, 0u8);
+                for k in 0..packet_len {
+                    let d = p[k].wrapping_sub(above[k]);
+                    let always = classes[k] == class::ALWAYS;
+                    if d == 0 && !always {
+                        lc = false;
+                        ld = 0;
+                        continue;
+                    }
+                    let cx = recipe_context(recipes[k], lc, ld, last[k], above[k]);
+                    let f = &mut freq[base[k] + cx];
+                    let s = if always { d as usize } else { d as usize - 1 };
+                    cost[k][w as usize] += (f.total as f64 / f.f[s] as f64).log2();
+                    f.update(s);
+                    lc = d != 0;
+                    ld = d;
+                    if d != 0 {
+                        last[k] = d;
+                    }
+                }
+                above.copy_from_slice(p);
+            }
+        }
+        cost.iter()
+            .map(|c| {
+                (0..window::COUNT)
+                    .min_by(|&a, &b| c[a as usize].total_cmp(&c[b as usize]))
+                    .unwrap_or(window::DEFAULT)
             })
             .collect()
     }
@@ -449,7 +575,7 @@ impl FastPacketSession {
     /// Model memory in bytes.
     pub fn memory_bytes(&self) -> usize {
         self.len * (1 + std::mem::size_of::<Column>())
-            + self.same.len() * 2
+            + self.same.len() * 5
             + self.freq.len() * std::mem::size_of::<Freq>()
     }
 
@@ -509,7 +635,8 @@ impl FastPacketSession {
                 + (c.run as usize) * 4
                 + (left_changed as usize) * 2
                 + c.changed_last as usize;
-            let p16 = self.same[ctx] as u32;
+            let [fast, slow] = self.same[ctx];
+            let p16 = (fast as u32 + slow as u32) >> 1;
             let p1 = (p16 >> 4).clamp(1, 4095);
             let same = match io {
                 Io::Enc(e) => {
@@ -519,8 +646,18 @@ impl FastPacketSession {
                 }
                 Io::Dec(d) => d.decode(p1),
             };
+            // Both stay in 0..=65535 without clamping (the step is less
+            // than the distance to the target).
             let target = (same << 16) as i32;
-            self.same[ctx] = (p16 as i32 + ((target - p16 as i32) >> 4)).clamp(0, 65535) as u16;
+            let (fast, slow) = (fast as i32, slow as i32);
+            let n = self.seen[ctx];
+            let slow = if n < FLAG_WARM {
+                self.seen[ctx] = n + 1;
+                slow + (((target - slow) * FLAG_RATE[n as usize] as i32) >> 15)
+            } else {
+                slow + ((target - slow) >> FLAG_SLOW)
+            };
+            self.same[ctx] = [(fast + ((target - fast) >> FLAG_FAST)) as u16, slow as u16];
             let col = &mut self.cols[k];
             let value = if same == 1 {
                 col.run = (col.run + 1).min(15);
