@@ -318,6 +318,25 @@ heavy-tailed, spiky noise at the sample level. The genuinely unexplained
 candidates are those both far from labels and coincident across channels
 of one unit, such as channels 57 and 59 on 2009-04-18.
 
+**2009-04-18, examined, and not rare.** Results:
+* At 01:24 no telecommand was sent in the previous 30 minutes. Besides
+  channel 57, only channel 47 jumps, and both are in physical unit 3.
+* At 19:14, five unit-3 channels jump together, by 9–18 times their
+  typical step: channels 18, 20, 24, 31 and 59. The last telecommands
+  were 22 minutes earlier.
+* The base rate is the deciding test. Over 2009, 2.0% of random 4-minute
+  windows have at least five of unit 3's 42 channels jumping by more than
+  8 typical steps. That is roughly 2,600 such windows a year. 15% of
+  windows have three or more.
+
+The 19:14 coincidence is ordinary for this unit, and the candidate does
+not survive.
+
+After three checks of this kind (a near-miss label, a selection effect, a
+base rate), **no unlabelled event in this data stands out as a missed
+anomaly.** The compressor flags what is rare for its model, and in these
+channels rare-looking bursts are common.
+
 ## Cumulative Kraft (`--kraft-cusum`): a gain where the model is calibrated, a collapse where it is not
 
 Per channel, CUSUMs of the per-sample e-values log2((1−e) + e·2^(cost−b))
