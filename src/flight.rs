@@ -295,7 +295,9 @@ impl FlightSession {
         self.bits
     }
 
-    fn sample(&mut self, value: u32, io: &mut Io) -> u32 {
+    /// Code one sample; returns it and the cost actually paid for it, in
+    /// 1/256 bits (the "surprise" of the chosen model).
+    fn sample(&mut self, value: u32, io: &mut Io) -> (u32, u32) {
         let use_t = self.cost_t <= self.cost_r;
         let (v, ct, cr) = if use_t {
             let (v, ct) = self.transition.code(value, io);
@@ -308,7 +310,7 @@ impl FlightSession {
         };
         self.cost_t = self.cost_t - (self.cost_t >> 6) + ct as u64;
         self.cost_r = self.cost_r - (self.cost_r >> 6) + cr as u64;
-        v
+        (v, if use_t { ct } else { cr })
     }
 
     /// Compress one packet and learn from it.
@@ -316,6 +318,18 @@ impl FlightSession {
     /// # Panics
     /// If a sample does not fit in `bits_per_sample` bits.
     pub fn compress(&mut self, samples: &[u16]) -> Vec<u8> {
+        self.compress_scored(samples, &mut Vec::new())
+    }
+
+    /// Like [`Self::compress`], and also appends to `surprise` the cost of
+    /// every sample in 1/256 bits: how unexpected it was to the model, given
+    /// everything learned so far. It is an anomaly score that costs nothing
+    /// extra to compute, and the receiver gets the very same values from
+    /// [`Self::decompress_scored`] without anything being transmitted.
+    ///
+    /// # Panics
+    /// If a sample does not fit in `bits_per_sample` bits.
+    pub fn compress_scored(&mut self, samples: &[u16], surprise: &mut Vec<u32>) -> Vec<u8> {
         let mut out = Vec::with_capacity(4 + samples.len());
         put_varint(&mut out, samples.len() as u64);
         let mut enc = Encoder::new(samples.len());
@@ -327,7 +341,7 @@ impl FlightSession {
                     "sample {s} does not fit in {} bits",
                     self.bits
                 );
-                self.sample(s as u32, &mut io);
+                surprise.push(self.sample(s as u32, &mut io).1);
             }
         }
         out.extend_from_slice(&enc.finish_short());
@@ -336,6 +350,16 @@ impl FlightSession {
 
     /// Decompress one packet and learn from it.
     pub fn decompress(&mut self, frame: &[u8]) -> Result<Vec<u16>, Error> {
+        self.decompress_scored(frame, &mut Vec::new())
+    }
+
+    /// Like [`Self::decompress`], and also appends the per-sample surprise
+    /// (identical to what the sender's [`Self::compress_scored`] computed).
+    pub fn decompress_scored(
+        &mut self,
+        frame: &[u8],
+        surprise: &mut Vec<u32>,
+    ) -> Result<Vec<u16>, Error> {
         let mut pos = 0;
         let n = get_varint(frame, &mut pos)?;
         if n > (frame.len() as u64 + 16) * 8 * 64 {
@@ -344,7 +368,13 @@ impl FlightSession {
         }
         let mut dec = Decoder::new(&frame[pos..]);
         let mut io = Io::Dec(&mut dec);
-        Ok((0..n).map(|_| self.sample(0, &mut io) as u16).collect())
+        Ok((0..n)
+            .map(|_| {
+                let (v, c) = self.sample(0, &mut io);
+                surprise.push(c);
+                v as u16
+            })
+            .collect())
     }
 }
 

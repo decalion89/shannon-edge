@@ -277,6 +277,34 @@ flight CPU with room to spare — still an estimate until it is timed on
 flight-class hardware. `examples/telemetry_lite.rs` keeps the floating-point
 research prototype and `examples/flight_bench.rs` reproduces the table.
 
+### The compressor is also an anomaly detector — for free
+
+To compress, the flight profile already computes how surprising every
+sample is (its cost in bits, given everything learned so far). The receiver
+gets the very same number while decompressing, with nothing extra sent
+(`compress_scored` / `decompress_scored`). The ESA dataset is an anomaly
+benchmark, so we measured how well that surprise finds the anomalies ESA
+engineers labelled, against two classical detectors on the same samples.
+Mission 1, all four target channels at hand (12, 14, 20, 25), full history
+(48 M samples, 213 labelled events); thresholds set so each detector fires
+on the same small fraction of nominal samples:
+
+| Detector | Events found at 0.1% false alarms | at 0.01% false alarms |
+|---|---:|---:|
+| **compressor surprise** | **138/213 (65%)** | **87/213 (41%)** |
+| z-score (rolling mean/std, 256 samples) | 82/213 (38%) | 42/213 (20%) |
+| jump \|x(t) − x(t−1)\| | 49/213 (23%) | 19/213 (9%) |
+
+The surprise wins on every one of the four channels. Caveats: thresholds
+are calibrated with the labels (to compare detectors at equal false-alarm
+rates; a deployed threshold must be set without them); the controls are
+simple, and ESA's benchmark has stronger learned detectors and its own
+metrics, which we have not run; the model adapts within a few samples, so
+it flags the onset and end of an anomaly rather than its whole duration.
+The idea of detecting anomalies through compression is not new (Keogh et
+al., 2004); what is shown here is that it comes free from a flight
+compressor already running onboard. Reproduce with `bench/anomaly.py`.
+
 ### What it cannot do (and nothing can)
 
 Random, encrypted or already-compressed data (JPEG, H.265 video, ZIP) does
@@ -401,6 +429,7 @@ The file format is specified in [`docs/FORMAT.md`](docs/FORMAT.md).
 | `bench/small_messages.py` | Many small records: sedge vs zstd with a trained dictionary |
 | `bench/streams.py`, `examples/session_bench.rs` | Record streams: sedge sessions vs zstd streaming |
 | `bench/telemetry.py` | ESA spacecraft telemetry: sedge vs CCSDS 121 and zstd |
+| `bench/anomaly.py`, `examples/flight_surprise.rs` | Anomaly detection from the compressor's surprise (ESA labels) |
 | `docs/THEORY.md` | The limits, with proofs, and how to move them honestly |
 | `docs/FORMAT.md` | `.sedge` format specification |
 | `ROADMAP.md` | Where this goes next |

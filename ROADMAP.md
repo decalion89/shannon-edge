@@ -101,6 +101,12 @@ v0.1 single core: ~0.5 MiB/s. Target: 10× without losing ratio, then more.
       C `sedge_flight_*`, Python `FlightSession`): −40% vs CCSDS 121 with
       ~3 MiB of tables, −39% with ~0.2 MiB, 2–4 M samples/s on a desktop
       core; golden-pinned format
+- [x] Anomaly detection for free: per-sample surprise from the flight codec
+      (identical on both ends). ESA Mission 1, 4 target channels, 213
+      labelled events: 138 found at 0.1% false alarms vs 82 for a z-score
+      and 49 for a jump detector; 87 vs 42 vs 19 at 0.01%
+- [ ] Anomaly scoring with a label-free threshold, ESA-ADB's own metrics,
+      and comparison with its learned detectors
 - [ ] Time the flight profile on flight-class hardware (LEON3/4, RISC-V)
       or an instruction-accurate emulator
 - [ ] Write it up: reproducible note/paper for the space data systems

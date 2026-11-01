@@ -117,3 +117,30 @@ fn golden_flight_stream_is_stable() {
 
 const GOLDEN_LEN: usize = 2140;
 const GOLDEN_HASH: u64 = 0xe373_eda5_8555_da7a;
+
+#[test]
+fn sender_and_receiver_compute_the_same_surprise() {
+    let mut s = telemetry(10_000, 12, 9);
+    // Inject a glitch the model has never seen: a sudden jump.
+    for v in &mut s[7000..7010] {
+        *v = (*v + 1500) % 4096;
+    }
+    let (mut tx, mut rx) = (FlightSession::new(12, 14), FlightSession::new(12, 14));
+    let (mut a, mut b) = (Vec::new(), Vec::new());
+    for p in s.chunks(256) {
+        let frame = tx.compress_scored(p, &mut a);
+        assert_eq!(rx.decompress_scored(&frame, &mut b).unwrap(), p);
+    }
+    assert_eq!(a, b);
+    let mean = |r: std::ops::Range<usize>| {
+        a[r.clone()].iter().map(|&c| c as u64).sum::<u64>() / r.len() as u64
+    };
+    // The model reacts to change: the onset (and the end) of the glitch are
+    // very surprising; inside it, the residual model adapts within a sample.
+    assert!(
+        a[7000] as u64 > 5 * mean(6000..7000),
+        "the glitch onset should stand out: {} vs mean {}",
+        a[7000],
+        mean(6000..7000)
+    );
+}
