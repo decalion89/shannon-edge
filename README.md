@@ -15,6 +15,33 @@ entropy of the data.
 > v0.1 delivers the "smart" half. Speed is the next frontier — see the
 > [roadmap](ROADMAP.md).
 
+## At a glance
+
+One codec, built on one principle: **predict well, send only the
+surprise**. That surprise is also an anomaly score. Every number below is
+verified bit for bit, or scored with the benchmark owner's own code. The
+limits are linked next to the claims.
+
+| What | Result | Details |
+|---|---|---|
+| Spacecraft packets vs the CCSDS 124 standard (Venus Express, lossless) | **27–43% smaller**; the fast profile is also ~1.9x faster | `bench/results/packet_fast.md` |
+| Same, error-bounded (≤ 1 σ of sensor noise), rare values exact | **61% smaller than CCSDS 124**; keeping rare values exact costs 0.1% | `bench/results/near_lossless.md` |
+| Rare-exact rule on ESA-labelled events | 90% of events contain exact values; 0.1% of all values are exact | `bench/results/near_lossless.md` |
+| Anomaly detection on ESA-ADB, **no training**, false alarms bounded by a theorem | Mission 1 full: **0.576 vs best published 0.061**; Mission 2 full: **0.249 vs 0.079** | `docs/KRAFT_DETECTION.md`, `bench/results/esa_adb.md` |
+| Same detector, thresholds trained on nominal data | first on both full sets under ESA-ADB's own metric code (0.284, 0.798) | `bench/results/esa_adb.md` |
+| Field laws learned on the ground (12-lead ECG) | the derived leads found with no ECG knowledge: **2.77x → 3.82x** | `bench/results/general_data.md` |
+| On board without Rust | C99 libraries for the fast and flight profiles, bit-exact with Rust on 157 M samples, no malloc or float, ASan/UBSan clean | `c/README.md` |
+| Robustness | every decoder fuzzed; the one bug found (a lying header) is fixed | `fuzz/README.md` |
+
+**Where it does not win** (measured, documented):
+* single-signal shape anomalies: UCR archive 0.27–0.35 vs matrix profile
+  0.54 (`bench/results/ucr_anomaly.md`);
+* frequent clinical abnormalities: the rarity limit
+  (`bench/results/ecg_kraft.md`);
+* naming every affected channel;
+* whole-file archiving against xz plus field transforms;
+* about 19% of headroom remains against paq8px, at 1,000x the work.
+
 ## Results
 
 Every `sedge` number below was decompressed and verified bit-for-bit.
