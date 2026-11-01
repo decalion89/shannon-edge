@@ -417,3 +417,23 @@ Mission 2, lightweight (chosen: q=0.999999, mute):
   but 12 false detections instead of 0 (F0.5 0.611 vs 0.690): the rare
   short-interval class gets a low threshold from few training samples.
   Validation tied and kept the simpler rule.
+
+## Persistent score: partly closing the weak spot
+
+Grid artefacts in Mission 1 are isolated spikes (one unusual jump, then
+normal again); a real anomaly tends to last. `--persist` scores each sample
+by the minimum of its cost and the next sample's (one sample of delay), so
+isolated spikes vanish. Mission 1 lightweight subset, rule chosen on
+validation (maximum of training nominal cost in both cases):
+
+| Mission 1, lightweight | Without `--persist` | With `--persist` |
+|---|---:|---:|
+| 30-s grid (the weak spot) | 0.103 | **0.238** (0.292 for the 0.999999 quantile, not chosen) |
+| Original samples | **0.690** | 0.609 |
+
+It more than doubles the score where the grid hurts, and costs some where
+there are no artefacts to remove (it also erases genuinely brief
+anomalies). So it is an option for irregularly resampled inputs, not a
+default: a detector on board, seeing the original samples, should not use
+it. The weak spot is narrowed, not closed (0.238 vs 0.786 for the best
+published method there).

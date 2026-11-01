@@ -21,7 +21,9 @@ threshold multipliers (--factors) and muting channels that raised a false
 detection in the 3 months before the evaluated period (--mute; for the
 test, those are the validation months); a second, never-forgetting detector
 of rare transitions, OR-combined (--slow); thresholds per kind of interval
-since the previous sample — shorter than usual, usual, gap (--time-aware).
+since the previous sample — shorter than usual, usual, gap (--time-aware);
+a persistent score, the minimum of a sample's cost and the next one's, so
+that isolated spikes vanish (--persist, one sample of delay).
 
 With --resample 30s, every channel is first resampled as in ESA-ADB's data
 preparation (30-s grid, zero-order hold), so the detector sees the same
@@ -187,6 +189,9 @@ def main() -> None:
     ap.add_argument("--resample", default=None,
                     help="resample each channel to this grid with zero-order hold before scoring, as ESA-ADB's "
                          "preprocessing does (e.g. 30s); default: original samples")
+    ap.add_argument("--persist", action="store_true",
+                    help="score each sample by min(cost of it, cost of the next sample): an isolated spike "
+                         "(e.g. a resampling artefact) vanishes, a lasting anomaly does not (one sample of delay)")
     ap.add_argument("--time-aware", action="store_true",
                     help="also try thresholds per kind of interval since the previous sample "
                          "(shorter than usual, usual, gap), each fitted on training")
@@ -224,6 +229,8 @@ def main() -> None:
             s = s[~s.index.duplicated(keep="last")].reindex(grid, method="ffill")
             s.iloc[0] = first
         b = surprise(s)
+        if args.persist:
+            b = np.minimum(b, np.r_[b[1:], b[-1:]])
         ts = s.index.values.astype("datetime64[ns]")
         in_event = np.zeros(len(ts), dtype=bool)
         for r in lab[lab["Channel"] == ch].itertuples():
