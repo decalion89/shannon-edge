@@ -14,7 +14,9 @@
  *   cc -O2 -std=c99 -I implementations/c/include bench/c/ccsds124_loss.c \
  *      implementations/c/build/libccsds124.a -o ccsds124_loss
  * Run:
- *   ccsds124_loss PACKETS.bin PACKET_LEN SKIP PT FT RT R LOSS_PER_MILLE [SIZES_OUT]
+ *   ccsds124_loss PACKETS.bin PACKET_LEN SKIP PT FT RT R LOSS_PER_MILLE [SIZES_OUT] [MASK]
+ * MASK (optional): a file with one 0/1 per packet (1 = received) that
+ * replaces the i.i.d. losses, e.g. from `examples/frame_fec.rs --sizes`.
  * SKIP packets at the start are excluded (the "history" of packet_robust).
  */
 #define _POSIX_C_SOURCE 199309L
@@ -63,7 +65,19 @@ int main(int argc, char **argv) {
     ccsds124_compressor_reset(&comp);
     packet_t *pk = calloc(n, sizeof *pk);
     size_t total = 0;
-    FILE *sizes = argc > 9 ? fopen(argv[9], "w") : NULL;
+    FILE *sizes = (argc > 9 && argv[9][0] != '-') ? fopen(argv[9], "w") : NULL;
+    uint8_t *mask = NULL;
+    if (argc > 10) {
+        FILE *mf = fopen(argv[10], "r");
+        if (!mf) return 1;
+        mask = malloc(n);
+        for (size_t i = 0; i < n; i++) {
+            int v = 1;
+            if (fscanf(mf, "%d", &v) != 1) v = 1;
+            mask[i] = (uint8_t)v;
+        }
+        fclose(mf);
+    }
     struct timespec t0, t1;
     double busy = 0.0; /* time inside the compressor only */
     for (size_t i = 0; i < n; i++) {
@@ -106,7 +120,8 @@ int main(int argc, char **argv) {
     size_t correct = 0, guaranteed = 0, wrong_guaranteed = 0, gap = 0;
     uint8_t *buf = malloc(plen);
     for (size_t i = 0; i < n; i++) {
-        if (rng_next(&s) % 1000 < loss) { gap++; continue; }
+        int lost = mask ? !mask[i] : (rng_next(&s) % 1000 < loss);
+        if (lost) { gap++; continue; }
         if (gap) { ccsds124_decompressor_notify_packet_loss(&dec, (uint32_t)gap); gap = 0; }
         bitvector_t o;
         bitvector_init(&o, plen * 8);

@@ -155,7 +155,10 @@ v0.1 single core: ~0.5 MiB/s. Target: 10× without losing ratio, then more.
 - [x] Cost of robustness decomposed (finite-block margin + parity padding);
       larger erasure-code groups: −41.0% vs CCSDS 124 R=2 at 1% loss,
       100% recovered, 6.3% overhead (theory: 1.0% with unlimited delay)
-- [ ] Erasure coding over transfer frames (no padding) or GF(2^16) groups
+- [x] Erasure coding over 223-byte transfer frames under frame loss: 100%
+      recovered at 0.1/1/5%, −46.5/−45.2/−42.4% vs CCSDS 124 (which needs
+      R=7 and recovers 51.9% at 5%); −39.3% with equal protection
+- [ ] Burst losses (interleaved groups); GF(2^16) groups
 - [ ] Cycles on real NOEL-V/LEON hardware; 32-bit range-coder arithmetic
       for LEON3; C/Python bindings for the packet profiles
 - [x] Whole-mission measurement (ESA-AD Mission 1, 75 channels, 734 M

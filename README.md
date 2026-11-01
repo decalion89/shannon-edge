@@ -384,6 +384,17 @@ The receiver also gets back the lost packets themselves. The price: after
 a loss it waits up to G + m packets for the parity (CCSDS 124 does not
 wait), and bursts longer than m need interleaving (not evaluated).
 
+**Losing frames, as real links do.** Space links lose whole fixed-length
+transfer frames, each carrying several packets. With payloads packed into
+223-byte frames and Reed–Solomon parity over frames (no padding, since
+frames all have the same length), sedge v2 recovers 100% of the packets at
+0.1%, 1% and 5% frame loss with 3,037,086 / 3,109,086 / 3,343,086 bytes.
+CCSDS 124 under the same frame loss only works at its maximum robustness
+R=7 (5,673,343 bytes, 98.75% correct at 1%) and recovers 51.9% at 5%:
+**−45.2% and −42.4%, with every packet recovered**. Given the same
+frame-level protection, CCSDS 124 is 39.3% larger at every loss rate
+([`frame_loss.md`](bench/results/frame_loss.md)).
+
 ### A whole mission: 14 years of a satellite's life
 
 `bench/mission.py` runs **every channel** of ESA-AD Mission 1 — 75 channels
@@ -568,6 +579,7 @@ The file format is specified in [`docs/FORMAT.md`](docs/FORMAT.md).
 | `src/packet_fast.rs`, `examples/packet_fast_bench.rs` | Fast packet profile: one decision per byte, one symbol per changed byte |
 | `examples/packet_robust.rs` | Packet profile under simulated packet loss (key packets, epochs, priming) |
 | `src/fec.rs`, `examples/packet_fec.rs` | Packet-level Reed–Solomon erasure code; packet profile + erasure code under loss |
+| `examples/frame_fec.rs` | Packets packed into transfer frames, Reed–Solomon over frames, frame loss |
 | `bench/c/ccsds124_loss.c` | CCSDS 124 under the same simulated loss (open C implementation) |
 | `examples/slepian_wolf.rs` | Slepian–Wolf prototype: XOR-only encoder, ground-side decoder ([results](bench/results/slepian_wolf.md)) |
 | `bench/ccsds124.py` | Venus Express packets vs CCSDS 124 / POCKET+ (reference output and parameter sweep) |
