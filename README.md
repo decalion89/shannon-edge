@@ -368,11 +368,16 @@ under the same simulated i.i.d. loss (its decoder told about every gap,
 
 | Loss | Best CCSDS 124 | sedge + erasure code | Difference |
 |---:|---|---|---:|
-| 0.1% | R=1: 4,976,442 bytes, 99.89% of packets correct | v2, G=32, m=2: 3,108,186 bytes, **100%** | **−37.5%** |
-| 1% | R=2: 5,123,900 bytes, 99.02% | v2, G=64, m=6: 3,268,004 bytes, **100%** | **−36.2%** |
-| 5% | R=3: 5,241,460 bytes, 95.04% | v2, G=64, m=12: 3,692,702 bytes, **100%** | **−29.5%** |
+| 0.1% | R=1: 4,976,442 bytes, 99.89% of packets correct | v2, G=250, m=2: 2,886,474 bytes, **100%** | **−42.0%** |
+| 1% | R=2: 5,123,900 bytes, 99.02% | v2, G=240, m=8: 3,022,098 bytes, **100%** | **−41.0%** |
+| 5% | R=3: 5,241,460 bytes, 95.04% | v2, G=226, m=30: 3,547,406 bytes, **100%** | **−32.3%** |
 
-(Packet profile v2, tables 2^16; with v1 the differences were −31.7%,
+(Packet profile v2, tables 2^16. The protection overhead — 1.5%, 6.3% and
+24.8% — was decomposed into the finite-block margin and the padding of
+Reed–Solomon parity to the longest payload; larger groups cut it, at the
+price of waiting up to G + m packets after a loss:
+[`robustness_cost.md`](bench/results/robustness_cost.md). With groups of
+64 the differences were −37.5%, −36.2% and −29.5%; with v1, −31.7%,
 −30.5% and −23.7%.)
 
 The receiver also gets back the lost packets themselves. The price: after

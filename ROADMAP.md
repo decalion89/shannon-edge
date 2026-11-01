@@ -152,6 +152,10 @@ v0.1 single core: ~0.5 MiB/s. Target: 10× without losing ratio, then more.
 - [x] Side information both ends already have: telecommand timeline
       (ESA-AD Mission 1). No excess surprise after commands on 8 channels:
       negative result (`bench/results/side_information.md`)
+- [x] Cost of robustness decomposed (finite-block margin + parity padding);
+      larger erasure-code groups: −41.0% vs CCSDS 124 R=2 at 1% loss,
+      100% recovered, 6.3% overhead (theory: 1.0% with unlimited delay)
+- [ ] Erasure coding over transfer frames (no padding) or GF(2^16) groups
 - [ ] Cycles on real NOEL-V/LEON hardware; 32-bit range-coder arithmetic
       for LEON3; C/Python bindings for the packet profiles
 - [x] Whole-mission measurement (ESA-AD Mission 1, 75 channels, 734 M

@@ -15,7 +15,8 @@
 //! CCSDS_SIZES (optional): the per-packet sizes of CCSDS 124 on the same
 //! test packets (`bench/c/ccsds124_loss.c`), to report its size with the
 //! same erasure code. Set SEDGE_PACKET_V2=1 for version 2 of the profile,
-//! SEDGE_PACKET_FAST=1 for the fast profile (`packet_fast`).
+//! SEDGE_PACKET_FAST=1 for the fast profile (`packet_fast`); SEDGE_SIZES_OUT=path
+//! writes the payload sizes, one per line.
 
 use shannon_edge::fec;
 use shannon_edge::packet::PacketSession;
@@ -105,6 +106,10 @@ fn main() {
     let payloads: Vec<Vec<u8>> = test.iter().map(|p| tx.compress(p)).collect();
     let size: usize = payloads.iter().map(Vec::len).sum();
     let sizes: Vec<usize> = payloads.iter().map(Vec::len).collect();
+    if let Some(path) = std::env::var_os("SEDGE_SIZES_OUT") {
+        let text: String = sizes.iter().map(|s| format!("{s}\n")).collect();
+        std::fs::write(path, text).expect("write sizes");
+    }
     println!(
         "test {} packets ({} bytes), {}, primed, epochs of {EPOCH}: {size} bytes without parity",
         test.len(),
@@ -138,6 +143,15 @@ fn main() {
         (64, 6),
         (64, 10),
         (64, 12),
+        (128, 7),
+        (128, 8),
+        (250, 2),
+        (250, 3),
+        (240, 8),
+        (240, 10),
+        (240, 12),
+        (232, 24),
+        (226, 30),
     ] {
         let parities: Vec<Vec<Vec<u8>>> = payloads
             .chunks(g)
