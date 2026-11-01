@@ -550,6 +550,21 @@ are negative codes (`sedge_error_message` describes them); invalid input is
 reported, never aborts the host process. CI runs the Python tests on Linux,
 macOS and Windows.
 
+**On board, without Rust:** `c/` is the fast packet profile in portable
+C99. It is two files and needs only `<stdint.h>`, `<stddef.h>` and
+`<string.h>`. It uses no malloc, recursion, floating point or globals; the
+caller provides a single memory block. It is bit-exact with the Rust crate:
+the golden stream matches, and 151,200 of 151,200 Venus Express payloads
+are byte-identical. Measured on this repository's test machines:
+
+* Code size at -Os: about 5.9 KB on Cortex-M4 and rv32imc.
+* Speed: 85–100% of Rust's.
+* Tested on riscv32, Cortex-M4, i386, MIPS and PowerPC (big-endian) under
+  qemu.
+* Clean under ASan, UBSan and Valgrind, with no warnings from gcc or clang.
+
+See `c/README.md`.
+
 ## How it works
 
 ```
@@ -590,6 +605,8 @@ The file format is specified in [`docs/FORMAT.md`](docs/FORMAT.md).
 | `src/train.rs` | Dictionary trainer (`sedge train`) |
 | `src/main.rs` | `sedge` command-line tool |
 | `src/ffi.rs`, `include/shannon_edge.h` | C ABI |
+| `c/` | Fast packet profile in portable C99, bit-exact with Rust |
+| `fuzz/` | Coverage-guided fuzzing of every decoder |
 | `python/` | Python binding (ctypes) and its tests |
 | `tests/` | Round-trip, adversarial, corruption and golden-format tests |
 | `bench/compare.py` | Benchmark against gzip, bzip2, xz, zstd and brotli |

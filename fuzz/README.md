@@ -25,3 +25,16 @@ CI runs each target for 60 s on every pull request.
   decoder stops as soon as it reads more than `coder::MAX_OVERRUN` bytes past
   the payload, which no valid stream does (`docs/FORMAT.md`, Integrity).
   Regression test: `a_lying_length_costs_neither_memory_nor_time`.
+
+## Campaign log
+
+| Target | Runs | Time | Result |
+|---|---:|---:|---|
+| `decompress` (before the fix) | — | 1 min | 4 GB reservation from a lying header (fixed) |
+| `decompress` (after the fix) | 11,323 | 15 min | clean |
+| `packet_fast` | 301,613 | 10 min | clean |
+| `packet_v2` | 98,845 | 10 min | clean |
+| `flight` | 156,754 | 10 min | clean |
+| `roundtrip` | 27,334 | 10 min | clean |
+
+Machine shared with other jobs, one core each, `-max_len=4096`.

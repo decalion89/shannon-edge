@@ -86,3 +86,12 @@ jobs:
           for t in decompress packet_fast packet_v2 flight roundtrip; do
             cargo fuzz run -O "$t" -- -max_total_time=60 -rss_limit_mb=2048 -max_len=4096
           done
+
+  c-port:
+    # The portable C99 fast profile: bit-exact with the Rust golden stream,
+    # round trips and garbage input under ASan/UBSan, no warnings.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: make -C c test
+      - run: make -C c warnings
