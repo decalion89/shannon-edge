@@ -54,6 +54,10 @@ def channel_scores(z, root, ch, cache: Path | None):
         return {k: d[k] for k in d.files}
     s = load(z, f"{root}/channels/{ch}.zip")
     s = s[~s.index.duplicated(keep="last")].sort_index()
+    if not pd.api.types.is_numeric_dtype(s):
+        # Categorical channels (Mission 3 has some, e.g. "value_0"): code each state by its order of
+        # first appearance; the compressor sees a symbol stream either way.
+        s = pd.Series(pd.factorize(s)[0].astype(np.float32), index=s.index, name=s.name)
     cost = surprise(s)
     b = max(1, (min(len(np.unique(s.to_numpy().astype(np.float32))), 65536) - 1).bit_length())
     ts = s.index.values.astype("datetime64[ns]").astype(np.int64)
