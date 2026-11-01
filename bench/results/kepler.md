@@ -35,3 +35,50 @@ obvious: any dip detector finds them. Finding *new* planets means
 low-signal transits, folding and false-positive vetting, which this
 per-sample detector does not attempt. The result is that the same
 training-free surprise transfers to starlight unchanged, onsets included.
+
+## Accumulating weak transits: planet search as compression (`bench/analysis/mdl_transit_search.py`)
+
+**The idea.** A code that knows a period, phase, duration and depth
+predicts every dip, so it compresses the detrended light curve better than
+a code that does not. The bits it saves are the evidence. Every
+hypothesis on the search grid is named with log2(#hypotheses) bits, plus
+0.5·log2(n) bits for the depth. By Kraft, *if the noise were white and
+Gaussian*, the probability that pure noise saves t net bits is at most
+2^−t, with no simulation needed.
+
+**Kepler-10, quarter 3.** Both planets are recovered, with no astronomy in
+the code:
+
+| Planet | Found | Published | Net bits saved |
+|---|---|---|---:|
+| Kepler-10b (rocky, about 1.4 Earth radii) | P = 0.83730 d, 137 ppm, 2 h | P = 0.8375 d, about 152 ppm, about 1.8 h | **2,135** |
+| Kepler-10c | P = 45.353 d, 381 ppm | P = 45.295 d | **1,157** |
+
+The per-sample surprise could not see Kepler-10b, which is 3σ per point.
+Accumulating it over 107 transits makes it the strongest signal in the
+light curve.
+
+**Control: nine stars with no known transiting planet.** The
+asteroseismic targets KIC 12069449, 8006161, 3427720, 6106415, 6225718,
+10454113, 8379927, 7510397 and 9139151 were searched the same way.
+
+| Period range searched | "Net bits" of the best false signal in the nine stars |
+|---|---|
+| 0.5–50 days | 93–4,601 |
+| 0.5–20 days (at least 4 transits possible) | 65–1,780 |
+
+**The white-noise guarantee does not hold on real light curves.**
+* Two different stars give the same "planet": P = 43.20 d at phase 0.906,
+  and two others P ≈ 45.9 d at phase 0.85. These are instrument
+  systematics that hit every star at the same time, not planets.
+* The false signals rest on 8–10 points, that is one event, while
+  Kepler-10b rests on 398 points spread over its transits.
+* As a result, raw net bits do not separate Kepler-10b (2,135) from noise
+  (up to 4,601).
+
+A usable search would need what NASA's pipeline does: systematics removal
+(cotrending against other stars), several transits each consistent in
+depth, and vetting. Without those, **no new-planet claim can be made
+from this code.** The finding stands as stated: compression accounting
+recovers both known planets of Kepler-10, and its false-alarm bound needs
+a calibrated noise model.
