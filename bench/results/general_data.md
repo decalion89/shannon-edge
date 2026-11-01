@@ -1,0 +1,107 @@
+# Beyond space: everyday fixed-length records
+
+Do sedge's packet codecs help outside spacecraft telemetry? Five public
+datasets from different domains (seven binary files, 37–139 MB each)
+were converted faithfully into fixed-length binary records:
+* integers keep their native encoding;
+* decimals are stored as exact scaled integers, each value checked;
+* floats keep their exact bits.
+
+Every sedge and baseline output was decompressed and checked to be
+byte-identical. Scripts: `bench/general/`, converters `conv_*.py`. Usage
+is described below.
+
+## Datasets
+
+| Name | Domain | Source (licence) | Record | Records × bytes |
+|---|---|---|---|---|
+| ecg_incart | Medical ECG | PhysioNet INCART 1.0.0, records I01–I10 (ODC-By 1.0) | native 12 × i16 frame, 257 Hz | 4,626,000 × 24 |
+| power_uci | Smart meter | UCI #235 household power (CC BY 4.0) | u32 time + 7 × u16 scaled exact decimals | 2,075,259 × 18 |
+| metropt | Industrial compressor | UCI #791 MetroPT-3 (CC BY 4.0) | u32 time + 7 × float64 (exact bits) + 8 × u8 | 1,516,948 × 68 |
+| metropt_codes | same | same | same values as u16 codebook indices (codebook 174,520 B not counted below) | 1,516,948 × 26 |
+| can_aegis | Vehicle CAN | Zenodo 3267184 AEGIS, Driver1 trips 7–10 (CC BY 4.0) | f32 time + 103 × float32 (decoded CAN, GPS, IMU, 20 Hz) | 93,690 × 416 |
+| ais_tracks / ais_feed | Ship GPS (AIS) | NOAA MarineCadastre AIS 2023-01-01, before 12:00 UTC (US federal data; NOAA states no access constraints but names no licence) | 34-byte position report; `tracks` sorted by ship and time, `feed` in file order | 4,076,512 × 34 |
+
+## Compression ratio (higher is better)
+
+Baselines:
+* **planes**: the record matrix is transposed into byte planes.
+* **fieldΔ**: each field is replaced by its zigzag difference from the
+  previous record (an XOR for floats). This is the fair "smart engineer"
+  baseline.
+* **zstd per record**: one zstd stream flushed after every record, the
+  like-for-like rival of sedge's per-record payloads.
+* **One stream**: a measurement-only patched copy running one arithmetic
+  coder across all records. It is not in the repository.
+
+| Dataset | zstd -19 --long | xz -9e | fieldΔ+planes+xz | zstd -19 per record | **sedge fast** | **v2 2^12** | **v2 2^16** | v2 2^16, one stream | sedge CM, whole file |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| power_uci | 2.67 | 3.76 | **6.69** | 1.07 | 5.46 | 5.72 | 5.82 | 6.52 | **6.69** |
+| can_aegis | 2.98 | 3.44 | 4.42 (planes+xz 4.54) | 2.56 | 4.27 | 4.33 | 4.50 | 4.52 | 4.35 |
+| ecg_incart | 1.57 | 2.26 | 2.94 | 0.93 | 2.61 | 2.74 | 2.77 | 2.88 | **3.04** |
+| metropt (float64) | 6.75 | 8.78 | 3.52 | 3.40 | 3.62 | 4.03 | 4.80 | 4.92 | **18.98** |
+| metropt_codes | 3.18 | 3.98 | 8.84 | 1.42 | 6.56 | 7.44 | 7.61 | 8.44 | **9.23** |
+| ais_tracks | 5.17 | 6.62 | 12.59 | 1.97 | 10.34 | 11.28 | 11.38 | **12.77** | 11.91 |
+| ais_feed | 3.14 | **4.16** | 2.02 | 1.61 | 1.85 | 2.18 | 2.23 | 2.27 | 3.32 |
+
+Speed (MB/s, one core, shared machine, about ±30%):
+* sedge fast compresses at 30–69 MB/s (decompression 21–62) with
+  39–896 KiB of state.
+* v2: 3.5–15 MB/s.
+* zstd -19 --long: 1.1–2.4 MB/s. xz -9e: 0.6–1.7 MB/s.
+* fieldΔ+planes+zstd -3, numpy transform included, runs at 43–69 MB/s.
+  It is 0–13% smaller than sedge fast on every dataset except CAN, where
+  it is 2% larger.
+
+Ground-learned recipes, learned on the first 10% and measured on the other
+90%, shrink sedge fast's output on every dataset:
+
+| Dataset | Smaller by |
+|---|---:|
+| CAN | 2.7% |
+| power | 3.6% |
+| ECG | 4.4% |
+| AIS tracks | 6.8% |
+| AIS feed | 8.8% |
+| metropt_codes | 10.4% |
+| metropt | 21.7% |
+
+## Verdict
+
+* **Where sedge wins: coding each record as it arrives.** This is the
+  setting of a sensor, a meter, a vehicle or a medical device that sends
+  readings one by one, with little memory and no batching. There the
+  packet codecs produce **28–83% fewer bytes than zstd one record at a
+  time** on every dataset. sedge fast is about 5x smaller than per-record
+  zstd at 30–70 MB/s, and v2 saves another 4–10%.
+* **sedge's general CM model is the best or tied-best archiver on 4 of 7
+  files**: power, ECG, metropt and metropt_codes. On metropt as published
+  (float64 dumps) it is 2.2x better than xz -9e (18.98 vs 8.78).
+* **Where the packet codecs lose:**
+  * Whole-file archiving against the smart baseline: they tie or lose by
+    1–16%.
+  * Interleaved streams (`ais_feed`: the previous record is a different
+    ship): 87% worse than xz.
+  * Raw float64 dumps with few distinct values: about 2x worse than xz.
+    Whole 8-byte values repeat, which LZ copies and a byte-above model
+    cannot.
+* **What it points to:**
+  * an optional one-stream mode, since the per-record boundary costs
+    0.32–0.34 B/record on every dataset;
+  * a context keyed by stream id, for interleaved sources;
+  * numeric-field prediction: on ECG the byte models miss most of the
+    16-bit structure, and a linear-prediction ECG codec would probably
+    beat all of these (not measured).
+
+## Reproduce
+
+Scripts live in `bench/general/`. Use a working directory `G` containing:
+* `build/`: a release build of this repository;
+* `dl/<dataset>/`: the downloads;
+* `data/`, `results/` and `work/`: outputs.
+
+The converter usage lines are in each `conv_*.py`. To benchmark, run
+`bash run_all.sh G [names]` (sedge and the baselines), then `run_extra.sh`
+and `run_cm.sh`. `python3 -I table.py G/results <names>` prints the
+tables. `run_extra.sh` also needs the one-stream measurement patch, which
+is not in the repository.
