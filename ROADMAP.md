@@ -102,9 +102,12 @@ v0.1 single core: ~0.5 MiB/s. Target: 10× without losing ratio, then more.
       ~3 MiB of tables, −39% with ~0.2 MiB, 2–4 M samples/s on a desktop
       core; golden-pinned format
 - [x] Anomaly detection for free: per-sample surprise from the flight codec
-      (identical on both ends). ESA Mission 1, 4 target channels, 213
-      labelled events: 138 found at 0.1% false alarms vs 82 for a z-score
-      and 49 for a jump detector; 87 vs 42 vs 19 at 0.01%
+      (identical on both ends). ESA Mission 1, all 58 target channels,
+      3,520 labelled events: 2,173 found at 0.1% false alarms vs 1,696
+      (z-score) and 1,322 (jump); 1,527 vs 903 vs 785 at 0.01%; best on
+      54/58 channels
+- [ ] Compare with CCSDS 124.0-B-1 (POCKET+), the CCSDS standard for
+      housekeeping telemetry, which is the right baseline for this data
 - [x] Whole-mission measurement (ESA-AD Mission 1, 75 channels, 734 M
       samples, 14 years): flight profile beats CCSDS 121 on 75/75 channels,
       −38% in total; 16 channels below 1% of float32

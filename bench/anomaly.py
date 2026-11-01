@@ -19,19 +19,22 @@ threshold. Reported: events detected at q = 0.1% and q = 0.01%.
 
 Usage:
     cargo build --release --example flight_surprise
-    python3 bench/anomaly.py --mission ESA-Mission1 CHANNEL_FILE [CHANNEL_FILE ...]
+    python3 bench/anomaly.py ESA-Mission1.zip [--only channel_12 channel_14 ...]
 
-CHANNEL_FILE is an extracted channel pickle (e.g. ESA-Mission1/channels/
-channel_12 after unzipping channel_12.zip); it is loaded with the whitelist
-unpickler from bench/telemetry.py.
+By default every channel marked as a target in the mission's channels.csv
+is evaluated. Channels and labels are read straight from the mission zip;
+channel pickles go through the whitelist unpickler of bench/telemetry.py.
 """
 
 from __future__ import annotations
 
 import argparse
+import io
+import re
 import subprocess
 import sys
 import tempfile
+import zipfile
 from pathlib import Path
 
 import numpy as np
@@ -43,9 +46,9 @@ from telemetry import SafeUnpickler  # noqa: E402
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def load(path: Path) -> pd.Series:
-    with open(path, "rb") as f:
-        df = SafeUnpickler(f).load()
+def load(outer: zipfile.ZipFile, member: str) -> pd.Series:
+    inner = zipfile.ZipFile(io.BytesIO(outer.read(member)))
+    df = SafeUnpickler(io.BytesIO(inner.read(inner.namelist()[0]))).load()
     return df.iloc[:, 0]
 
 
@@ -76,22 +79,32 @@ def evaluate(score: np.ndarray, events: list, warmup: int) -> dict:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("channels", nargs="+", type=Path)
-    ap.add_argument("--mission", type=Path, required=True, help="unzipped ESA-Mission1 directory (labels.csv)")
+    ap.add_argument("mission_zip", type=Path)
+    ap.add_argument("--only", nargs="*", help="channel names (default: all target channels)")
     args = ap.parse_args()
 
-    labels = pd.read_csv(args.mission / "labels.csv")
-    types = pd.read_csv(args.mission / "anomaly_types.csv").set_index("ID")
+    outer = zipfile.ZipFile(args.mission_zip)
+    root = next(n.split("/")[0] for n in outer.namelist() if n.endswith("labels.csv"))
+    labels = pd.read_csv(io.BytesIO(outer.read(f"{root}/labels.csv")))
+    types = pd.read_csv(io.BytesIO(outer.read(f"{root}/anomaly_types.csv"))).set_index("ID")
+    chans = pd.read_csv(io.BytesIO(outer.read(f"{root}/channels.csv")))
+    wanted = args.only or list(chans.loc[chans["Target"] == "YES", "Channel"])
+    wanted.sort(key=lambda c: int(re.search(r"\d+", c).group()))
     binary = ROOT / "target/release/examples/flight_surprise"
 
     totals = {name: {1e-3: [0, 0], 1e-4: [0, 0]} for name in ("surprise", "z-score", "jump")}
-    print("| Channel | Samples | Events | Detector | Events found, 0.1% false alarms | at 0.01% |")
-    print("|---|---:|---:|---|---:|---:|")
-    for path in args.channels:
-        series = load(path)
+    wins = {name: 0 for name in totals}
+    print("| Channel | Samples | Events | surprise 0.1% | z-score 0.1% | jump 0.1% | surprise 0.01% | z-score 0.01% | jump 0.01% |")
+    print("|---|---:|---:|---:|---:|---:|---:|---:|---:|", flush=True)
+    for ch in wanted:
+        series = load(outer, f"{root}/channels/{ch}.zip")
         x = series.to_numpy().astype(np.float64)
         uniq, codes = np.unique(series.to_numpy().astype(np.float32), return_inverse=True)
-        events = events_for(labels, types, path.name, series.index)
+        events = events_for(labels, types, ch, series.index)
+        if len(uniq) > 65536 or not events:
+            print(f"| {ch} | {len(x):,} | {len(events)} | skipped ({'no events' if not events else '>65,536 values'}) |||||||",
+                  flush=True)
+            continue
         with tempfile.TemporaryDirectory() as t:
             cpath, spath = Path(t) / "codes.u16", Path(t) / "surprise.u32"
             codes.astype("<u2").tofile(cpath)
@@ -103,17 +116,24 @@ def main() -> None:
         zscore = ((s - mean).abs() / (std + 1e-9)).fillna(0).to_numpy()
         jump = np.abs(np.diff(x, prepend=x[0]))
         warmup = len(x) // 100
+        res = {}
         for name, score in (("surprise", surprise), ("z-score", zscore), ("jump", jump)):
-            r = evaluate(score, events, warmup)
-            for q in r:
-                totals[name][q][0] += r[q][0]
-                totals[name][q][1] += r[q][1]
-            print(f"| {path.name} | {len(x):,} | {r[1e-3][1]} | {name} | {r[1e-3][0]} | {r[1e-4][0]} |", flush=True)
+            res[name] = evaluate(score, events, warmup)
+            for q in res[name]:
+                totals[name][q][0] += res[name][q][0]
+                totals[name][q][1] += res[name][q][1]
+        best = max(res[n][1e-3][0] for n in res)
+        for n in res:
+            if res[n][1e-3][0] == best:
+                wins[n] += 1
+        n_ev = res["surprise"][1e-3][1]
+        cells = [str(res[n][q][0]) for q in (1e-3, 1e-4) for n in ("surprise", "z-score", "jump")]
+        print(f"| {ch} | {len(x):,} | {n_ev} | " + " | ".join(cells) + " |", flush=True)
     print()
-    print("| Detector | Events found, 0.1% false alarms | at 0.01% |")
-    print("|---|---:|---:|")
+    print("| Detector | Events found, 0.1% false alarms | at 0.01% | Channels where best (or tied) at 0.1% |")
+    print("|---|---:|---:|---:|")
     for name, t in totals.items():
-        print(f"| {name} | {t[1e-3][0]}/{t[1e-3][1]} | {t[1e-4][0]}/{t[1e-4][1]} |")
+        print(f"| {name} | {t[1e-3][0]}/{t[1e-3][1]} | {t[1e-4][0]}/{t[1e-4][1]} | {wins[name]} |")
 
 
 if __name__ == "__main__":

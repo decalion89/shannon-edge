@@ -310,21 +310,23 @@ gets the very same number while decompressing, with nothing extra sent
 (`compress_scored` / `decompress_scored`). The ESA dataset is an anomaly
 benchmark, so we measured how well that surprise finds the anomalies ESA
 engineers labelled, against two classical detectors on the same samples.
-Mission 1, all four target channels at hand (12, 14, 20, 25), full history
-(48 M samples, 213 labelled events); thresholds set so each detector fires
-on the same small fraction of nominal samples:
+Mission 1, **all 58 target channels**, full history, 3,520 labelled
+(anomaly, channel) events; thresholds set so each detector fires on the
+same small fraction of nominal samples (full table:
+[`bench/results/esa_mission1_anomaly.md`](bench/results/esa_mission1_anomaly.md)):
 
-| Detector | Events found at 0.1% false alarms | at 0.01% false alarms |
-|---|---:|---:|
-| **compressor surprise** | **138/213 (65%)** | **87/213 (41%)** |
-| z-score (rolling mean/std, 256 samples) | 82/213 (38%) | 42/213 (20%) |
-| jump \|x(t) − x(t−1)\| | 49/213 (23%) | 19/213 (9%) |
+| Detector | Events found at 0.1% false alarms | at 0.01% false alarms | Best on channels |
+|---|---:|---:|---:|
+| **compressor surprise** | **2,173/3,520 (62%)** | **1,527/3,520 (43%)** | **54/58** |
+| z-score (rolling mean/std, 256 samples) | 1,696/3,520 (48%) | 903/3,520 (26%) | 8/58 |
+| jump \|x(t) − x(t−1)\| | 1,322/3,520 (38%) | 785/3,520 (22%) | 5/58 |
 
-The surprise wins on every one of the four channels. Caveats: thresholds
+Caveats: thresholds
 are calibrated with the labels (to compare detectors at equal false-alarm
 rates; a deployed threshold must be set without them); the controls are
-simple, and ESA's benchmark has stronger learned detectors and its own
-metrics, which we have not run; the model adapts within a few samples, so
+simple, and ESA's benchmark (ESA-ADB) has much stronger learned detectors — e.g.
+Telemanom-ESA-Pruned reaches a corrected event-wise F0.5 of 0.968 on a
+Mission 1 subset — and its own metrics, which we have not run; the model adapts within a few samples, so
 it flags the onset and end of an anomaly rather than its whole duration.
 The idea of detecting anomalies through compression is not new (Keogh et
 al., 2004); what is shown here is that it comes free from a flight
