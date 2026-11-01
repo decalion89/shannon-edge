@@ -21,6 +21,7 @@ pub mod ffi;
 pub mod flight;
 mod math;
 mod model;
+pub mod packet;
 pub mod train;
 
 use coder::{Decoder, Encoder};

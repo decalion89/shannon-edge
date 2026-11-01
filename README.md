@@ -284,28 +284,40 @@ research prototype and `examples/flight_bench.rs` reproduces the table.
 CCSDS 124.0-B-1, based on ESA's POCKET+, is the CCSDS standard for
 fixed-length housekeeping packets (adopted 2023; flown on OPS-SAT). Its
 public test vectors include **real Venus Express housekeeping telemetry**
-and the output of the ESA reference implementation, so the comparison
-needs none of its code: the CCSDS 124 size is read from the reference
-output, and sedge codes the same 151,200 packets **one by one, as they
-arrive**, every packet verified:
+(151,200 packets of 90 bytes). For CCSDS 124 we use the open, MIT-licensed
+implementation [tanagraspace/ccsds124](https://github.com/tanagraspace/ccsds124),
+whose output we checked to be byte-identical (size and MD5) to the ESA
+reference output, and we **swept its parameters** (robustness R=0..2,
+mask/full/reset periods) to give it its best configuration. Every method
+codes the packets **one by one, as they arrive**; every packet verified:
 
-| Venus Express, 90-byte packets, packet by packet | Bytes | Ratio | vs CCSDS 124 |
-|---|---:|---:|---:|
-| CCSDS 124 / POCKET+ (ESA reference output, robustness R=2) | 5,891,500 | 2.31× | — |
-| zstd -19, streaming, flushed per packet | 8,236,002 | 1.65× | +39.8% |
-| sedge lean session | 4,687,459 | 2.90× | −20.4% |
-| **sedge lean session + record model** | **3,202,177** | **4.25×** | **−45.6%** |
+| Venus Express, packet by packet | Model memory | Bytes | Ratio | vs best CCSDS 124 |
+|---|---:|---:|---:|---:|
+| CCSDS 124, test-vector settings (R=2, pt=20, ft=50, rt=100) | tiny | 5,891,500 | 2.31× | +11.4% |
+| **CCSDS 124, best of the sweep** (R=0, pt=14, ft=10⁵, rt=10⁶) | tiny | **5,289,939** | 2.57× | — |
+| zstd -19, streaming, flushed per packet | ~8 MiB | 8,236,002 | 1.65× | +55.7% |
+| **sedge packet profile, tables 2^14** | **~0.3 MiB** | **3,650,124** | 3.73× | **−31.0%** |
+| sedge packet profile, tables 2^18 | ~5 MiB | 3,238,198 | 4.20× | −38.8% |
+| sedge lean session + record model (full model) | ~70 MiB | 3,202,177 | 4.25× | −39.5% |
 
-The record model came from a clue in the data: on the whole file, xz
-(4.0 MB) beat sedge (4.3 MB), which meant sedge was ignoring structure. The
-missing structure was the column: byte *k* of a packet is best predicted by
-byte *k* of the previous packet — which is exactly what POCKET+ exploits
-with bit masks. Adding two column contexts brought the whole file to
-2.87 MB (−29% vs xz) and the packet-by-packet session to −45.6% vs the
-standard. Caveats: the reference output uses robustness R=2 (a little
-redundancy to survive lost packets; lean sedge frames have none, and a
-lost packet desynchronises sedge), and POCKET+ is designed for far weaker
-CPUs than sedge's full model needs. Reproduce with `bench/ccsds124.py`.
+**The packet profile** (`shannon_edge::packet::PacketSession`) is the
+flight-class answer: integer-only, golden-pinned, one coder per packet, no
+framing (fixed packet length, like CCSDS 124 output). Each byte position is
+a column predicted from the byte above (previous packet), two packets back
+and its left neighbour, by a transition model and a residual model chosen
+per column by recent cost.
+
+The idea came from a clue in the data: on the whole file, xz (4.0 MB) beat
+sedge (4.3 MB), so sedge was ignoring structure — the column, which POCKET+
+also exploits with bit masks. Column contexts brought the whole file to
+2.87 MB and the packet-by-packet results above.
+
+Costs, stated plainly: CCSDS 124 compresses this file at ~15 MB/s with a
+few hundred bytes of state, built for very weak flight CPUs; the packet
+profile runs at 1.2–1.7 MB/s encode+decode on a desktop core and needs
+0.3–5 MiB. Its best CCSDS 124 configuration has no robustness (R=0), like
+lean sedge: a lost packet desynchronises both. Reproduce with
+`bench/ccsds124.py ccsds124/test-vectors --cli <ccsds124 CLI>`.
 
 ### A whole mission: 14 years of a satellite's life
 
@@ -487,7 +499,8 @@ The file format is specified in [`docs/FORMAT.md`](docs/FORMAT.md).
 | `bench/small_messages.py` | Many small records: sedge vs zstd with a trained dictionary |
 | `bench/streams.py`, `examples/session_bench.rs` | Record streams: sedge sessions vs zstd streaming |
 | `bench/telemetry.py` | ESA spacecraft telemetry: sedge vs CCSDS 121 and zstd |
-| `bench/ccsds124.py` | Venus Express packets vs CCSDS 124 / POCKET+ reference output |
+| `src/packet.rs`, `examples/packet_bench.rs` | Packet profile for fixed-length housekeeping packets |
+| `bench/ccsds124.py` | Venus Express packets vs CCSDS 124 / POCKET+ (reference output and parameter sweep) |
 | `bench/mission.py`, `bench/results/` | Every channel of an ESA mission through CCSDS 121 and the flight profile |
 | `bench/anomaly.py`, `examples/flight_surprise.rs` | Anomaly detection from the compressor's surprise (ESA labels) |
 | `docs/THEORY.md` | The limits, with proofs, and how to move them honestly |

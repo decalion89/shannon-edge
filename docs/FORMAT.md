@@ -103,6 +103,15 @@ must guarantee integrity and order. Both ends must use the same
 `bits_per_sample` and `table_bits`; the test `golden_flight_stream_is_stable`
 pins the coded bytes, so any change to the flight model is a format change.
 
+## Packet frames
+
+A `PacketSession` (packet profile) sends each fixed-length packet as just
+its arithmetic-coded payload with a minimal flush: no length, checksum or
+sequence number — the packet length is a session parameter and the link
+layer delimits packets and guarantees integrity and order. Both ends must
+use the same `packet_len` and `table_bits`; `golden_packet_stream_is_stable`
+pins the coded bytes.
+
 ## Primed-model files (`.sedgem`)
 
 A saved `PrimedModel`: the model state after reading a dictionary. It is a

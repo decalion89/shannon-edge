@@ -58,22 +58,22 @@ static NEG_LOG2: [u32; 4097] = {
 
 /// Cost in 1/256 bits of coding `bit` with 12-bit probability `p1` of a 1.
 #[inline]
-fn cost(p1: u32, bit: u32) -> u32 {
+pub(crate) fn cost(p1: u32, bit: u32) -> u32 {
     NEG_LOG2[if bit != 0 { p1 } else { 4096 - p1 } as usize]
 }
 
 /// Adaptive probability (16-bit) with a hit count for a 1/n learning rate.
 #[derive(Clone, Copy)]
-struct Counter(u32); // p16 << 8 | n
+pub(crate) struct Counter(pub(crate) u32); // p16 << 8 | n
 
 impl Counter {
-    const FRESH: Counter = Counter(0x8000 << 8);
+    pub(crate) const FRESH: Counter = Counter(0x8000 << 8);
     #[inline]
-    fn p12(self) -> u32 {
+    pub(crate) fn p12(self) -> u32 {
         ((self.0 >> 12) & 0xfff).clamp(1, 4095)
     }
     #[inline]
-    fn update(&mut self, bit: u32) {
+    pub(crate) fn update(&mut self, bit: u32) {
         let p = (self.0 >> 8) as i32;
         let n = self.0 & 0xff;
         let target = if bit != 0 { 65535 } else { 0 };
@@ -82,26 +82,26 @@ impl Counter {
     }
 }
 
-struct Table {
-    t: Vec<Counter>,
+pub(crate) struct Table {
+    pub(crate) t: Vec<Counter>,
     shift: u32,
 }
 
 impl Table {
-    fn new(bits: u32) -> Self {
+    pub(crate) fn new(bits: u32) -> Self {
         Self {
             t: vec![Counter::FRESH; 1 << bits],
             shift: 64 - bits,
         }
     }
     #[inline]
-    fn slot(&self, h: u64) -> usize {
+    pub(crate) fn slot(&self, h: u64) -> usize {
         (h.wrapping_mul(0x9E37_79B9_7F4A_7C15) >> self.shift) as usize
     }
 }
 
 #[inline]
-fn h2(a: u64, b: u64) -> u64 {
+pub(crate) fn h2(a: u64, b: u64) -> u64 {
     (a.wrapping_mul(0x0000_0100_0000_01B3) ^ b).wrapping_mul(0xFF51_AFD7_ED55_8CCD)
 }
 
@@ -378,7 +378,7 @@ impl FlightSession {
     }
 }
 
-fn put_varint(out: &mut Vec<u8>, mut v: u64) {
+pub(crate) fn put_varint(out: &mut Vec<u8>, mut v: u64) {
     while v >= 0x80 {
         out.push((v as u8) | 0x80);
         v >>= 7;
