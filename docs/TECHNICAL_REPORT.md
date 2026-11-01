@@ -202,6 +202,23 @@ too (0.949 vs 0.901). It is last on channel-aware F0.5 in every setting
 (0.18–0.22 vs 0.48–0.84): it detects the event but names too few of the
 affected channels (channel recall 7–10%).
 
+**Training-free thresholds** (`docs/KRAFT_DETECTION.md`). Through the
+Kraft inequality, a sample costing ≥ b + t bits under a calibrated code
+(alphabet 2^b) has probability ≤ 2^−t. This holds for any lossless code,
+with no independence assumption, and degrades by 2^D for a model off by a
+max-divergence D. The flight model obeys the bound on 45.8 M nominal
+samples.
+
+With t fixed by a formula before scoring (at most one expected false
+alarm in the test set) and no training, the corrected event-wise F0.5 is:
+
+* Mission 1 lightweight: 0.705 (trained 0.690).
+* Mission 1 full: 0.576 (trained 0.279; best published 0.061).
+* Mission 2 lightweight: 0.200 (trained 0.725).
+
+The bound fixes false alarms, not misses: how much risk a mission accepts
+remains a choice.
+
 ### 3.7 Optional error-bounded mode (`bench/results/near_lossless.md`)
 
 Header and time exact; every numeric field reconstructed within ±δ by a
