@@ -823,17 +823,33 @@ compared it with the share of time they take.
 | 2 (18–28) | Anomaly | 1.111% | 1.064% | 1.0x | 7.81 | 8.15 |
 | 2 | Rare Event | 1.707% | 1.985% | 1.2x | 9.48 | 8.15 |
 
-**Finding, on these data.** Labelled events carry about as much
-information per sample as normal operation (1.0–1.2x). Yet the same
-events are detected by single-sample peaks of 18–31 bits above b. The two
-facts fit only one way: **an event's information is concentrated in a
-few dozen bits at its onset, and the rest of its labelled interval is as
-ordinary to the model as any other time.**
+**Finding.** Labelled events carry about as much information per sample
+as normal operation. The ESA table above shows 1.0–1.2x, and the same
+holds far from spacecraft (`bench/analysis/info_concentration_ucr_ecg.py`):
 
-This one observation accounts for several other results:
-* timing that is never early (ADTQC after-ratio about 1);
-* slow events that are missed;
-* no early-warning signal;
-* rare values kept exact for about 0.1% of the downlink.
+| Data | Concentration of information in anomalies |
+|---|---:|
+| ESA-AD Missions 1 and 2 (above) | 1.0–1.2x |
+| UCR archive, 250 series (medicine, industry, biology, space) | median 1.03x (IQR 0.97–1.13); only 5% of series above 2x |
+| MIT-BIH, abnormal beats (44 records) | 1.14x |
 
-It is a measurement on two missions with one model, not yet a general law.
+**What makes anomalies detectable is not more information but where it
+sits.** The excess over the series' median cost is concentrated in a few
+samples:
+
+| Data | Share of an event's excess bits in its 3 costliest samples | If spread evenly | Peak in the first 10% of the event |
+|---|---:|---:|---:|
+| ESA Mission 1 (672 event-channels) | 0.32 | 0.048 | 48% |
+| ESA Mission 2 (4,779 event-channels) | 0.22 | 0.050 | 57% |
+| UCR (250) | 0.21 | ~0.01–0.03 | — |
+| MIT-BIH abnormal beats | 0.13 | 0.02 | — |
+
+The excess is 4–10 times more concentrated than an even spread, and in
+spacecraft events its peak sits in the first tenth about half the time.
+That is concentration *near the onset*, not all of it in a single instant.
+An earlier wording here ("a few dozen bits at its onset") overstated it.
+
+This pattern is consistent with several other results: detection that is
+on time but never early, missed slow events, no early-warning signal, and
+the low cost of keeping rare values exact. It is an empirical regularity
+measured with one model on four data sources, not a theorem.
