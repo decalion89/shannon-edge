@@ -72,6 +72,44 @@ costs only another ~5%: v2 2^18 against sedge CM on the whole file. The
 rest of the gap is model capacity, bought at about 1,000 times the work per
 byte.
 
+### Where the gap is: column by column
+
+Each of the 90 columns, compressed as its own 151,200-byte time series:
+
+| | Total over 90 columns |
+|---|---:|
+| sedge CM | 3,269,020 |
+| paq8px -8 | 3,024,998 (−7.5%) |
+
+Cross-column context is worth about 13% to sedge CM: 2,849,785 on the
+whole file. The column gap is concentrated. Ten columns carry 65% of it,
+and on a few of them paq8px is 1.5–2.5x smaller:
+
+| Column | sedge CM | paq8px | xz -9e | Changed vs previous |
+|---:|---:|---:|---:|---:|
+| 59 | 27,980 | 11,236 | 35,028 | 36% |
+| 63 | 28,877 | 12,183 | 38,320 | 51% |
+| 71 | 57,269 | 38,585 | 70,864 | 60% |
+| 67 | 45,714 | 30,787 | 61,324 | 59% |
+| 60 | 130,374 | 104,463 | 129,852 | 98% |
+
+Hypotheses tested and rejected:
+* **Delta-history contexts.** Columns 59, 63 and 67 contain slow ramps
+  with fractional slopes, e.g. steps of 3, 3, 3, 4. The ideal adaptive
+  cost given the last three deltas (or the last three non-zero deltas) is
+  *higher* than given the last delta alone, because the contexts are too
+  sparse.
+* **Long exact repeats.** xz and zstd do worse than sedge on these
+  columns.
+* **Audio or linear prediction.** paq8px's block detection classifies
+  the streams as generic binary (`default`), so its audio and image models
+  are not involved.
+
+paq8px wins with its generic model mix, not a special-purpose model.
+Finding which of its components matters is the next step (ablation of its
+open-source models). Scripts and data: session scratchpad (`cols/`), not in
+the repository.
+
 ## Under packet loss (fast profile + erasure code)
 
 `SEDGE_PACKET_FAST=1 examples/packet_fec` (same setup as `venus_fec.md`):
