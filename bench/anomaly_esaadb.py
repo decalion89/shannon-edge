@@ -199,8 +199,23 @@ def main() -> None:
         for r in lab[lab["Channel"] == ch].itertuples():
             a, e = np.searchsorted(ts, np.datetime64(r.StartTime)), np.searchsorted(ts, np.datetime64(r.EndTime), "right")
             in_event[a:e] = True
-        data[ch] = (ts, b, in_event, slow_surprise(s) if args.slow else None)
-        print(f"{ch}: {len(ts):,} samples", file=sys.stderr, flush=True)
+        sl = slow_surprise(s) if args.slow else None
+        n_samples = len(ts)
+        del s
+        # Thresholds need the training part only once: compute them for every
+        # fit boundary used below, then keep only the samples that can raise a
+        # detection (from 3 months before validation onwards) to save memory.
+        thr = {}
+        for fit_end in (VALIDATION - pd.DateOffset(months=3), VALIDATION, SPLIT):
+            fit = (ts < np.datetime64(fit_end)) & ~in_event
+            for q in args.quantiles:
+                for key, arr in (("fast", b), ("slow", sl)):
+                    if arr is not None:
+                        thr[(fit_end, q, key)] = np.quantile(arr[fit], q) if q < 1 else arr[fit].max()
+        keep = ts >= np.datetime64(VALIDATION - pd.DateOffset(months=3))
+        data[ch] = (ts[keep], b[keep].astype(np.float32), None if sl is None else sl[keep].astype(np.float32), thr)
+        del b, sl, in_event
+        print(f"{ch}: {n_samples:,} samples", file=sys.stderr, flush=True)
 
     test_end = max(d[0][-1] for d in data.values())
     full_range = (SPLIT, pd.Timestamp(test_end))
@@ -213,12 +228,11 @@ def main() -> None:
     all_events = P.Interval(*[P.closed(r.StartTime, r.EndTime) for r in lab.itertuples()])
 
     def channel_flags(ch, q, factor, fit_end, lo, hi, slow=False):
-        ts, b, in_event, sl = data[ch]
-        fit = (ts < np.datetime64(fit_end)) & ~in_event
+        ts, b, sl, thr = data[ch]
         win = (ts >= np.datetime64(lo)) & (ts < np.datetime64(hi))
-        flag = b > (np.quantile(b[fit], q) if q < 1 else b[fit].max()) * factor
+        flag = b > np.float32(thr[(pd.Timestamp(fit_end), q, "fast")] * factor)
         if slow:
-            flag |= sl > (np.quantile(sl[fit], q) if q < 1 else sl[fit].max()) * factor
+            flag |= sl > np.float32(thr[(pd.Timestamp(fit_end), q, "slow")] * factor)
         return ts[win & flag]
 
     def to_events(flag_t):
