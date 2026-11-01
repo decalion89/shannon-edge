@@ -93,8 +93,12 @@ v0.1 single core: ~0.5 MiB/s. Target: 10× without losing ratio, then more.
 - [x] Spacecraft telemetry benchmark (ESA-AD, 6 channels, 6 M samples):
       43% smaller than CCSDS 121 in total; ties on smooth channels, −41% to
       −50% on noisy ones
-- [ ] Onboard-class speed: a small, fixed-cost model for spacecraft CPUs
-      (today ~5–10 s per million samples vs ~0.1 s for CCSDS 121)
+- [x] Onboard-class research prototype (`examples/telemetry_lite.rs`): a
+      residual model and an order-1 model, switched per sample by recent
+      cost with no side information: −33% vs CCSDS 121 at 2–3 M samples/s,
+      −40% with order-2 mixing at ~1 M samples/s
+- [ ] Integer-only flight model in the library (a session profile), timed
+      on a flight-class CPU (LEON/RISC-V) or an emulator
 - [ ] Measure `H(X | K)` gains per pack on public datasets
 
 ## Phase 4 — Production

@@ -248,6 +248,26 @@ coded each million samples in ~0.1 s, sedge took ~5–10 s (both directions)
 — fine on the ground, but onboard use needs a much cheaper model.
 Reproduce with `bench/telemetry.py` (full per-representation table there).
 
+**Toward onboard use (research prototype).** Where does the gain come from?
+`examples/telemetry_lite.rs` tries tiny numeric models on the same 16-bit
+codes (same packets, lean framing, minimal flush, every packet verified):
+
+| Model | Total, 6 channels | vs CCSDS 121 | Speed (encode + decode) |
+|---|---:|---:|---:|
+| CCSDS 121 (libaec) | 945,766 | — | far faster (optimised C) |
+| `delta`: residual vs previous sample, adaptive arithmetic coding | 702,813 | −26% | 20–60 M samples/s |
+| `o1 \| delta`: per sample, whichever model was cheaper recently | 635,471 | −33% | 2–3 M samples/s |
+| `o1o2 \| delta` | 567,422 | −40% | ~1 M samples/s |
+| full sedge session | 542,735 | −43% | 0.1–0.2 M samples/s |
+
+The switch needs no side information: both ends see the same past samples
+and pick the same model. Most of the advantage survives in a model 10–20×
+faster than the full one. Housekeeping telemetry runs at thousands of
+samples per second, so this class of model plausibly fits a flight CPU —
+an estimate to be measured on real hardware. The prototype uses floating
+point; a flight version must be integer-only so both ends agree bit for bit.
+
+
 ### What it cannot do (and nothing can)
 
 Random, encrypted or already-compressed data (JPEG, H.265 video, ZIP) does
