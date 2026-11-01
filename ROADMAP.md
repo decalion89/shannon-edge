@@ -127,6 +127,11 @@ v0.1 single core: ~0.5 MiB/s. Target: 10× without losing ratio, then more.
       −31.7/−30.5/−23.7% vs the best CCSDS 124 configuration at each rate
 - [ ] Burst loss (interleaving), loss statistics of real links, and
       erasure coding over transfer frames instead of packets
+- [x] Slepian–Wolf prototype (XOR-only stateless encoder, ground-side
+      model + BP/OSD): ideal −28% vs CCSDS 124; −13.8% with per-packet
+      feedback; worse than CCSDS 124 without feedback (negative result)
+- [ ] Slepian–Wolf without feedback: multi-packet blocks, ground-uplinked
+      volatility for encoder-side rate selection, hybrid schemes
 - [ ] Packet profile: speed (POCKET+ is ~10x faster), C/Python bindings
 - [x] Whole-mission measurement (ESA-AD Mission 1, 75 channels, 734 M
       samples, 14 years): flight profile beats CCSDS 121 on 75/75 channels,

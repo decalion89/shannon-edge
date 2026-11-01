@@ -523,6 +523,7 @@ The file format is specified in [`docs/FORMAT.md`](docs/FORMAT.md).
 | `examples/packet_robust.rs` | Packet profile under simulated packet loss (key packets, epochs, priming) |
 | `src/fec.rs`, `examples/packet_fec.rs` | Packet-level Reed–Solomon erasure code; packet profile + erasure code under loss |
 | `bench/c/ccsds124_loss.c` | CCSDS 124 under the same simulated loss (open C implementation) |
+| `examples/slepian_wolf.rs` | Slepian–Wolf prototype: XOR-only encoder, ground-side decoder ([results](bench/results/slepian_wolf.md)) |
 | `bench/ccsds124.py` | Venus Express packets vs CCSDS 124 / POCKET+ (reference output and parameter sweep) |
 | `bench/mission.py`, `bench/results/` | Every channel of an ESA mission through CCSDS 121 and the flight profile |
 | `bench/anomaly.py`, `examples/flight_surprise.rs` | Anomaly detection from the compressor's surprise (ESA labels) |
