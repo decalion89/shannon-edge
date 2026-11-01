@@ -35,9 +35,12 @@ implementation verified byte-identical to the ESA reference:
 
 On 14 years of ESA Anomaly Dataset telemetry (Mission 1, 734 million
 samples), the flight profile is 38% smaller than CCSDS 121 in total and
-smaller on all 75 channels measured; its per-sample "surprise", computed
-identically on both ends, finds more labelled anomalies than simple
-statistical detectors. The report also lists the ideas that did not work,
+smaller on all 75 channels measured. Its per-sample "surprise", computed
+identically on both ends at no extra cost, is also an anomaly detector: on
+ESA's own benchmark (ESA-ADB, Mission 1, corrected event-wise F0.5) it
+scores 0.279 on the full set of 58 channels against 0.061 for the best
+published algorithm, and 0.690 (no false alarm in seven test years)
+against 0.786 on the lightweight subset. The report also lists the ideas that did not work,
 with their measurements.
 
 ## 1. Codecs
@@ -159,13 +162,30 @@ ESA-AD Mission 1, every channel (75 measured, one skipped with more than
 packets: the flight profile is 38% smaller than CCSDS 121 (libaec) in
 total and smaller on 75 of 75 channels.
 
-### 3.6 Anomaly detection as a by-product (`esa_mission1_anomaly.md`)
+### 3.6 Anomaly detection as a by-product, on ESA's benchmark (`esa_adb.md`)
 
 The flight profile's per-sample cost is computed identically by sender and
-receiver. On the 58 target channels of Mission 1 (3,520 labelled events),
-at 0.1% false alarms on nominal data, it flags 2,173 events against 1,696
-for a rolling z-score and 1,322 for a jump detector (1,527 / 903 / 785 at
-0.01%). These are simple controls, not the ESA-ADB benchmark metric.
+receiver, so a compressor on board gets an anomaly score for free. Scored
+on ESA-ADB (Kotowski et al.) with its Mission 1 protocol (train before
+2007, test after, validation = last 3 months of training) and its main
+metric (corrected event-wise F0.5, logic of ESA-ADB's own code), with a
+per-channel threshold = the maximum cost seen in nominal training data
+(rule chosen on validation):
+
+| Mission 1 | sedge surprise | Best published (Telemanom-ESA-Pruned) | Next best published |
+|---|---:|---:|---:|
+| Lightweight subset (channels 41–46), all events | 0.690 (precision 1.000, no false alarm in 7 test years) | 0.786 | 0.253 (GlobalSTD5) |
+| Lightweight subset, anomalies only | 0.905 | 0.968 | 0.211 |
+| **Full set (58 target channels), all events** | **0.279** | 0.061 | 0.008 (Telemanom-ESA) |
+
+No neural network is trained; the surprise detects anomalies (19 of 29 in
+the lightweight test set) and is nearly blind to "rare events" (1 of 36),
+which are infrequent but known operations. Caveats: the lightweight rule
+choice ties on only 3 validation events (the other tied rule scores 0.373);
+ESA-ADB's algorithms run on 30-s resampled data, the surprise on the
+original samples. Earlier simple controls (`esa_mission1_anomaly.md`): at
+0.1% false alarms it flags 2,173 of 3,520 events against 1,696 for a
+rolling z-score.
 
 ### 3.7 Optional error-bounded mode (`bench/results/near_lossless.md`)
 

@@ -405,6 +405,14 @@ on Venus Express with v2: −53.3% vs CCSDS 124 at ≤ ¼ σ, −57.0% at ≤ ½
 −61.0% at ≤ 1 σ, keeping three doubtful fields exact. Acceptable error is
 the mission's call; see [`near_lossless.md`](bench/results/near_lossless.md).
 
+**The compressor is also an anomaly detector.** The flight profile's
+per-sample surprise, computed identically on both ends, scored on ESA's
+anomaly-detection benchmark (ESA-ADB, Mission 1, its protocol and main
+metric): **0.279 on the full set of 58 channels, where the best published
+algorithm scores 0.061**; 0.690 on the lightweight subset (best published
+0.786), with no false alarm in seven test years; no neural network
+([`esa_adb.md`](bench/results/esa_adb.md)).
+
 ### A whole mission: 14 years of a satellite's life
 
 `bench/mission.py` runs **every channel** of ESA-AD Mission 1 — 75 channels

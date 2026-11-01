@@ -73,3 +73,70 @@ compression.
   The metric logic is ESA-ADB's, applied to time intervals, so the scores
   are comparable in kind but not produced by the identical pipeline.
 * Events are clipped to the test period at 2007-01-01.
+
+## Full set of target channels (58 channels), as in ESA-ADB Table 2
+
+The harder setting: all 58 target channels of Mission 1, events combined
+across them (`--channels` = every channel with Target = YES in
+channels.csv: 12–52, 57–66, 70–76).
+
+Validation (2006-10-01 to 2007-01-01, 5 events): F0.5 per rule 0.999999: 0.600, 0.9999999: 0.714, 1.0: 0.882; chosen: 1.0
+
+| Threshold (quantile of training nominal cost) | Detections | TP | FP | FN | Corrected precision | Recall | **Corrected event-wise F0.5** | Alarming precision |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0.999999 | 585 | 55 | 348 | 36 | 0.136 | 0.604 | **0.161** | 0.226 |
+| 0.9999999 | 255 | 44 | 127 | 47 | 0.257 | 0.484 | **0.284** | 0.336 |
+| 1.0 (chosen on validation) | 227 | 39 | 113 | 52 | 0.257 | 0.429 | **0.279** | 0.333 |
+
+Published results on the full set (ESA-ADB, Table 2, corrected event-wise
+F0.5): Telemanom-ESA-Pruned **0.061** (precision 0.050, recall 0.870);
+Telemanom-ESA 0.008; DC-VAE-ESA STD5 0.007; GlobalSTD5 0.003; PCC, HBOS,
+iForest, GlobalSTD3, DC-VAE-ESA STD3 < 0.001 (KNN and Windowed iForest ran
+out of memory).
+
+| Algorithm (full set, Mission 1) | Corrected event-wise F0.5 | Precision | Recall |
+|---|---:|---:|---:|
+| **sedge surprise, max of training nominal cost (chosen on validation)** | **0.279** | 0.257 | 0.429 |
+| Telemanom-ESA-Pruned | 0.061 | 0.050 | 0.870 |
+| Telemanom-ESA | 0.008 | 0.007 | 0.946 |
+| DC-VAE-ESA STD5 | 0.007 | 0.005 | 0.804 |
+| GlobalSTD5 | 0.003 | 0.002 | 0.761 |
+
+On the full set the compressor's surprise scores **4.6x the best published
+algorithm**. Here the rule is chosen on validation without a tie (5
+validation events: 0.882 for the max rule against 0.714 and 0.600). It
+still raises 113 false detections in the test years (precision 0.257):
+better than the published methods, far from the lightweight subset's zero.
+The same caveats apply (original samples rather than 30 s resampling;
+events clipped at the split).
+
+## What it finds, and what it misses (lightweight subset)
+
+Breaking the 65 test events down by category (rule: cost above the
+maximum seen in nominal training data):
+
+| Category | Detected |
+|---|---:|
+| Anomaly | **19 of 29** |
+| Rare Event | 1 of 36 |
+
+The surprise is a detector of **anomalies** — data the model has never
+seen — and nearly blind to "rare events" (infrequent but known
+operations, which the model has already seen and learned). Scored on
+anomalies alone, as in ESA-ADB's Supplementary Table 9:
+
+| Algorithm (lightweight subset, anomalies only) | Corrected event-wise F0.5 | Precision | Recall |
+|---|---:|---:|---:|
+| Telemanom-ESA-Pruned | **0.968** | 0.999 | 0.862 |
+| **sedge surprise, max of training nominal cost** | **0.905** | 1.000 | 0.655 |
+| GlobalSTD5 | 0.211 | 0.205 | 0.241 |
+| Telemanom-ESA | 0.090 | 0.074 | 0.931 |
+| DC-VAE-ESA STD5 | 0.026 | 0.021 | 0.241 |
+| others | ≤ 0.001 | | |
+
+**Tried and rejected: joint surprise.** Maybe the missed anomalies are
+mildly surprising in several channels at once. Summing the per-channel
+costs normalised by their thresholds (threshold = max on training) finds
+3 of 65 events (F0.5 0.195); summing the two largest finds 17 of 65
+(0.639, anomalies only 0.876). Both are worse than the per-channel rule:
+the missed anomalies are simply not surprising to the model.
