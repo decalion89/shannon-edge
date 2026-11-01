@@ -157,7 +157,7 @@ GlobalSTD5 0.064, Telemanom-ESA 0.064, Windowed iForest 0.042, iForest
 | Mission 1, lightweight (6 channels) | 0.690 | 0.786 (Telemanom-ESA-Pruned) | 2nd |
 | Mission 1, full set (58 channels) | **0.279** | 0.061 (Telemanom-ESA-Pruned) | **1st, 4.6x** |
 | Mission 2, lightweight (11 channels) | 0.725 | 0.949 (Windowed iForest) | 3rd |
-| Mission 2, full set (47 channels) | **0.787** | 0.079 (PCC) | **1st, ~10x** |
+| Mission 2, full set (47 channels) | **0.798** (0.787 before muting) | 0.079 (PCC) | **1st, ~10x** |
 
 On the realistic setting — every target channel of an operating
 spacecraft — the compressor's free by-product beats every published
@@ -216,3 +216,87 @@ costs normalised by their thresholds (threshold = max on training) finds
 3 of 65 events (F0.5 0.195); summing the two largest finds 17 of 65
 (0.639, anomalies only 0.876). Both are worse than the per-channel rule:
 the missed anomalies are simply not surprising to the model.
+
+
+## Fewer false alarms, chosen on validation only
+
+Two rules were added to the search, both decided on the validation months
+(`--factors`, `--mute`): a margin on the threshold (×1, ×1.25, ×1.5), and
+muting a channel that raised a false detection in the 3 months before the
+evaluated period (for the validation itself, the 3 months before it; for
+the test, the validation months — a rule never sees its own period).
+
+### Mission 1, full set
+
+Validation (2006-10-01 to 2007-01-01, 5 events): F0.5 per rule q=0.9999999: 0.714, q=0.9999999, mute: 0.714, q=0.9999999, x1.25: 0.769, q=0.9999999, x1.25, mute: 0.769, q=0.9999999, x1.5: 0.000, q=0.9999999, x1.5, mute: 0.000, q=1.0: 0.882, q=1.0, mute: 0.882, q=1.0, x1.25: 0.769, q=1.0, x1.25, mute: 0.769, q=1.0, x1.5: 0.000, q=1.0, x1.5, mute: 0.000; chosen: q=1.0, mute
+
+| Rule | Muted channels | Detections | TP | FP | FN | Corrected precision | Recall | **Corrected event-wise F0.5** | Alarming precision |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| q=0.9999999 | 0 | 255 | 44 | 127 | 47 | 0.257 | 0.484 | **0.284** | 0.336 |
+| q=0.9999999, mute | 1 | 256 | 44 | 127 | 47 | 0.257 | 0.484 | **0.284** | 0.333 |
+| q=0.9999999, x1.25 | 0 | 74 | 29 | 16 | 62 | 0.644 | 0.319 | **0.535** | 0.483 |
+| q=0.9999999, x1.25, mute | 0 | 74 | 29 | 16 | 62 | 0.644 | 0.319 | **0.535** | 0.483 |
+| q=0.9999999, x1.5 | 0 | 27 | 16 | 4 | 75 | 0.800 | 0.176 | **0.468** | 0.640 |
+| q=0.9999999, x1.5, mute | 0 | 27 | 16 | 4 | 75 | 0.800 | 0.176 | **0.468** | 0.640 |
+| q=1.0 | 0 | 227 | 39 | 113 | 52 | 0.257 | 0.429 | **0.279** | 0.333 |
+| q=1.0, mute (chosen on validation) | 0 | 227 | 39 | 113 | 52 | 0.257 | 0.429 | **0.279** | 0.333 |
+| q=1.0, x1.25 | 0 | 67 | 22 | 16 | 69 | 0.579 | 0.242 | **0.453** | 0.415 |
+| q=1.0, x1.25, mute | 0 | 67 | 22 | 16 | 69 | 0.579 | 0.242 | **0.453** | 0.415 |
+| q=1.0, x1.5 | 0 | 18 | 9 | 4 | 82 | 0.692 | 0.099 | **0.315** | 0.600 |
+| q=1.0, x1.5, mute | 0 | 18 | 9 | 4 | 82 | 0.692 | 0.099 | **0.315** | 0.600 |
+
+Validation (5 events) again chose the maximum rule; muting changed nothing
+(at most one channel muted). The official score stays **0.279**. The
+table also shows that a ×1.25 margin would have scored 0.535 on the test
+years: it was not chosen, and choosing it now, after seeing the test
+results, would be exactly the selection bias this protocol exists to
+prevent. With five validation events the choice of rule is noisy; a
+longer validation window would be the principled remedy for future runs.
+
+### Mission 2, full set
+
+Validation (2001-07-01 to 2001-10-01, 27 events): F0.5 per rule q=0.9999999: 0.739, q=0.9999999, mute: 0.766, q=0.9999999, x1.25: 0.465, q=0.9999999, x1.25, mute: 0.465, q=0.9999999, x1.5: 0.161, q=0.9999999, x1.5, mute: 0.161, q=1.0: 0.714, q=1.0, mute: 0.714, q=1.0, x1.25: 0.465, q=1.0, x1.25, mute: 0.465, q=1.0, x1.5: 0.161, q=1.0, x1.5, mute: 0.161; chosen: q=0.9999999, mute
+
+| Rule | Muted channels | Detections | TP | FP | FN | Corrected precision | Recall | **Corrected event-wise F0.5** | Alarming precision |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| q=0.9999999 | 0 | 330 | 203 | 29 | 159 | 0.875 | 0.561 | **0.787** | 0.651 |
+| q=0.9999999, mute (chosen on validation) | 5 | 317 | 202 | 24 | 160 | 0.894 | 0.558 | **0.798** | 0.664 |
+| q=0.9999999, x1.25 | 0 | 34 | 25 | 4 | 337 | 0.862 | 0.069 | **0.262** | 0.735 |
+| q=0.9999999, x1.25, mute | 0 | 34 | 25 | 4 | 337 | 0.862 | 0.069 | **0.262** | 0.735 |
+| q=0.9999999, x1.5 | 0 | 2 | 2 | 0 | 360 | 1.000 | 0.006 | **0.027** | 1.000 |
+| q=0.9999999, x1.5, mute | 0 | 2 | 2 | 0 | 360 | 1.000 | 0.006 | **0.027** | 1.000 |
+| q=1.0 | 0 | 288 | 176 | 24 | 186 | 0.880 | 0.486 | **0.757** | 0.640 |
+| q=1.0, mute | 3 | 277 | 176 | 21 | 186 | 0.893 | 0.486 | **0.765** | 0.659 |
+| q=1.0, x1.25 | 0 | 26 | 22 | 4 | 340 | 0.846 | 0.061 | **0.236** | 0.880 |
+| q=1.0, x1.25, mute | 0 | 26 | 22 | 4 | 340 | 0.846 | 0.061 | **0.236** | 0.880 |
+| q=1.0, x1.5 | 0 | 2 | 2 | 0 | 360 | 1.000 | 0.006 | **0.027** | 1.000 |
+| q=1.0, x1.5, mute | 0 | 2 | 2 | 0 | 360 | 1.000 | 0.006 | **0.027** | 1.000 |
+
+Here validation chose muting (5 channels muted): false detections 29 →
+24, F0.5 **0.787 → 0.798**. The ×1.25 margin that would have helped
+Mission 1 would have hurt Mission 2 badly (0.262): no single fixed rule
+suits every mission, which is why the rule is left to validation.
+
+## Tried and rejected: a memory that never forgets
+
+The compressor learns fast (counters adapt at a rate down to 1/62), so a
+rare operation stops being surprising after it has happened a couple of
+times — one reason rare events are missed. A second detector with a
+never-forgetting memory scores each sample by how rare its transition
+(previous value → value) has been over the channel's whole past
+(`--slow`; OR-combined, own threshold from training). Lightweight subset
+of Mission 1:
+
+Validation (2006-10-01 to 2007-01-01, 3 events): F0.5 per rule q=0.999999: 0.909, q=0.999999, +slow memory: 0.484, q=1.0: 0.909, q=1.0, +slow memory: 0.556; chosen: q=1.0
+
+| Rule | Muted channels | Detections | TP | FP | FN | Corrected precision | Recall | **Corrected event-wise F0.5** | Alarming precision |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| q=0.999999 | 0 | 108 | 29 | 52 | 36 | 0.358 | 0.446 | **0.373** | 0.537 |
+| q=0.999999, +slow memory | 0 | 1331 | 46 | 937 | 19 | 0.047 | 0.708 | **0.058** | 0.123 |
+| q=1.0 (chosen on validation) | 0 | 26 | 20 | 0 | 45 | 1.000 | 0.308 | **0.690** | 0.800 |
+| q=1.0, +slow memory | 0 | 764 | 40 | 524 | 25 | 0.071 | 0.615 | **0.086** | 0.175 |
+
+It doubles the events found (40 vs 20 of 65) but raises 524 false
+detections: in noisy channels almost every value pair is rare in history.
+Validation rejected it on its own (0.556 vs 0.909); recorded as a negative
+result.

@@ -40,7 +40,7 @@ identically on both ends at no extra cost, is also an anomaly detector: on
 ESA's own benchmark (ESA-ADB, corrected event-wise F0.5, test sets
 matching the paper's event counts) it beats every published algorithm on
 the full channel sets of both missions — 0.279 vs 0.061 (Mission 1) and
-0.787 vs 0.079 (Mission 2) — while ranking 2nd and 3rd on the small
+0.798 vs 0.079 (Mission 2) — while ranking 2nd and 3rd on the small
 lightweight subsets. The report also lists the ideas that did not work,
 with their measurements.
 
@@ -179,7 +179,7 @@ per-channel threshold = the maximum cost seen in nominal training data
 | Mission 1, lightweight, anomalies only | 0.905 | 0.968 (Telemanom-ESA-Pruned) | 0.211 |
 | **Mission 1, full set (58 target channels)** | **0.279** | 0.061 (Telemanom-ESA-Pruned) | 0.008 (Telemanom-ESA) |
 | Mission 2, lightweight subset (channels 18–28) | 0.725 | 0.949 (Windowed iForest) | 0.842 (Telemanom-ESA-Pruned) |
-| **Mission 2, full set (47 target channels)** | **0.787** | 0.079 (PCC) | 0.071 (Telemanom-ESA-Pruned) |
+| **Mission 2, full set (47 target channels)** | **0.798** | 0.079 (PCC) | 0.071 (Telemanom-ESA-Pruned) |
 
 No neural network is trained; the surprise detects anomalies (19 of 29 in
 the lightweight test set) and is nearly blind to "rare events" (1 of 36),

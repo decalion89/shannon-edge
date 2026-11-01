@@ -410,7 +410,7 @@ per-sample surprise, computed identically on both ends, scored on ESA's
 anomaly-detection benchmark (ESA-ADB, Mission 1, its protocol and main
 metric, test sets matching the paper's event counts): on the full channel
 sets it beats every published algorithm — **0.279 vs 0.061 (Mission 1)
-and 0.787 vs 0.079 (Mission 2)** — with no neural network; on the small
+and 0.798 vs 0.079 (Mission 2)** — with no neural network; on the small
 lightweight subsets it ranks 2nd (0.690 vs 0.786) and 3rd (0.725 vs 0.949)
 ([`esa_adb.md`](bench/results/esa_adb.md)).
 
