@@ -18,6 +18,12 @@ R(x)/Q(x) has Q-expectation <= 1), so P(S_j >= t) <= 2^-t: at most
 at most one expected false beat alarm per record if Q is calibrated.
 R peaks come from the annotation times (a QRS detector's job; no beat
 label is used).
+
+--design delta (second attempt): Q predicts the *change* from the previous
+sample by the mean change at the same offset over the last 8 unflagged
+beats (insensitive to baseline wander), with a per-offset Laplace scale
+from those beats' residuals. It picks the best alignment shift in -2..2
+and pays log2(5) bits to signal it (a two-part code, still a valid code).
 """
 import argparse
 import sys
@@ -38,10 +44,65 @@ def laplace_bits(r: np.ndarray, s: float) -> np.ndarray:
     return -(np.log2((1 - th) / (1 + th)) + np.abs(r) * np.log2(th))
 
 
+K_BEATS, SHIFTS, MAXLEN = 8, (-2, -1, 0, 1, 2), 720
+
+
+def delta_design(x, pos, cost_r, tt):
+    """Q codes d_i = x_i - x_{i-1} by the mean d at the same offset from the R peak over the last
+    K_BEATS unflagged beats (shift s in SHIFTS chosen per beat, log2(len(SHIFTS)) bits), with a
+    per-offset discrete Laplace scale = mean |residual| at that offset over those beats (>= 1)."""
+    d = np.diff(x, prepend=x[:1])
+    flagged = np.zeros(len(pos), bool)
+    hist_d, hist_r = [], []  # per accepted beat: d over offsets 0..MAXLEN-1 (from lo), residuals
+    shift_bits = np.log2(len(SHIFTS))
+    for j in range(len(pos) - 1):
+        lo, hi = pos[j] - PRE, pos[j + 1] - PRE
+        if lo < 2:
+            continue
+        n = min(hi - lo, MAXLEN)
+        idx = np.arange(lo, lo + n)
+        if len(hist_d) < 2:
+            seg = np.full(MAXLEN, np.nan)
+            seg[:n] = d[idx]
+            hist_d.append(seg)
+            hist_r.append(np.full(MAXLEN, np.nan))
+            continue
+        tmpl = np.nanmean(np.array(hist_d[-K_BEATS:]), axis=0)
+        rs = np.array(hist_r[-K_BEATS:])
+        scale = np.nanmean(np.abs(rs), axis=0) if np.isfinite(rs).any() else np.full(MAXLEN, 8.0)
+        scale = np.where(np.isfinite(scale), np.maximum(scale, 1.0), 8.0)
+        best = None
+        for sh in SHIFTS:
+            src = np.arange(n) - sh
+            okk = (src >= 0) & (src < MAXLEN)
+            pred = np.where(okk, tmpl[np.clip(src, 0, MAXLEN - 1)], 0.0)
+            pred = np.where(np.isfinite(pred), pred, 0.0)
+            sc = np.where(okk, scale[np.clip(src, 0, MAXLEN - 1)], 8.0)
+            res = np.round(d[idx] - pred)
+            bits = laplace_bits(res, 0.0 + sc).sum() + shift_bits
+            if best is None or bits < best[0]:
+                best = (bits, res)
+        s_j = best[0] - cost_r[idx].sum()
+        if s_j >= tt:
+            flagged[j] = True
+        else:
+            seg = np.full(MAXLEN, np.nan)
+            seg[:n] = d[idx]
+            hist_d.append(seg)
+            rr = np.full(MAXLEN, np.nan)
+            rr[:n] = best[1]
+            hist_r.append(rr)
+            if len(hist_d) > K_BEATS:
+                hist_d.pop(0)
+                hist_r.pop(0)
+    return flagged
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("mitdb", type=Path)
     ap.add_argument("--t", nargs="+", default=["auto"])
+    ap.add_argument("--design", choices=["template", "delta"], default="template")
     args = ap.parse_args()
     records = [r for r in (args.mitdb / "RECORDS").read_text().split() if r not in PACED]
     tot = {t: Counter() for t in args.t}
@@ -55,6 +116,18 @@ def main() -> None:
         normal = np.array([sym in NORMAL for _, sym in beats])
         for t in args.t:
             tt = float(np.ceil(np.log2(len(pos)))) if t == "auto" else float(t)
+            if args.design == "delta":
+                flagged = delta_design(x, pos, cost_r, tt)
+                c = tot[t]
+                for (s, sym), f in zip(beats, flagged):
+                    c[f"{AAMI[sym]}_n"] += 1
+                    c[f"{AAMI[sym]}_hit"] += int(f)
+                c["beats"] += len(pos)
+                c["hours"] += len(x) / r.fs / 3600
+                c["fp"] += int((flagged & normal).sum())
+                print(rec, t, tt, f"abn {flagged[~normal].sum()}/{(~normal).sum()}",
+                      f"norm {flagged[normal].sum()}/{normal.sum()}", file=sys.stderr, flush=True)
+                continue
             flagged = np.zeros(len(pos), bool)
             tmpl, scale = None, None
             for j in range(len(pos) - 1):

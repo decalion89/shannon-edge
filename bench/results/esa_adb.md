@@ -305,6 +305,48 @@ Whether these spikes matter to operators (data errors, acquisition
 glitches, or events worth a label) cannot be decided from the data
 alone. They are listed with times and channels for an expert to check.
 
+## Naming the affected channels
+
+**The ceiling.** ESA-ADB's channel-aware F0.5 averages a per-event score,
+and a missed event scores 0. So it cannot exceed event recall. On
+Mission 1 lightweight, 62 of the 65 test events label all 6 channels.
+Of the 120 affected channel slots in the 20 detected events, the detector
+flags 40 and none wrongly. The loss is 0.692 from missed events, 0.103 from
+missed channels in detected events and 0 from extra channels.
+
+**Kraft attribution (`--attribute`, no training, no parameter).** Around
+each detection (± the merge window), name every channel whose cost reaches
+b + log2(samples examined in that window over all channels) bits. That is
+at most one expected false channel per detection if the model is
+calibrated. Detections are not changed, so event-wise scores stay the
+same. Official code:
+
+| Setting | Channel recall | Channel precision | Channel-aware F0.5 | Best published |
+|---|---|---|---|---:|
+| Mission 1, lightweight | 0.103 → 0.244 | 0.308 → 0.308 | 0.205 → **0.289** | 0.837 |
+| Mission 2, lightweight | 0.091 → 0.291 | 0.394 → 0.394 | 0.220 → **0.363** | 0.822 |
+| Mission 1, full set | 0.072 → 0.144 | 0.386 → 0.395 | 0.180 → **0.255** | 0.477 |
+
+A tuned alternative from an independent analysis (in the session
+scratchpad, not in the repository) gives about the same. It propagates an
+alarm to the other channels of its subsystem whose cost exceeds s times
+their threshold, with s chosen on validation: 0.299 (Mission 1
+lightweight) and 0.349 (Mission 2 lightweight). Both stay well below the
+best published because **the real limit is event recall**: Telemanom-ESA
+reaches 0.837 with event recall 0.894, at an event-wise F0.5 of 0.178.
+
+**A finding about the thresholds.** On Mission 1 lightweight, in every
+channel the highest "nominal" training cost (which becomes the trained
+threshold) lies within 36 s of a labelled event boundary. It is the event
+spilling past its label. Channel 43, for example, gets 40.4 bits, against
+25.5 with a 60-s guard band around labels.
+
+Ignoring training samples near labels raises test event recall: Mission 1
+from 0.308 to 0.415, and Mission 2 test event-wise F0.5 to 0.812. But
+validation cannot tell the guard band from no guard band, so the
+validation rule does not adopt it. On Mission 1 test it lowers event-wise
+F0.5 to 0.600. A longer validation window is the honest way to decide.
+
 ## Are the test sets the same as the paper's?
 
 Event counts of our test and validation sets against ESA-ADB's

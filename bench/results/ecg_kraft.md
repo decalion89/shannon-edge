@@ -79,3 +79,29 @@ Lesson: in the two-code test, the training-free guarantee is only as good
 as the "normal" code Q, which must be at least as good as the general
 code on normal data. Building such a Q for ECG morphology, without
 training, is the open problem. It is not solved here.
+
+## Second two-code attempt: better, still not calibrated (`--design delta`)
+
+Q now codes each sample's *change* by the mean change at the same offset
+over the last 8 unflagged beats. This makes it insensitive to baseline
+wander. Q also uses a per-offset Laplace scale, and pays log2(5) bits to
+choose the best ±2-sample alignment, which keeps it a valid code.
+
+| t (bits) | Abnormal beats flagged (sensitivity) | SVEB | VEB | F | Normal beats flagged (FPR) | False beat alarms per hour | Bound: beats * 2^-t |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| auto (ceil log2 beats per record) | 0.943 (10002/10608) | 0.862 (2397/2781) | 0.999 (7000/7009) | 0.735 (590/803) | 0.7042 (63465/90125) | 2875.90 | 44.0 |
+| 0 | 0.951 (10092/10608) | 0.891 (2478/2781) | 0.999 (7001/7009) | 0.745 (598/803) | 0.7538 (67934/90125) | 3078.41 | 100,733.0 |
+| 8 | 0.949 (10063/10608) | 0.883 (2457/2781) | 0.999 (7000/7009) | 0.736 (591/803) | 0.7285 (65654/90125) | 2975.09 | 393.5 |
+| 16 | 0.941 (9981/10608) | 0.857 (2384/2781) | 0.999 (7000/7009) | 0.725 (582/803) | 0.6946 (62598/90125) | 2836.61 | 1.5 |
+
+Ventricular beats are now caught almost all (0.999), and so are 86% of
+supraventricular beats. But 70% of normal beats are flagged as well, far
+above the 44 expected false alarms. **Q is still not calibrated:** on
+most normal beats it codes worse than the flight profile, which is a
+strong general model.
+
+The open problem is unchanged: a training-free code of a normal heartbeat
+that is at least as good as a strong general compressor on normal beats.
+Two hand-built codes failed. A plausible route, not tried, is to build the
+template into the general model itself, as a context of the flight
+profile, so that Q ⊇ R by construction.
