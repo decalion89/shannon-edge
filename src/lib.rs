@@ -478,6 +478,36 @@ fn compress_single(data: &[u8], mem_bits: u8, prior: Prior, record: usize) -> Ve
     wrap_cm(data, bits, dict_id, payload)
 }
 
+/// Per-byte cost, in bits, of coding `data` with the general model at memory
+/// level `mem_bits` (16..=24) and record length `record` (0 = none), starting
+/// from an empty model: the model's online "surprise" for every byte, as
+/// [`compress`] would pay it. For analysis (e.g. anomaly detection by
+/// compressibility); it writes no stream.
+pub fn byte_costs(data: &[u8], mem_bits: u8, record: usize) -> Vec<f32> {
+    let bits = mem_bits.clamp(MIN_MEM_BITS, MAX_MEM_BITS);
+    let mut pred = if record > 0 {
+        Predictor::with_record(bits as u32, record)
+    } else {
+        Predictor::new(bits as u32)
+    };
+    pred.start();
+    let mut hist = Vec::with_capacity(data.len());
+    let mut out = Vec::with_capacity(data.len());
+    for &byte in data {
+        let mut c = 0.0f64;
+        for k in (0..8).rev() {
+            let bit = ((byte >> k) & 1) as u32;
+            let p1 = pred.p() as f64 / 4096.0;
+            c -= if bit == 1 { p1 } else { 1.0 - p1 }.log2();
+            pred.update(bit);
+        }
+        out.push(c as f32);
+        hist.push(byte);
+        pred.byte_update(&hist);
+    }
+    out
+}
+
 /// Code `data` with `pred`, appending it to `hist`. `None` if the output
 /// would not be smaller than the input (the caller then stores it).
 fn encode_payload(pred: &mut Predictor, hist: &mut Vec<u8>, data: &[u8]) -> Option<Vec<u8>> {
