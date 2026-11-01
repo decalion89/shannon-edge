@@ -253,3 +253,17 @@ problem there; on 32-bit LEON3 it would be.
   version and was +0.27% larger (3,855,796 bytes); every 32 symbols,
   somewhat faster but +0.46%. For 256-symbol alphabets updated at this
   rate, the Fenwick tree is already close to the best.
+
+
+## 32-bit arithmetic for 32-bit flight CPUs
+
+`Encoder::encode_freq` used two 64-bit divisions per symbol, which a
+32-bit flight processor such as LEON3 performs in software. It now uses
+the classic range-coder form: one 32-bit division per symbol,
+r = (x2 − x1) / total, the symbol taking [x1 + r·cum, x1 + r·(cum + freq)),
+leaving the top (x2 − x1) mod total values of the interval unused. Cost on
+Venus Express: 3,845,622 → **3,846,435** bytes (+0.02%); with learned
+recipes on the held-out 90%, 3,237,111 → 3,237,712. The fast profile's
+golden stream changed accordingly. Tables above measured before this
+change (frame and packet loss, instruction counts) differ by about 0.02% in
+size; the RISC-V instruction count was measured with the 64-bit version.

@@ -119,9 +119,11 @@ the coded bytes and must also match on both ends.
 The fast packet profile (`packet_fast::FastPacketSession`) uses the same
 framing (one payload per packet, minimal flush, no header) with its own
 model; `golden_fast_stream_is_stable` pins it. Changed bytes are coded as
-multi-symbol ranges on the binary coder's interval (`encode_freq`); when
-the interval is narrower than the frequency total, both ends fall back to
-eight bits at probability 1/2.
+multi-symbol ranges on the binary coder's interval (`encode_freq`: one
+32-bit division per symbol, r = (x2 − x1) / total, symbol range
+[x1 + r·cum, x1 + r·(cum + freq))); when the interval is narrower than the
+frequency total (r = 0), both ends fall back to eight bits at probability
+1/2.
 
 ## Primed-model files (`.sedgem`)
 

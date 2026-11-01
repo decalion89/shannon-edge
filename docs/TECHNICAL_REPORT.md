@@ -104,14 +104,14 @@ surprise it carries under the model.
 | CCSDS 124, best of sweep (R=0, pt=14, ft=10⁵, rt=10⁶) | < 1 KiB | 5,289,939 | — |
 | CCSDS 124, test-vector settings (R=2) | < 1 KiB | 5,891,500 | +11.4% |
 | zstd -19, streaming, flushed per packet | ~8 MiB | 8,236,002 | +55.7% |
-| sedge fast profile | 193 KiB | 3,845,622 | −27.3% |
+| sedge fast profile | 193 KiB | 3,846,435 | −27.3% |
 | sedge packet profile v1, 2^14 | 321 KiB | 3,650,124 | −31.0% |
 | sedge packet profile v2, 2^12 | 372 KiB | 3,350,925 | −36.7% |
 | sedge general model, lean session + record model | ~70 MiB | 3,202,177 | −39.5% |
 | sedge packet profile v2, 2^18 | 6.0 MiB | 2,999,548 | −43.3% |
 
 On the held-out 90%, the fast profile with ground-learned recipes takes
-3,237,111 bytes, −32.2% vs CCSDS 124 R=0 on the same packets (4,772,219).
+3,237,712 bytes, −32.2% vs CCSDS 124 R=0 on the same packets (4,772,219).
 The other CCSDS 124 test inputs (synthetic, not used for tuning) improve
 as well (`packet_v2.md`, `packet_fast.md`).
 
@@ -235,8 +235,10 @@ the optional error bound.
   packet streams is needed.
 * The CCSDS 124 code measured is an open reference implementation, not
   necessarily the fastest flight code. Instruction counts are not cycles;
-  no measurement on flight hardware (LEON, NOEL-V) yet. The fast profile
-  divides 64-bit integers, which 32-bit LEON3 does in software.
+  no measurement on flight hardware (LEON, NOEL-V) yet. The fast profile's
+  coder uses one 32-bit division per symbol (no 64-bit arithmetic), which
+  32-bit flight CPUs do in hardware; the RISC-V count was measured before
+  that change.
 * Model memory: 0.2–6 MiB against a few hundred bytes for CCSDS 124.
 * Loss models are i.i.d. (packets or frames); burst losses longer than a
   group's parity require interleaving, not evaluated. Erasure-code
@@ -259,8 +261,7 @@ the optional error bound.
 ## 7. Next steps
 
 1. Replicate on other missions' housekeeping packet streams.
-2. Time the fast profile on flight-class hardware (NOEL-V/LEON), with
-   32-bit range-coder arithmetic for LEON3.
+2. Time the fast profile on flight-class hardware (NOEL-V/LEON).
 3. Burst-loss evaluation with interleaved erasure-code groups.
 4. Error-bounded mode inside the codecs, driven by a telemetry database.
 5. C and Python bindings for the packet profiles.

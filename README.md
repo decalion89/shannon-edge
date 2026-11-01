@@ -304,7 +304,7 @@ codes the packets **one by one, as they arrive**; every packet verified:
 | **sedge packet profile v2, tables 2^12** | **372 KiB** | **3,350,925** | 4.06× | **−36.7%** |
 | sedge packet profile v2, tables 2^14 | 648 KiB | 3,251,718 | 4.18× | −38.5% |
 | **sedge packet profile v2, tables 2^18** | 6.0 MiB | **2,999,548** | **4.54×** | **−43.3%** |
-| **sedge fast packet profile** (~50 MB/s, ~1.9x CCSDS 124's speed) | 193 KiB | **3,845,622** | 3.54× | **−27.3%** |
+| **sedge fast packet profile** (~50 MB/s, ~1.9x CCSDS 124's speed) | 193 KiB | **3,846,435** | 3.54× | **−27.3%** |
 
 **The packet profile** (`shannon_edge::packet::PacketSession`) is the
 flight-class answer: integer-only, golden-pinned, one coder per packet, no

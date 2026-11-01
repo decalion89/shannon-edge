@@ -171,8 +171,10 @@ v0.1 single core: ~0.5 MiB/s. Target: 10× without losing ratio, then more.
       event counts
 - [ ] Other ESA-ADB metrics (channel-aware, ADTQC, affiliation), the
       identical 30-s preprocessing; fewer false alarms on the full sets
-- [ ] Cycles on real NOEL-V/LEON hardware; 32-bit range-coder arithmetic
-      for LEON3; C/Python bindings for the packet profiles
+- [x] 32-bit range-coder arithmetic (one 32-bit division per symbol, no
+      64-bit division) for LEON3-class CPUs: +0.02% size
+- [ ] Cycles on real NOEL-V/LEON hardware; C/Python bindings for the
+      packet profiles
 - [x] Whole-mission measurement (ESA-AD Mission 1, 75 channels, 734 M
       samples, 14 years): flight profile beats CCSDS 121 on 75/75 channels,
       −38% in total; 16 channels below 1% of float32

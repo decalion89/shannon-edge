@@ -130,8 +130,8 @@ fn golden_fast_stream_is_stable() {
     );
 }
 
-const GOLDEN_LEN: usize = 2091;
-const GOLDEN_HASH: u64 = 0xb626_82a3_244f_e674;
+const GOLDEN_LEN: usize = 2093;
+const GOLDEN_HASH: u64 = 0x4469_9763_fe3f_e9c3;
 
 #[test]
 fn learned_recipes_roundtrip_and_help() {

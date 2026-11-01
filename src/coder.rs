@@ -45,14 +45,14 @@ impl Encoder {
     /// another way (e.g. bit by bit).
     #[inline]
     pub fn encode_freq(&mut self, cum: u32, freq: u32, total: u32) -> bool {
-        let w = (self.x2 - self.x1) as u64 + 1;
-        if w < total as u64 {
+        // One 32-bit division per symbol (hardware on 32-bit flight CPUs);
+        // the top `range mod total` values of the interval go unused.
+        let r = (self.x2 - self.x1) / total;
+        if r == 0 {
             return false;
         }
-        let lo = self.x1 + (w * cum as u64 / total as u64) as u32;
-        let hi = self.x1 + (w * (cum + freq) as u64 / total as u64 - 1) as u32;
-        self.x1 = lo;
-        self.x2 = hi;
+        self.x1 += r * cum;
+        self.x2 = self.x1 + r * freq - 1;
         while (self.x1 ^ self.x2) & 0xff00_0000 == 0 {
             self.out.push((self.x2 >> 24) as u8);
             self.x1 <<= 8;
@@ -137,23 +137,20 @@ impl<'a> Decoder<'a> {
     /// narrower than `total` (see [`Encoder::encode_freq`]).
     #[inline]
     pub fn decode_target(&self, total: u32) -> Option<u32> {
-        let w = (self.x2 - self.x1) as u64 + 1;
-        if w < total as u64 {
+        let r = (self.x2 - self.x1) / total;
+        if r == 0 {
             return None;
         }
-        let y = self.x.wrapping_sub(self.x1) as u64;
-        Some((((y + 1) * total as u64 - 1) / w).min(total as u64 - 1) as u32)
+        Some((self.x.wrapping_sub(self.x1) / r).min(total - 1))
     }
 
     /// Multi-symbol decoding, step 2: consume the symbol found for the
     /// target (same arguments as the encoder's `encode_freq`).
     #[inline]
     pub fn decode_freq(&mut self, cum: u32, freq: u32, total: u32) {
-        let w = (self.x2 - self.x1) as u64 + 1;
-        let lo = self.x1 + (w * cum as u64 / total as u64) as u32;
-        let hi = self.x1 + (w * (cum + freq) as u64 / total as u64 - 1) as u32;
-        self.x1 = lo;
-        self.x2 = hi;
+        let r = (self.x2 - self.x1) / total;
+        self.x1 += r * cum;
+        self.x2 = self.x1 + r * freq - 1;
         while (self.x1 ^ self.x2) & 0xff00_0000 == 0 {
             self.x1 <<= 8;
             self.x2 = (self.x2 << 8) | 0xff;
