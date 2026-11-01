@@ -738,3 +738,34 @@ with the same number of random packets (mean of 20 draws).
 Prioritising the downlink by compressed size is free, needs no detector
 and no decoding, and on Mission 1 it brings most anomalies to the ground
 first.
+
+## Surprise-first downlink under a daily budget (`bench/analysis/surprise_first_downlink.py`)
+
+**Scenario.** Each test day may send only a fraction of that day's
+compressed bytes (flight profile, 256-sample packets). Two policies:
+* FIFO: packets in time order, today's practice;
+* surprise-first: the largest packets first, read from their size alone.
+
+An event is delivered that day if a packet that overlaps it on one of its
+labelled channels was sent.
+
+| Mission | Daily budget | FIFO: anomalies / rare events | Surprise-first: anomalies / rare events |
+|---|---:|---:|---:|
+| 1 | 5% | 11/29 / 15/36 | **24/29 / 30/36** |
+| 1 | 10% | 16/29 / 25/36 | **27/29 / 34/36** |
+| 1 | 25% | **29/29 / 36/36** | 27/29 / 35/36 |
+| 2 | 5% | 0/1 / **172/349** | 1/1 / 154/349 |
+| 2 | 10% | 1/1 / **340/349** | 1/1 / 177/349 |
+| 2 | 25% | 1/1 / **348/349** | 1/1 / 232/349 |
+
+* **Mission 1, tight budgets (5–10%):** surprise-first brings 2–2.2x as
+  many anomalies down the same day (24 vs 11, 27 vs 16).
+* **Larger budgets, and Mission 2:** FIFO is better.
+  * Mission 2's rare events are long and dense, so the first packets of
+    each day already overlap them.
+  * Surprise-first spends the budget on a few channels' largest packets
+    and leaves other channels empty.
+* A fairer policy is the obvious next step and is not measured: largest
+  first *within* each channel, round-robin across channels.
+* **This is a regime result, not a universal one:** surprise-first wins
+  when the downlink is scarce and anomalies are short.
