@@ -45,10 +45,36 @@ DAY = 86_400 * 10**9
 KEEP_BITS = 16.0  # keep samples whose cost exceeds b by at least this; t is always larger
 
 
-def channel_scores(z, root, ch, cache: Path | None):
-    """Timestamps of the samples whose cost is at least b + KEEP_BITS, their excess over b and the
-    timestamp of the sample after each; samples per day (to count the samples scored); b."""
-    f = cache / f"{root}_{ch}.npz" if cache else None
+E_GRID = (2.0 ** -1, 2.0 ** -4, 2.0 ** -8, 2.0 ** -12)
+KEEP_WINDOW_BITS = 8.0
+
+
+def window_evidence(ts: np.ndarray, excess: np.ndarray, hours: float):
+    """log2 of the mixture e-process M_n = mean_e prod_{i<=n} ((1-e) + e 2^(cost_i - b)), restarted at
+    every `hours`-long UTC window; and the window index of every sample. Under a calibrated code
+    each factor has conditional expectation <= 1 (Kraft), so M is a nonnegative supermartingale
+    from 1 within a window and P(sup M >= 2^t) <= 2^-t (Ville)."""
+    w = ts // int(hours * 3600 * 10**9)
+    _, first = np.unique(w, return_index=True)
+    start = np.repeat(first, np.diff(np.r_[first, len(w)]))
+    out = None
+    for e in E_GRID:
+        x = np.log2((1 - e) + e * np.exp2(np.minimum(excess, 1000.0)))
+        c = np.cumsum(x)
+        before = np.where(start > 0, c[np.maximum(start - 1, 0)], 0.0)
+        s = c - before
+        out = s if out is None else np.logaddexp2(out, s)
+        del x, c, before, s
+    return out - np.log2(len(E_GRID)), w
+
+
+def channel_scores(z, root, ch, cache: Path | None, window_hours: float = 0.0):
+    """Timestamps of the samples whose score is at least KEEP_BITS (excess of the cost over b) or,
+    with window_hours, KEEP_WINDOW_BITS (log2 of the windowed e-process); the scores and the
+    timestamp of the sample after each; samples per day (to count the samples scored); b; with
+    window_hours, the distinct windows holding samples."""
+    suffix = f"_w{window_hours:g}" if window_hours else ""
+    f = cache / f"{root}_{ch}{suffix}.npz" if cache else None
     if f is not None and f.exists():
         d = np.load(f)
         return {k: d[k] for k in d.files}
@@ -62,14 +88,20 @@ def channel_scores(z, root, ch, cache: Path | None):
     b = max(1, (min(len(np.unique(s.to_numpy().astype(np.float32))), 65536) - 1).bit_length())
     ts = s.index.values.astype("datetime64[ns]").astype(np.int64)
     excess = cost - b
-    keep = np.nonzero(excess >= KEEP_BITS)[0]
+    extra = {}
+    if window_hours:
+        excess, w = window_evidence(ts, excess, window_hours)
+        extra["windows"] = np.unique(w)
+        keep = np.nonzero(excess >= KEEP_WINDOW_BITS)[0]
+    else:
+        keep = np.nonzero(excess >= KEEP_BITS)[0]
     nxt = np.minimum(keep + 1, len(ts) - 1)
     med = int(np.median(np.diff(ts))) if len(ts) > 1 else 0
     nxt_t = np.where(keep + 1 < len(ts), ts[nxt], ts[keep] + med)
     day = ts // DAY
     out = dict(t=ts[keep], excess=excess[keep].astype(np.float32), next_t=nxt_t,
                day0=np.array([day[0]]), per_day=np.bincount(day - day[0]), span=np.array([ts[0], ts[-1]]),
-               b=np.array([b]))
+               b=np.array([b]), **extra)
     if f is not None:
         np.savez(f, **out)
     return out
@@ -86,6 +118,10 @@ def main():
     ap.add_argument("--margins", nargs="*", type=float, default=[],
                     help="extra margins t (bits) to report for reference; auto is always reported first")
     ap.add_argument("--cache", type=Path, default=None)
+    ap.add_argument("--window-hours", type=float, default=0.0,
+                    help="windowed e-value rule: alarm when log2 of the mixture e-process restarted every "
+                         "this many hours reaches ceil(log2 W), W = channel-windows scored (Ville); "
+                         "0 = the per-sample rule")
     args = ap.parse_args()
     if args.cache:
         args.cache.mkdir(parents=True, exist_ok=True)
@@ -103,7 +139,7 @@ def main():
     data = {}
     t0 = time.time()
     for ch in names:
-        data[ch] = channel_scores(z, root, ch, args.cache)
+        data[ch] = channel_scores(z, root, ch, args.cache, args.window_hours)
         print(f"{ch}: {int(data[ch]['per_day'].sum()):,} samples, b = {int(data[ch]['b'][0])}, "
               f"{time.time() - t0:.0f} s", file=sys.stderr, flush=True)
     first = min(int(d["span"][0]) for d in data.values())
@@ -118,6 +154,13 @@ def main():
         return int(d["per_day"][(days >= lo_ns // DAY) & (days * DAY < hi_ns)].sum())
     n_scored = sum(scored(d) for d in data.values())
     t_auto = float(np.ceil(np.log2(n_scored)))
+    if args.window_hours:
+        wn = int(args.window_hours * 3600 * 10**9)
+        n_windows = sum(int(np.count_nonzero((d["windows"] >= lo_ns // wn) & (d["windows"] * wn <= hi_ns)))
+                        for d in data.values())
+        t_auto = float(np.ceil(np.log2(n_windows)))
+        print(f"Windowed e-value rule ({args.window_hours:g} h): {n_windows:,} channel-windows -> "
+              f"t_w = {t_auto:g} bits", file=sys.stderr)
     print(f"Scored {lo} to {hi}: {n_scored:,} samples over {len(names)} channels -> t = {t_auto:g} bits",
           file=sys.stderr)
 
@@ -132,9 +175,11 @@ def main():
     n_both = yt[yt["Category"].isin(both["Category"])]["ID"].nunique()
     n_anom = yt[yt["Category"] == "Anomaly"]["ID"].nunique()
 
+    rule = (f"windowed e-value rule, {args.window_hours:g}-h windows, t_w = ceil(log2 {n_windows:,} "
+            f"channel-windows) = {t_auto:g} bits" if args.window_hours else f"t = ceil(log2 N) = {t_auto:g} bits")
     print(f"# Training-free Kraft rule, whole mission ({root})\n")
     print(f"Scored {lo} to {hi}; {len(names)} target channels; {n_scored:,} samples; "
-          f"t = ceil(log2 N) = {t_auto:g} bits. Test events: {n_both} anomalies and rare events, "
+          f"{rule}. Test events: {n_both} anomalies and rare events, "
           f"{n_anom} anomalies.\n")
     print("| Margin t | Grouping | Detections | Event-wise F0.5 | Precision (corrected) | Recall | "
           "Alarming precision | Channel-aware F0.5 | ADTQC | Anomalies only: F0.5 | Precision | Recall |")
