@@ -84,3 +84,36 @@ So the bound held on every reading tried, but by observation, not by
 construction for the 32-bit reading. This is the concrete reason a
 deployment must take field boundaries, types and tolerances from the
 mission's telemetry database rather than from a heuristic.
+
+## Surprise-adaptive: bounded error for the expected, exact for the surprising
+
+**The question.** Can the downlink spend its precision where the
+information is? Predictable values would carry the ±δ error bound; any
+value that surprises would be kept exact, so no anomaly loses a bit.
+`bench/analysis/surprise_adaptive.py` reuses the "safe" field set and the
+closed-loop quantiser above. A value is kept exact when it lies at least
+Z = 6 robust σ from the previous reconstructed value. Z was fixed before
+any measurement.
+
+The receiver must know which values are exact. That flag stream is
+costed at its ideal adaptive entropy (about 108 KB) and added to the size.
+Errors are checked for every value: ≤ δ, and exactly 0 on flagged values.
+
+| Bound on predictable values | Uniform error bound (v2 2^18) | **Surprise-adaptive** (v2 2^18 + flags) | Values kept exact | vs lossless (2,999,548) |
+|---|---:|---:|---:|---:|
+| ≤ ¼ σ | 2,470,050 | 2,613,693 | 16.5% | −12.9% |
+| ≤ ½ σ | 2,274,616 | 2,443,975 | 16.5% | −18.5% |
+| ≤ 1 σ | 2,061,620 | 2,270,665 | 16.5% | −24.3% |
+
+**Results.**
+* With every surprising value kept exact, the adaptive mode still saves
+  13–24% against lossless.
+* It costs 6–10% more than a uniform error bound.
+* The Venus Express fields are heavy-tailed, so "6 robust σ" is not rare
+  here: it flags 16.5% of the values. A rarity defined by the
+  compressor's own Kraft bound (b + t bits) would flag far fewer values,
+  and should cost less. That variant is not measured.
+
+The point of the mode is the guarantee, not the size: everything the
+detector would flag reaches the ground exactly, and the rest stays within
+a stated fraction of sensor noise.
