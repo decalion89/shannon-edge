@@ -138,6 +138,55 @@ This is the third independent pointer to numeric prediction:
 
 It is the most promising model to add to sedge.
 
+## Where the fast profile's bytes go, and the "hidden 8%"
+
+An earlier note compared the 3.56 MB Python estimate made before coding
+with the codec's 3.85 MB. The gap is not lost by the code. The estimate
+covered only the changed bytes. An instrumented copy reproduces the codec
+within 58 bytes and breaks it down, for Venus Express with default
+recipes, 3,846,435 bytes on this branch:
+
+| Part | Bytes | Share |
+|---|---:|---:|
+| Delta symbols (−log2 p as coded) | 3,519,902 | 91.5% |
+| "Same as above?" flags | 275,928 | 7.2% |
+| Coder precision (one continuous stream minus the ideal) | 1,736 | 0.05% |
+| Per-packet flush (0.32 bytes/packet) | 48,927 | 1.27% |
+
+The coder's delta symbols, at 3.52 MB, already beat the 3.56 MB ideal
+estimate. Two other potential losses are small:
+* never-seen symbols cost 28.7 KB (0.75%), and an escape mechanism saves
+  only 1.2 KB of that;
+* warm-up costs about 5.4 KB.
+
+Measured improvements, every round trip verified:
+
+| Change | Venus (default) | With learned recipes | Instructions/byte | Format |
+|---|---:|---:|---:|---|
+| Linear-time Fenwick rebuild | identical bytes | identical | **−3.7%** (176.4 → 169.8) | unchanged, **adopted** |
+| Flags: fast 2^-4 + slow count-started estimate | −0.24% | −0.24% | +0.9% with the rebuild | changes, not adopted yet |
+| + ground-learned window (increment, limit) per column, 1 byte/column | — | **−1.62%** (3,237,712 → 3,185,236) | +4% | changes, not adopted yet |
+
+On the everyday datasets the flag change saves 0.05–0.69%, and learned
+windows bring −0.9% to −1.3% more.
+
+Tried and not worth it:
+* peaked starting tables, which are worse;
+* an escape for never-seen symbols, −0.03%;
+* a growing increment;
+* an SSE/APM stage on the flags;
+* changing the global increment or limit, which does not help on every
+  dataset.
+
+The two format changes would need a new golden stream: 2,064 bytes,
+0x1b52_626d_bcc3_1761. They would also need a matching update of
+`c/sedge_fast.c`, which is not done.
+
+**Conclusion.** The fast profile already codes within about 1.3% of its
+model, and that 1.3% is the per-packet flush, the price of independent
+payloads. Further gains have to come from a better model (learned windows,
+numeric prediction), not from the code.
+
 ## The orbit as a context: visible, not useful
 
 Venus Express orbited Venus every 24 h. The file covers 7 days at one

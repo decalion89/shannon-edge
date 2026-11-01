@@ -51,17 +51,22 @@ impl Freq {
         s
     }
 
+    /// Rebuild the tree from the frequencies in linear time: each node
+    /// passes its sum on to its parent. Same tree as inserting one by one.
     fn rebuild(&mut self) {
-        self.tree = [0; 257];
-        self.total = 0;
+        let mut total = 0;
+        self.tree[0] = 0;
         for i in 0..256 {
-            self.total += self.f[i] as u32;
-            let mut j = i + 1;
-            while j <= 256 {
-                self.tree[j] += self.f[i];
-                j += j & j.wrapping_neg();
+            self.tree[i + 1] = self.f[i];
+            total += self.f[i] as u32;
+        }
+        for i in 1..256usize {
+            let j = i + (i & i.wrapping_neg());
+            if j <= 256 {
+                self.tree[j] += self.tree[i];
             }
         }
+        self.total = total;
     }
 
     /// Sum of the frequencies of symbols below `s`.
