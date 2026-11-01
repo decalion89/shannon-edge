@@ -97,6 +97,10 @@ def main():
             n += 1
             s_, m_ = d["surprise"], d["mp"]
             pick = s_ if float(s_["prominence"]) > float(m_["prominence"]) else m_
+            if "margin" in s_ and "margin" in m_ and s_["margin"] and m_["margin"]:
+                pick2 = s_ if float(s_["margin"]) > float(m_["margin"]) else m_
+                ok.setdefault("combined by training margin (second attempt, post hoc)", 0)
+                ok["combined by training margin (second attempt, post hoc)"] += int(pick2["correct"])
             ok["surprise"] += int(s_["correct"])
             ok["mp"] += int(m_["correct"])
             ok["combined"] += int(pick["correct"])
@@ -120,6 +124,9 @@ def main():
             p2 = int(train_end + np.argmax(cw[train_end:]) + mlen // 2) + 1
             preds = {"surprise": p1, "surprise-w": p2}
             conf = {"surprise": prominence(c[train_end:]), "surprise-w": prominence(cw[train_end:])}
+            skip = train_end // 10  # the model's warm-up
+            margin = {"surprise": float(c[train_end:].max() / (c[skip:train_end].max() + 1e-12)),
+                      "surprise-w": float(cw[train_end:].max() / (cw[skip:train_end].max() + 1e-12))}
         else:
             import stumpy
             mp = stumpy.stump(x.astype(np.float64), mlen)[:, 0].astype(np.float64)
@@ -127,13 +134,14 @@ def main():
             i = train_end + int(np.argmax(mp[train_end:len(x) - mlen + 1]))
             preds = {"mp": i + mlen // 2 + 1}
             conf = {"mp": prominence(mp[train_end:len(x) - mlen + 1])}
+            margin = {"mp": float(mp[train_end:len(x) - mlen + 1].max() / (mp[:max(1, train_end - mlen)].max() + 1e-12))}
         for k, p in preds.items():
             rows.append((os.path.basename(f), k, p, b, e, int(b - 100 <= p <= e + 100), mlen, time.time() - t0,
-                         round(conf[k], 4)))
+                         round(conf[k], 4), round(margin[k], 4)))
         print(os.path.basename(f), {k: int(b - 100 <= p <= e + 100) for k, p in preds.items()}, file=sys.stderr, flush=True)
     if args.out:
         with open(args.out, "w") as h:
-            h.write("file,method,pred,begin,end,correct,m,seconds,prominence\n")
+            h.write("file,method,pred,begin,end,correct,m,seconds,prominence,margin\n")
             for r in rows:
                 h.write(",".join(map(str, r)) + "\n")
     for k in sorted({r[1] for r in rows}):
