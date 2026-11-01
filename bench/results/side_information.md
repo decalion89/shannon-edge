@@ -64,3 +64,32 @@ plus the remaining single bytes (`bench/analysis/noise_floor.py`):
 
 No hidden periodicity or mis-modelled structure was found; the evidence is
 consistent with the remainder being noise.
+
+## Fleet knowledge: what could a model learned elsewhere save?
+
+ESA-AD channels are labelled by physical unit, and some units fly on
+several missions (units 2–5 on Missions 1 and 2, unit 8 on Missions 2 and
+3): a natural test of sharing what one spacecraft learned with another. A
+prior model can at most remove the *learning cost*: what a model that
+starts from nothing spends above its steady rate while it learns
+(`bench/analysis/warmup.py`, flight profile, 9 Mission 1 channels, 79
+million samples):
+
+| Channel | Samples | First 1k samples, bits/sample | 1k–10k | 10k–100k | Steady | Warm-up excess |
+|---|---:|---:|---:|---:|---:|---:|
+| 4 | 3,589,376 | 0.02 | 0.00 | 0.01 | 0.01 | 21 B |
+| 12 | 14,258,506 | 1.79 | 1.46 | 1.31 | 1.05 | 3,539 B |
+| 14 | 5,272,893 | 1.57 | 0.96 | 1.16 | 1.15 | 0 B |
+| 21 | 5,272,893 | 1.25 | 1.22 | 1.15 | 1.18 | 0 B |
+| 30 | 5,272,893 | 0.95 | 1.02 | 1.10 | 1.08 | 164 B |
+| 41 | 15,381,169 | 3.70 | 3.46 | 3.40 | 3.39 | 235 B |
+| 46 | 15,381,169 | 4.73 | 4.49 | 4.43 | 4.45 | 0 B |
+| 58 | 14,639,410 | 1.27 | 1.31 | 1.28 | 1.24 | 474 B |
+| 64 | 4,810,995 | 0.10 | 0.03 | 0.05 | 0.05 | 0 B |
+
+In total, 4,434 bytes of 21.6 MB (**0.02%**). The adaptive models learn
+within the first ~1,000 samples, so prior knowledge from a fleet cannot
+matter on long missions; it could only matter right after a start or a
+reset (compare the small gains of history-primed epochs in
+`venus_robustness.md`). Negative result; the cross-mission experiment was
+not run, since it is bounded by this.
