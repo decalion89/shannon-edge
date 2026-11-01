@@ -93,3 +93,41 @@ With feedback the oracle cost on those packets is 97,331 bytes (−14.5%).
   side information becomes older), letting the ground uplink per-bit
   volatility so the encoder estimates its rate better, or hybrid schemes
   (a few predicted bits sent plainly, the rest by syndromes).
+
+## 4. Rate selection with a ground-uplinked table
+
+Follow-up on the open problem. The ground, which decodes everything, can
+uplink a per-bit *flip-cost table* (720 bytes; refreshed every 1000 packets
+here): the encoder adds the cost of each bit that changed (Gray domain)
+since the previous packet — one table lookup per changed bit, no model and
+no arithmetic coder — and sets m = a·est + b. Fitted on the first 3,000
+test packets, tested on the next 3,000 (`bench/slepian_wolf_rate.py`;
+1-byte rate header and CRC-24 counted). On those packets the oracle with
+per-packet feedback takes 97,367 bytes and CCSDS 124 R=0 113,887.
+
+| Encoder-side estimate | Correlation with checks needed |
+|---|---:|
+| bits changed (section 3) | 0.38 |
+| per-bit flip-cost table | 0.78 |
+| order-1 table (did the bit flip last time?) | 0.78 |
+
+| Order-1 table | Packets needing a 2nd round | Bytes | vs CCSDS 124 R=0 |
+|---|---:|---:|---:|
+| No feedback, 99.97% first-time (failures resent raw) | 0% (0.03% resent) | 140,551 | +23.4% |
+| No feedback, 99.60% first-time | 0% (0.4% resent) | 127,160 | +11.7% |
+| Hybrid ARQ (only failures ask for more checks) | 11.7% | 106,752 | −6.3% |
+| Hybrid ARQ | 4.9% | 110,064 | −3.4% |
+| Hybrid ARQ | 2.1% | 115,300 | +1.2% |
+
+(The hybrid ARQ rows assume the decoder knows how many more checks a failed
+packet needs, rounded up to 16; one extra round is optimistic.)
+
+**Reading.** The table doubles the predictability of the rate, but not
+enough: the checks a 720-bit packet needs vary too much around its
+information content (short-block decoding), so a safe fixed rate wastes
+more than the model gains. Without feedback the scheme stays worse than
+CCSDS 124; with feedback on a small fraction of packets it is a few
+percent better. On these packets Slepian–Wolf coding gives an XOR-only
+encoder near CCSDS 124's efficiency, not beyond it. The learning encoder
+plus erasure coding (`venus_fec.md`, −30% under 1% loss) remains the
+stronger result.

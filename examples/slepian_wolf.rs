@@ -23,7 +23,7 @@
 //! matches the CRC-24 *and* passes a typical-set test (its cost under the
 //! model is at most m - 8 bits): without that test, a wrong but more likely
 //! solution of the checks passed the CRC once in a few hundred thousand
-//! candidates. DUMP.csv records, per packet, the bits changed since the
+//! candidates. DUMP.csv records, per packet, its index, the bits changed since the
 //! previous packet (an encoder-side rate proxy), the checks needed and the
 //! decoder's expected cost, for the no-feedback analysis.
 
@@ -328,6 +328,10 @@ fn main() {
                 if m >= n {
                     raw_fallback += 1;
                     sent += n + CRC_BITS;
+                    if let Some(f) = dump.as_mut() {
+                        use std::io::Write;
+                        writeln!(f, "{t},-1,{n},{expect:.1}").unwrap();
+                    }
                     break;
                 }
                 let candidates = match bp(&all_checks[..m], &syndrome[..m], &prior) {
@@ -365,7 +369,7 @@ fn main() {
                             .map(|(&a, &b)| (gray(a) ^ gray(b)).count_ones())
                             .sum();
                         use std::io::Write;
-                        writeln!(f, "{d},{m},{expect:.1}").unwrap();
+                        writeln!(f, "{t},{d},{m},{expect:.1}").unwrap();
                     }
                     break;
                 }

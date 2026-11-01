@@ -130,8 +130,11 @@ v0.1 single core: ~0.5 MiB/s. Target: 10× without losing ratio, then more.
 - [x] Slepian–Wolf prototype (XOR-only stateless encoder, ground-side
       model + BP/OSD): ideal −28% vs CCSDS 124; −13.8% with per-packet
       feedback; worse than CCSDS 124 without feedback (negative result)
-- [ ] Slepian–Wolf without feedback: multi-packet blocks, ground-uplinked
-      volatility for encoder-side rate selection, hybrid schemes
+- [x] Slepian–Wolf rate selection with a ground-uplinked flip-cost table:
+      correlation 0.38 → 0.78, still +12% vs CCSDS 124 without feedback;
+      hybrid ARQ −3 to −6% (negative result for this data)
+- [ ] Slepian–Wolf over multi-packet blocks (longer codes, older side
+      information)
 - [ ] Packet profile: speed (POCKET+ is ~10x faster), C/Python bindings
 - [x] Whole-mission measurement (ESA-AD Mission 1, 75 channels, 734 M
       samples, 14 years): flight profile beats CCSDS 121 on 75/75 channels,
