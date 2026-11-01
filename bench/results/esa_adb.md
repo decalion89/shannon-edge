@@ -305,6 +305,19 @@ Whether these spikes matter to operators (data errors, acquisition
 glitches, or events worth a label) cannot be decided from the data
 alone. They are listed with times and channels for an expert to check.
 
+**Correction, after a census** (`bench/analysis/spike_census.py`, 18
+channels, the whole mission). One-sample spikes are not rare at all:
+* 26.1 M in total, of which 1.3 M are of 8 steps or more.
+* Their sizes fall off smoothly: 8 steps 328 k, 9 167 k, 10 157 k …
+  16 73 k, 17 32 k, 18 22 k, 19 12 k.
+
+The clustering at 16–19 steps among the *detections* is a selection
+effect: those are simply the largest spikes, the ones that cross the
+threshold. It is not a distinct phenomenon. Most of these channels carry
+heavy-tailed, spiky noise at the sample level. The genuinely unexplained
+candidates are those both far from labels and coincident across channels
+of one unit, such as channels 57 and 59 on 2009-04-18.
+
 ## Cumulative Kraft (`--kraft-cusum`): a gain where the model is calibrated, a collapse where it is not
 
 Per channel, CUSUMs of the per-sample e-values log2((1−e) + e·2^(cost−b))
