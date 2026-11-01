@@ -20,6 +20,11 @@ out_prefix = sys.argv[2]
 n = len(P)
 split = n // 10
 Z = 6.0
+RARITY = None  # --rarity=T: per-field threshold = the (1 - 2^-T) quantile of |delta| on history
+for a in list(sys.argv[3:]):
+    if a.startswith("--rarity="):
+        RARITY = float(a.split("=")[1])
+        sys.argv.remove(a)
 fields = [(10, 2), (18, 3), (22, 3), (26, 3), (30, 3), (58, 3), (62, 3), (66, 3), (70, 3), (74, 3),
           (77, 4), (81, 4), (85, 4)]  # the "safe" set of near_lossless.py
 
@@ -55,6 +60,10 @@ for k in [float(x) for x in sys.argv[3:]]:
         r[0] = v[0]
         exact = np.zeros(n, bool)
         thr = Z * max(sig[(s, w)], 1.0)
+        if RARITY is not None:
+            h = (v[1:split] - v[:split - 1]) % mod
+            h = np.abs(np.where(h >= mod // 2, h - mod, h))
+            thr = max(float(np.quantile(h, 1 - 2.0 ** -RARITY)) + 1, 1.0)
         for t in range(1, n):
             d = (v[t] - r[t - 1]) % mod
             if d >= mod // 2:

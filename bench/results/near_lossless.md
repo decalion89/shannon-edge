@@ -110,9 +110,22 @@ Errors are checked for every value: ≤ δ, and exactly 0 on flagged values.
   13–24% against lossless.
 * It costs 6–10% more than a uniform error bound.
 * The Venus Express fields are heavy-tailed, so "6 robust σ" is not rare
-  here: it flags 16.5% of the values. A rarity defined by the
-  compressor's own Kraft bound (b + t bits) would flag far fewer values,
-  and should cost less. That variant is not measured.
+  here: it flags 16.5% of the values.
+
+**Rarity learned on the ground (`--rarity=10`).** Instead of a fixed Z,
+each field's threshold is the jump that history (the first 10%) shows at
+most once in 2^10 values. On the remaining data that keeps 0.120% of the
+values exact:
+
+| Bound on predictable values | Uniform error bound | **Rare values exact** (v2 + ~3.1 KB of flags) | Extra cost | vs lossless |
+|---|---:|---:|---:|---:|
+| ≤ ¼ σ | 2,470,050 | 2,472,990 | +0.12% | **−17.6%** |
+| ≤ ½ σ | 2,274,616 | 2,277,172 | +0.11% | **−24.1%** |
+| ≤ 1 σ | 2,061,620 | 2,065,203 | +0.17% | **−31.1%** |
+
+**Keeping every rare jump bit-exact costs about 0.1% of the downlink.**
+Error-bounded coding of the expected and exact coding of the rare come
+almost for the price of the first alone.
 
 The point of the mode is the guarantee, not the size: everything the
 detector would flag reaches the ground exactly, and the rest stays within
