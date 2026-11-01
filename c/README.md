@@ -6,6 +6,11 @@ with the Rust crate: the same packets, layout, priming and epochs give the
 same payload bytes, so a C encoder on board can talk to a Rust decoder on
 the ground, or the other way round.
 
+The **flight profile** (`sedge_flight.h`, `sedge_flight.c`: integer
+samples, per-sample surprise and the Kraft anomaly detector) is described
+in [its own part](#sedge_flight-the-flight-profile-in-portable-c99) below.
+Both follow the same rules and share the Makefile.
+
 - `sedge_fast.h`, `sedge_fast.c`: the codec (one file to add to a build)
 - `test_golden.c`: the Rust golden stream, and a second golden stream that
   covers every recipe and class with priming and epochs. Runs hosted or with
@@ -260,14 +265,329 @@ A flight encoder needs about 5 KB of code plus the memory block above.
 ## Building and testing
 
 ```
-make test        # golden + unit tests, then again under ASan + UBSan
+make test        # golden + unit tests of both profiles, then again under
+                 # ASan + UBSan (make test-fast / make test-flight: one)
 make warnings    # -Werror, gcc and clang:
                  #   -std=c99 -Wall -Wextra -Wpedantic -Wconversion -Wshadow
-make cross       # golden test on riscv32, Cortex-M4, i386, MIPS BE/LE,
+make cross       # golden tests on riscv32, Cortex-M4, i386, MIPS BE/LE,
                  # PPC32 BE (clang + ld.lld + qemu-user)
 make size
 make bench DATA=venus-express.ccsds LEN=90
+make bench-flight DATA=samples.u16 TB=14
 ```
 
 `SAN_CC` selects the sanitizer compiler (default `$(CC)`; clang needs its
 compiler-rt sanitizer runtimes installed).
+
+# sedge_flight: the flight profile in portable C99
+
+A dependency-free C99 implementation of the shannon-edge **flight profile**
+(`src/flight.rs`, `FlightSession`), with the parts of `src/coder.rs` it uses
+(`finish_short` drops at most `MAX_IMPLIED_ZEROS` = 4 trailing zeros). It is
+**bit-exact** with the Rust crate: the same samples give the same frames
+and the same per-sample **surprise** (the cost of each sample in 1/256
+bits, a `u32`), so either end of a link can be C or Rust. On top of it, a
+training-free anomaly detector from `docs/KRAFT_DETECTION.md`.
+
+- `sedge_flight.h`, `sedge_flight.c`: the codec and the detector (one file
+  to add to a build)
+- `test_flight_golden.c`: the Rust golden stream of `tests/flight.rs`, a
+  second Rust stream over six (bits, table_bits) settings with uneven and
+  empty packets, and a hash of the detector's fixed-point values. Runs
+  hosted or with no C library at all (`make cross`).
+- `test_flight.c`: internal tables rebuilt and compared, round trips,
+  garbage / truncated / bit-flipped frames, argument and buffer errors,
+  alignment, the frame bound, the detector's precision against
+  `long double`
+- `test_flight_data.h`: the golden samples (dumped by the Rust crate: the
+  Rust generator uses `f64::sin`) and the integer-only second stream
+- `crosscheck_flight.c`: compares C and Rust frames and surprise on a
+  sample file
+- `bench_flight.c`: speed
+
+## API
+
+```c
+#include "sedge_flight.h"
+
+/* 12-bit samples, 2^14-entry tables, static allocation. */
+static uint64_t mem[SEDGE_FLIGHT_MEMORY_BYTES(12, 14) / 8 + 1];
+static uint8_t frame[SEDGE_FLIGHT_MAX_FRAME(256, 12)];
+static uint32_t surprise[256];
+
+sedge_flight *tx;
+size_t n;
+sedge_flight_init(&tx, mem, sizeof mem, 12, 14);
+sedge_flight_compress_scored(tx, samples, 256, frame, sizeof frame, &n, surprise);
+/* send frame[0..n); surprise[] is the anomaly score, free of charge */
+
+/* Ground side, same parameters: */
+sedge_flight_decompress_scored(rx, frame, n, samples_out, 256, &count, surprise);
+```
+
+| Rust (`FlightSession`) | C |
+|---|---|
+| `new(bits, table_bits)` | `sedge_flight_init(&s, mem, bytes, bits, table_bits)` |
+| `compress_scored(p, &mut v)` | `sedge_flight_compress_scored(s, p, n, out, cap, &len, v)` |
+| `compress(p)` | the same with `surprise = NULL` |
+| `decompress_scored(f, &mut v)` | `sedge_flight_decompress_scored(s, f, len, out, cap, &count, v)` |
+| `decompress(f)` | the same with `surprise = NULL` |
+| `bits_per_sample()` | `sedge_flight_bits_per_sample(s)` |
+| `Error::Truncated`, `Error::TooLarge` | `SEDGE_FLIGHT_E_TRUNCATED` (-2), `SEDGE_FLIGHT_E_TOO_LARGE` (-7) |
+| panics (bad parameters, a sample too wide) | `SEDGE_FLIGHT_E_ARGUMENT` (-1) |
+
+There is no `sedge_flight_compress` or `sedge_flight_decompress`: the Rust
+C ABI (`include/shannon_edge.h`) already exports `sedge_flight_new`,
+`_compress`, `_decompress` and `_free`, and this port keeps clear of those
+names so one ground tool can link both.
+
+C additions:
+
+- `SEDGE_FLIGHT_E_MEMORY` (block too small) and `SEDGE_FLIGHT_E_BUFFER`
+  (output too small). On decompress, `E_BUFFER` means the frame holds more
+  samples than `cap`; `count` is set to the number needed and the session is
+  unchanged. On compress, the packet was already learned, so the two ends
+  are out of step and must restart; `cap >= SEDGE_FLIGHT_MAX_FRAME(n, bits)`
+  rules it out.
+- A sample wider than `bits_per_sample` is rejected before anything is
+  learned (Rust panics).
+- `sedge_flight_last_overrun(s)`: bytes the last decompress read past its
+  frame. More than `SEDGE_FLIGHT_MAX_OVERRUN` (7) proves the frame was
+  truncated or corrupt. It is a weak check: it flags only the cuts close to
+  the end of a frame (10 of the 115 possible cuts of a test frame).
+- `-DSEDGE_FLIGHT_NO_CUSUM` leaves out the experimental cumulative detector.
+
+## Memory
+
+All state lives in one caller-provided block of any alignment; no
+allocation, no globals, small fixed-size locals only.
+
+```
+SEDGE_FLIGHT_MEMORY_BYTES(bits, tb)
+  = 72 + 16 * bits + 4 * (2^min(tb, bits + 1) + 2 * 2^tb + 2^min(tb, 16))
+```
+
+- 4-byte adaptive counters: the order-0, order-1 and order-2 tables of the
+  transition model and the residual model's table, as in Rust;
+- 16 bytes of mixer weights per bit of sample;
+- 64 bytes of session header and 8 of alignment slack.
+
+Bytes per channel (`sedge_flight_memory_bytes`):
+
+| table_bits | 8-bit samples | 10-bit | 12-bit | 16-bit |
+|---:|---:|---:|---:|---:|
+| 12 | 51,400 | 57,576 | 65,800 | 65,864 |
+| 13 | 100,552 | 106,728 | 131,336 | 131,400 |
+| 14 | 198,856 | 205,032 | 229,640 | 262,472 |
+| 15 | 395,464 | 401,640 | 426,248 | 524,616 |
+| 16 | 788,680 | 794,856 | 819,464 | 1,048,904 |
+
+The Rust session holds the same tables (same counters and weights); 12 to
+24 table bits are accepted, as in Rust. The detector adds 32 bytes per
+channel for the cumulative variant, nothing for the per-sample rule.
+
+### Frame bound
+
+A frame of n samples is never larger than
+`SEDGE_FLIGHT_MAX_FRAME(n, bits) = 14 + n * (3 * bits + 4)` bytes:
+
+- every binary decision narrows the coder interval by at most a factor of
+  4097 (12.0004 bits), and emitted bytes never exceed the bits of narrowing
+  divided by 8;
+- the chosen model codes a valid sample with at most 2 * bits + 2
+  decisions (residual: unary length up to bits + 2, mantissa up to bits);
+- the sample count takes at most 10 bytes and the flush 4.
+
+The largest frame in the tests (alternating 0 / 65535) reached 9.5% of the
+bound; random 16-bit data is about 2 bytes per sample.
+
+## Kraft anomaly detector
+
+For a lossless sequential code, Kraft's inequality makes the surprise a
+calibrated test statistic (`docs/KRAFT_DETECTION.md`): with b =
+bits_per_sample, P(surprise >= b + t bits) <= 2^-t for every sample,
+whatever came before, if the model is calibrated.
+
+**Per-sample rule (primary, validated on ESA-ADB):**
+
+```c
+uint32_t t = sedge_flight_kraft_t(n_samples);          /* ceil(log2 N), integer */
+int alarm = sedge_flight_kraft_alarm(surprise[i], bits, t);
+/* i.e. surprise[i] >= sedge_flight_kraft_threshold(bits, t) = (bits + t) * 256 */
+```
+
+t = ceil(log2 N) allows one expected false alarm in N samples. There is
+nothing to train and nothing to store.
+
+**Cumulative rule (EXPERIMENTAL).** `bench/results/esa_adb.md` shows it
+gains on ESA-AD Mission 1 lightweight (0.766 against 0.705) but collapses
+where the model is even mildly overconfident (Mission 1 full, Mission 2),
+so it is not the default and not recommended for operations. Per channel,
+four CUSUMs S_e = max(0, S_e + x_e) of the log e-values
+
+    x_e = log2((1 - e) + e * 2^(cost - b)),   e = 2^-1, 2^-4, 2^-8, 2^-12
+
+alarm while max_e S_e >= t + 2 bits:
+
+```c
+sedge_flight_cusum c;                 /* 32 bytes per channel */
+sedge_flight_cusum_init(&c);
+alarm = sedge_flight_cusum_update(&c, surprise[i], bits, t);
+```
+
+Fixed point, no floating point:
+
+- x_e and S_e are `int64_t` in units of 2^-32 bits. With u = surprise -
+  256 (b + k) and e = 2^-k: y = (1 - 2^-k) + 2^(u/256) is formed exactly
+  in Q62 (a 256-entry table of 2^(f/256) for the fraction of u), normalised
+  to m in [1, 2), and log2(m) is a 64-entry reciprocal table (exact
+  -log2 of the rounded reciprocal) plus ln(1 + r) to the r^4 term (r <
+  2^-6, error below 2^-32).
+- **Precision:** every x_e is rounded *down* (never above the exact value,
+  so the e-value bound still holds) and lies 2.0 to 11.5 units of 2^-32
+  bits below it. This is checked by `test_flight.c` against `long double`
+  for every surprise up to 512 bits and for large ones, all b and the four
+  values of e; the documented bound is 2^-28 bits (16 units). The smallest
+  increment that matters, log2(1 - 2^-12) = -0.00035 bits, is resolved to
+  about 1 part in 10^5.
+- S_e saturates at 2^30 bits; t is capped at 2^28.
+- Because every increment is rounded down, S_e drifts low while it stays
+  positive: by at most 12 units of 2^-32 bits per sample. On ESA-AD
+  Mission 1 channel 41 (15.4 M samples, t = 24), S_(2^-12) stayed positive
+  for up to 296,000 samples in a row and the C scores ended at most
+  3.5e-4 bits below a sequential `long double` evaluation. Being low, the
+  C rule can only alarm less: 529,148 samples in alarm against 529,150
+  (2 flags differ, both within 3.5e-4 bits of the threshold). The float64
+  `cumsum` of `bench/anomaly_esaadb.py` gives the same 529,150.
+- The tables (1.5 KB) are generated from 60-digit decimal arithmetic.
+
+Two details differ from `bench/anomaly_esaadb.py`. The script raises a
+per-sample alarm when cost > b + t (strict); this API follows
+`docs/KRAFT_DETECTION.md` and alarms at cost >= b + t. They differ only
+when a surprise is exactly (b + t) * 256: none on channel 41 at
+t = 24. The script also takes b from the number of distinct values. That
+equals bits_per_sample for its code files (codes 0..distinct-1).
+
+## Guarantees
+
+- **C99**: only `<stdint.h>`, `<stddef.h>` and `<string.h>` (`memset`). No
+  malloc, no recursion, no floating point, no globals (constant tables
+  only). Reentrant across sessions; a session is not thread-safe.
+- **No undefined behaviour**:
+  - the coder, counters and hashes are `uint32_t` / `uint64_t` arithmetic;
+  - Rust's arithmetic right shifts of negative values (`dot >> 16`,
+    `(x * err) >> 10`) are rewritten with offsets that keep the operand
+    positive;
+  - the mixer weights wrap like Rust's release `i32` (kept as `uint32_t`,
+    read through a well-defined two's-complement conversion);
+  - no 64-bit division anywhere; in the codec, 64-bit shifts are by
+    constants, so 32-bit targets need no runtime helper.
+- **Checked by**: gcc ASan+UBSan (`make test-flight`); clang
+  `-fsanitize=undefined,implicit-conversion,bounds` in trap mode; Valgrind
+  memcheck on the golden test.
+- **Same bytes on every CPU**: the golden tests (frames, surprise and the
+  detector's fixed-point values) pass on x86-64, and under qemu on riscv32,
+  Cortex-M4 (Thumb-2), i386, MIPS32 big- and little-endian and PowerPC32
+  big-endian, linked with `-nostdlib` (`make cross`).
+- **Garbage never crashes**: the Rust garbage test, 12,000 random frames on
+  every sample width (up to 65,536 decoded samples each), every truncation
+  and every single-bit flip of a valid frame, all under the sanitizers. A
+  decoded sample always fits `bits_per_sample`; work is bounded by the
+  sample count, which is capped by the frame length as in Rust.
+- **Trusted state**: the session is not self-checking; protect it like any
+  other RAM state (EDAC, scrubbing).
+
+## Bit-exactness: how it was checked
+
+| Check | Result |
+|---|---|
+| `GOLDEN` (tests/flight.rs: telemetry(4096, 12, 2026), `new(12, 14)`, 256-sample packets) | 2140 bytes, FNV-1a 0xe373eda58555da7a: **match**; surprise hash 0xf7c227d90b62b922: **match** |
+| GEN2: bits/table_bits (1,12) (4,12) (8,13) (12,14) (16,12) (16,16), 3000 samples each, packets of 0..511 | 6331 bytes, 0x50343dce1ac45b81, surprise 0x226e1e82a3600898 (values from the Rust crate): **match** |
+| ESA-AD Mission 1, channels 41-46 (10-bit, 15,381,169 samples each), table_bits 14 | 6 × 60,083 / 60,083 frames identical; 6 × 15,381,169 / 15,381,169 surprise values identical |
+| Channel 1 (16-bit, 10,513,336 samples; 34,550 distinct values), table_bits 14 and 16 | 41,068 / 41,068 frames and 10,513,336 / 10,513,336 surprise values identical, in both cases |
+| Channel 12 (8-bit, 14,258,506 samples), table_bits 14 and 16 | 55,698 / 55,698 frames and 14,258,506 / 14,258,506 surprise values identical, in both cases |
+| Channel 41, table_bits 12 | 60,083 / 60,083 and 15,381,169 / 15,381,169 identical |
+
+In all, 157,212,867 samples and 614,113 frames, with no difference. The
+sample files are made as `bench/anomaly_esaadb.py` makes them (distinct
+values to ordered codes); the Rust side is the session of
+`examples/flight_surprise.rs`.
+
+Every C frame is also decoded by C, and the samples and surprise are
+compared.
+
+To repeat it, dump the Rust frames (4-byte little-endian length, then the
+bytes, per frame) and surprise the way `examples/flight_surprise.rs` runs
+the session, then run `crosscheck_flight`:
+
+```rust
+// cargo project with: shannon-edge = { path = "..." }
+use shannon_edge::flight::FlightSession;
+use std::io::Write;
+fn main() {
+    let a: Vec<String> = std::env::args().skip(1).collect();
+    let raw = std::fs::read(&a[0]).unwrap();
+    let tb: u32 = a.get(3).map_or(14, |v| v.parse().unwrap());
+    let s: Vec<u16> = raw.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+    let bits = (16 - s.iter().max().unwrap_or(&0).leading_zeros()).max(1);
+    let mut tx = FlightSession::new(bits, tb);
+    let (mut f, mut sur) = (std::io::BufWriter::new(std::fs::File::create(&a[1]).unwrap()), vec![]);
+    for p in s.chunks(256) {
+        let c = tx.compress_scored(p, &mut sur);
+        f.write_all(&(c.len() as u32).to_le_bytes()).unwrap();
+        f.write_all(&c).unwrap();
+    }
+    std::fs::write(&a[2], sur.iter().flat_map(|c| c.to_le_bytes()).collect::<Vec<u8>>()).unwrap();
+}
+```
+
+```
+make crosscheck
+build/crosscheck_flight samples.u16 rust.frames rust.u32 14
+```
+
+## Speed
+
+ESA-AD Mission 1 channels 41 (10-bit, 15.4 M samples) and 1 (16-bit,
+10.5 M samples), table_bits 14, 256-sample packets. Each run compresses
+every packet with its surprise, then decompresses and verifies every one
+(`bench_flight`; the Rust figure is the same loop over `FlightSession`,
+release profile with fat LTO). One core (`taskset`), `nice -n 10`, on a
+4-core machine shared with a long job (load about 4), so the numbers are
+noisy. Best and median of 6 interleaved runs, in million samples per
+second:
+
+| Build | ch 41 compress | ch 41 decompress | ch 1 compress | ch 1 decompress |
+|---|---:|---:|---:|---:|
+| Rust | 4.22 / 4.17 | 3.78 / 3.72 | 4.40 / 4.00 | 4.38 / 4.17 |
+| C, gcc 13 `-O2` | 4.12 / 3.97 | 3.71 / 3.66 | 4.12 / 3.81 | 4.49 / 4.25 |
+| C, clang 18 `-O2` | 4.02 / 3.83 | 3.77 / 3.66 | 4.01 / 3.90 | 4.60 / 3.52 |
+| C, gcc 13 `-O3` | 4.24 / 4.05 | 3.74 / 3.70 | 4.13 / 3.96 | 4.33 / 3.97 |
+| C, clang 18 `-O3` | 4.05 / 3.76 | 3.97 / 3.80 | 4.54 / 4.30 | 4.31 / 3.77 |
+
+C runs at the speed of Rust, within the run-to-run noise: compress medians
+are 0.92 to 1.07 times Rust's, decompress medians 0.84 to 1.02. Both ends
+run both models on every sample (the one not chosen is only measured):
+about 0.25 µs per sample on this machine. The counters divide by
+multiplying with a reciprocal table instead of Rust's division, which
+mostly helps CPUs with a slow divider or none. Not timed on flight
+hardware.
+
+## Code size
+
+`make size`: text + data + bss of `sedge_flight.o` at `-Os`, and in
+brackets the code alone; the rest is read-only tables.
+
+| Target | Full | `-DSEDGE_FLIGHT_NO_CUSUM` |
+|---|---:|---:|
+| x86-64, gcc 13 | 22,824 (4,318) | 20,704 (3,766) |
+| RISC-V rv32imc, clang 18 | 22,660 (4,286) | 20,324 (3,490) |
+| Cortex-M4 (Thumb-2), clang 18 | 22,314 (3,780) | 20,078 (3,116) |
+| Cortex-M0 (Thumb-1), clang 18 | 22,262 (3,728) | 19,994 (3,032) |
+| MSP430 (16-bit), clang 18 | 30,560 (12,170) | 25,666 (8,816) |
+
+About 3 KB of code. The tables are 16.7 KB of flash: `STRETCH` (4096 ×
+int16, the inverse logistic of `src/math.rs`) and `NEG_LOG2` (4097 ×
+uint16, the cost table of `src/flight.rs`), both needed for exactness and
+speed, plus 1.5 KB for the cumulative detector. Neither has a symmetry that
+would halve it.
