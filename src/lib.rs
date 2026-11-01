@@ -18,6 +18,7 @@
 pub mod coder;
 mod crc32;
 pub mod ffi;
+pub mod flight;
 mod math;
 mod model;
 pub mod train;

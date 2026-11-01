@@ -27,7 +27,7 @@ import os
 import sys
 from pathlib import Path
 
-__all__ = ["SedgeError", "compress", "decompress", "PrimedModel", "Session", "version"]
+__all__ = ["SedgeError", "compress", "decompress", "PrimedModel", "Session", "FlightSession", "version"]
 
 
 def _find_library() -> str:
@@ -69,6 +69,13 @@ _session_new = _sig("sedge_session_new", ctypes.c_void_p, ctypes.c_void_p, ctype
 _session_compress = _sig("sedge_session_compress", ctypes.c_int32, ctypes.c_void_p, ctypes.c_char_p, _size, *_out)
 _session_decompress = _sig("sedge_session_decompress", ctypes.c_int32, ctypes.c_void_p, ctypes.c_char_p, _size, *_out)
 _session_free = _sig("sedge_session_free", None, ctypes.c_void_p)
+_u16p = ctypes.POINTER(ctypes.c_uint16)
+_flight_new = _sig("sedge_flight_new", ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32)
+_flight_compress = _sig("sedge_flight_compress", ctypes.c_int32, ctypes.c_void_p, _u16p, _size, *_out)
+_flight_decompress = _sig("sedge_flight_decompress", ctypes.c_int32, ctypes.c_void_p, ctypes.c_char_p, _size,
+                          ctypes.POINTER(_u16p), ctypes.POINTER(_size))
+_free_samples = _sig("sedge_free_samples", None, _u16p, _size)
+_flight_free = _sig("sedge_flight_free", None, ctypes.c_void_p)
 
 
 class SedgeError(Exception):
@@ -182,6 +189,46 @@ class Session:
     def close(self) -> None:
         if getattr(self, "_h", None):
             _session_free(self._h)
+            self._h = None
+
+    __del__ = close
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
+
+class FlightSession:
+    """One end of a telemetry link using the flight profile: packets of
+    integer samples (each < 2**bits), both ends learning from every packet.
+    No checksum: the link layer must guarantee integrity and order. Create
+    both ends with the same `bits` and `table_bits`."""
+
+    def __init__(self, bits: int, table_bits: int = 14):
+        self._h = _flight_new(bits, table_bits)
+        if not self._h:
+            raise SedgeError(-1)
+
+    def compress(self, samples) -> bytes:
+        arr = (ctypes.c_uint16 * len(samples))(*samples)
+        return _call(_flight_compress, self._h, arr, len(samples))
+
+    def decompress(self, frame: bytes) -> list:
+        f = _buf(frame)
+        out, n = _u16p(), _size()
+        rc = _flight_decompress(self._h, f, len(f), ctypes.byref(out), ctypes.byref(n))
+        if rc != 0:
+            raise SedgeError(rc)
+        try:
+            return out[: n.value]
+        finally:
+            _free_samples(out, n)
+
+    def close(self) -> None:
+        if getattr(self, "_h", None):
+            _flight_free(self._h)
             self._h = None
 
     __del__ = close

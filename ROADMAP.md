@@ -97,8 +97,14 @@ v0.1 single core: ~0.5 MiB/s. Target: 10× without losing ratio, then more.
       residual model and an order-1 model, switched per sample by recent
       cost with no side information: −33% vs CCSDS 121 at 2–3 M samples/s,
       −40% with order-2 mixing at ~1 M samples/s
-- [ ] Integer-only flight model in the library (a session profile), timed
-      on a flight-class CPU (LEON/RISC-V) or an emulator
+- [x] Integer-only flight profile in the library (`flight::FlightSession`,
+      C `sedge_flight_*`, Python `FlightSession`): −40% vs CCSDS 121 with
+      ~3 MiB of tables, −39% with ~0.2 MiB, 2–4 M samples/s on a desktop
+      core; golden-pinned format
+- [ ] Time the flight profile on flight-class hardware (LEON3/4, RISC-V)
+      or an instruction-accurate emulator
+- [ ] Write it up: reproducible note/paper for the space data systems
+      community (CCSDS, SpaceOps, DCC)
 - [ ] Measure `H(X | K)` gains per pack on public datasets
 
 ## Phase 4 — Production

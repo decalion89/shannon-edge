@@ -81,6 +81,15 @@ parameter, default 32 MiB, never sent): right after a record is learned, if
 the history exceeds `2W` bytes, its oldest `len - W` bytes are dropped and
 the match model's pointers shifted accordingly.
 
+## Flight frames
+
+A `FlightSession` (the integer telemetry profile) sends each packet of
+samples as: the sample count (LEB128), then the arithmetic-coded samples
+with a minimal flush. No checksum and no sequence number: the link layer
+must guarantee integrity and order. Both ends must use the same
+`bits_per_sample` and `table_bits`; the test `golden_flight_stream_is_stable`
+pins the coded bytes, so any change to the flight model is a format change.
+
 ## Primed-model files (`.sedgem`)
 
 A saved `PrimedModel`: the model state after reading a dictionary. It is a

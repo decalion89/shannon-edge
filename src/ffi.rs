@@ -404,3 +404,108 @@ pub unsafe extern "C" fn sedge_session_free(session: *mut SedgeSession) {
         drop(Box::from_raw(session));
     }
 }
+
+// ---------------------------------------------------------------------------
+// Flight profile (integer telemetry samples)
+// ---------------------------------------------------------------------------
+
+/// Opaque flight session.
+pub struct SedgeFlight(crate::flight::FlightSession);
+
+/// Start a flight session for `bits` (1..=16) bits per sample with model
+/// tables of 2^`table_bits` entries (12..=24). NULL on bad parameters.
+#[no_mangle]
+pub extern "C" fn sedge_flight_new(bits: u32, table_bits: u32) -> *mut SedgeFlight {
+    if !(1..=16).contains(&bits) || !(12..=24).contains(&table_bits) {
+        return std::ptr::null_mut();
+    }
+    Box::into_raw(Box::new(SedgeFlight(crate::flight::FlightSession::new(
+        bits, table_bits,
+    ))))
+}
+
+/// Compress one packet of `n` samples (each must fit in `bits`) and learn
+/// from it. The frame is returned in `out`/`out_len` (free with sedge_free).
+///
+/// # Safety
+/// `s` valid; `samples` valid for `n` values; `out`/`out_len` writable.
+#[no_mangle]
+pub unsafe extern "C" fn sedge_flight_compress(
+    s: *mut SedgeFlight,
+    samples: *const u16,
+    n: usize,
+    out: *mut *mut u8,
+    out_len: *mut usize,
+) -> i32 {
+    if s.is_null() || out.is_null() || out_len.is_null() || (n > 0 && samples.is_null()) {
+        return SEDGE_E_ARGUMENT;
+    }
+    if n > LIMIT / 2 {
+        return SEDGE_E_TOO_LARGE;
+    }
+    let data: &[u16] = if n == 0 {
+        &[]
+    } else {
+        slice::from_raw_parts(samples, n)
+    };
+    let session = &mut (*s).0;
+    if data
+        .iter()
+        .any(|&v| (v as u32) >> session.bits_per_sample() != 0)
+    {
+        return SEDGE_E_ARGUMENT;
+    }
+    give(session.compress(data), out, out_len)
+}
+
+/// Decompress one packet and learn from it. The samples are returned in
+/// `out`/`out_n` (free with sedge_free_samples).
+///
+/// # Safety
+/// `s` valid; `data` valid for `len` bytes; `out`/`out_n` writable.
+#[no_mangle]
+pub unsafe extern "C" fn sedge_flight_decompress(
+    s: *mut SedgeFlight,
+    data: *const u8,
+    len: usize,
+    out: *mut *mut u16,
+    out_n: *mut usize,
+) -> i32 {
+    let Some(d) = input(data, len) else {
+        return SEDGE_E_ARGUMENT;
+    };
+    if s.is_null() || out.is_null() || out_n.is_null() {
+        return SEDGE_E_ARGUMENT;
+    }
+    match (*s).0.decompress(d) {
+        Ok(v) => {
+            let b = v.into_boxed_slice();
+            *out_n = b.len();
+            *out = Box::into_raw(b) as *mut u16;
+            SEDGE_OK
+        }
+        Err(e) => code(&e),
+    }
+}
+
+/// Release samples returned by `sedge_flight_decompress`.
+///
+/// # Safety
+/// `p`/`n` must come from `sedge_flight_decompress`, freed at most once.
+#[no_mangle]
+pub unsafe extern "C" fn sedge_free_samples(p: *mut u16, n: usize) {
+    if !p.is_null() {
+        drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(p, n)));
+    }
+}
+
+/// Release a flight session.
+///
+/// # Safety
+/// `s` from `sedge_flight_new`, freed at most once (NULL is allowed).
+#[no_mangle]
+pub unsafe extern "C" fn sedge_flight_free(s: *mut SedgeFlight) {
+    if !s.is_null() {
+        drop(Box::from_raw(s));
+    }
+}

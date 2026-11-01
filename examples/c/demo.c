@@ -50,5 +50,29 @@ int main(void) {
     printf("session: 200 records -> %zu bytes, %s\n", total, ok ? "all verified" : "MISMATCH");
     sedge_session_free(tx);
     sedge_session_free(rx);
+
+    /* Flight profile: 12-bit housekeeping samples in 256-sample packets. */
+    SedgeFlight *ftx = sedge_flight_new(12, 14), *frx = sedge_flight_new(12, 14);
+    uint16_t samples[256];
+    uint16_t *decoded;
+    size_t n_decoded, flight_total = 0;
+    unsigned level = 2000, seed = 1;
+    for (int p = 0; p < 40 && ok; p++) {
+        for (int i = 0; i < 256; i++) {
+            seed = seed * 1103515245u + 12345u;
+            samples[i] = (uint16_t)(level + (seed >> 16) % 7);
+        }
+        if (check(sedge_flight_compress(ftx, samples, 256, &packed, &packed_len), "flight compress") ||
+            check(sedge_flight_decompress(frx, packed, packed_len, &decoded, &n_decoded), "flight decompress"))
+            return 1;
+        ok = n_decoded == 256 && memcmp(decoded, samples, sizeof samples) == 0;
+        flight_total += packed_len;
+        sedge_free(packed, packed_len);
+        sedge_free_samples(decoded, n_decoded);
+    }
+    printf("flight: 40 packets x 256 samples (12-bit, %d bytes raw) -> %zu bytes, %s\n", 40 * 256 * 12 / 8,
+           flight_total, ok ? "all verified" : "MISMATCH");
+    sedge_flight_free(ftx);
+    sedge_flight_free(frx);
     return ok ? 0 : 1;
 }

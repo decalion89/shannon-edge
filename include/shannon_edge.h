@@ -68,6 +68,18 @@ int32_t sedge_session_decompress(SedgeSession *s, const uint8_t *data, size_t le
                                  size_t *out_len);
 void sedge_session_free(SedgeSession *s);
 
+/* Flight profile: small integer-only codec for telemetry samples (1..16 bits),
+ * both ends learning from every packet, lean frames (no CRC: the link layer
+ * must guarantee integrity and order). Memory ~12 * 2^table_bits bytes. */
+typedef struct SedgeFlight SedgeFlight;
+SedgeFlight *sedge_flight_new(uint32_t bits, uint32_t table_bits);
+int32_t sedge_flight_compress(SedgeFlight *s, const uint16_t *samples, size_t n, uint8_t **out,
+                              size_t *out_len);
+int32_t sedge_flight_decompress(SedgeFlight *s, const uint8_t *data, size_t len, uint16_t **out,
+                                size_t *out_n);
+void sedge_free_samples(uint16_t *p, size_t n);
+void sedge_flight_free(SedgeFlight *s);
+
 #ifdef __cplusplus
 }
 #endif

@@ -118,6 +118,30 @@ class Sessions(unittest.TestCase):
             self.assertEqual(rx.decompress(tx.compress(r)), r)
 
 
+class Flight(unittest.TestCase):
+    def test_flight_roundtrip_and_ratio(self):
+        r = random.Random(3)
+        level, samples = 2000, []
+        for i in range(20_000):
+            if r.random() < 0.001:
+                level = r.randrange(4096)
+            samples.append(max(0, min(4095, level + r.randrange(-3, 4))))
+        tx, rx = se.FlightSession(12), se.FlightSession(12)
+        total = 0
+        for i in range(0, len(samples), 256):
+            packet = samples[i:i + 256]
+            frame = tx.compress(packet)
+            total += len(frame)
+            self.assertEqual(rx.decompress(frame), packet)
+        self.assertLess(total, len(samples) * 12 // 8 // 3)
+
+    def test_flight_rejects_bad_input(self):
+        with self.assertRaises(se.SedgeError):
+            se.FlightSession(0)
+        with self.assertRaises(se.SedgeError):
+            se.FlightSession(8).compress([256])
+
+
 if __name__ == "__main__":
     print("shannon-edge", se.version())
     unittest.main()
