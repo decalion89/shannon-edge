@@ -23,6 +23,7 @@ pub mod flight;
 mod math;
 mod model;
 pub mod packet;
+pub mod packet_fast;
 pub mod train;
 
 use coder::{Decoder, Encoder};

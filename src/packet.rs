@@ -331,15 +331,18 @@ impl PacketSession {
         let above = self.above[k] as u64;
         let above2 = self.cols[k].above2 as u64;
         let col = k as u64 + 1;
+        // Context hashes, computed once per byte.
+        let ca = h2(col, above + 1);
+        let ctx = [col, ca, h2(ca, above2 + 7), h2(ca, left as u64 + 3)];
         let mut node = 1u32;
         let mut total = 0;
         for i in (0..8).rev() {
             let n = node as u64;
             let s = [
-                self.t[0].slot(h2(col, n)),
-                self.t[1].slot(h2(h2(col, above + 1), n)),
-                self.t[2].slot(h2(h2(h2(col, above + 1), above2 + 7), n)),
-                self.t[3].slot(h2(h2(h2(col, above + 1), left as u64 + 3), n)),
+                self.t[0].slot(h2(ctx[0], n)),
+                self.t[1].slot(h2(ctx[1], n)),
+                self.t[2].slot(h2(ctx[2], n)),
+                self.t[3].slot(h2(ctx[3], n)),
             ];
             let x = [
                 stretch(self.t[0].t[s[0]].p12() as i32),

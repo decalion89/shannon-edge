@@ -116,6 +116,13 @@ signalled in the stream), and `golden_packet_v2_stream_is_stable` pins it.
 Key packets and epochs (`with_key_interval`, `with_epochs`, `prime`) change
 the coded bytes and must also match on both ends.
 
+The fast packet profile (`packet_fast::FastPacketSession`) uses the same
+framing (one payload per packet, minimal flush, no header) with its own
+model; `golden_fast_stream_is_stable` pins it. Changed bytes are coded as
+multi-symbol ranges on the binary coder's interval (`encode_freq`); when
+the interval is narrower than the frequency total, both ends fall back to
+eight bits at probability 1/2.
+
 ## Primed-model files (`.sedgem`)
 
 A saved `PrimedModel`: the model state after reading a dictionary. It is a

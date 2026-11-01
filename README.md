@@ -302,6 +302,7 @@ codes the packets **one by one, as they arrive**; every packet verified:
 | **sedge packet profile v2, tables 2^12** | **372 KiB** | **3,350,925** | 4.06× | **−36.7%** |
 | sedge packet profile v2, tables 2^14 | 648 KiB | 3,251,718 | 4.18× | −38.5% |
 | **sedge packet profile v2, tables 2^18** | 6.0 MiB | **2,999,548** | **4.54×** | **−43.3%** |
+| **sedge fast packet profile** (~50 MB/s, ~1.9x CCSDS 124's speed) | 283 KiB | **3,845,622** | 3.54× | **−27.3%** |
 
 **The packet profile** (`shannon_edge::packet::PacketSession`) is the
 flight-class answer: integer-only, golden-pinned, one coder per packet, no
@@ -323,6 +324,14 @@ equal memory it is smaller and about twice as fast as v1; it is slightly
 worse during the first ~100 packets and on streams where many columns
 change at random in every packet. Details and the variants that failed:
 [`packet_v2.md`](bench/results/packet_v2.md).
+
+**The fast profile** (`packet_fast::FastPacketSession`) trades some
+compression for speed: one cheap "same?" decision per byte and a single
+adaptive symbol (the delta) per changed byte. Measured in-process on the
+same core, it compresses at ~50 MB/s against ~26 MB/s for the open
+CCSDS 124 implementation, while being 27% smaller — the first sedge codec
+that beats CCSDS 124 on both size and speed (with 283 KiB of memory
+instead of a few hundred bytes; [`packet_fast.md`](bench/results/packet_fast.md)).
 
 The idea came from a clue in the data: on the whole file, xz (4.0 MB) beat
 sedge (4.3 MB), so sedge was ignoring structure — the column, which POCKET+
@@ -540,6 +549,7 @@ The file format is specified in [`docs/FORMAT.md`](docs/FORMAT.md).
 | `bench/streams.py`, `examples/session_bench.rs` | Record streams: sedge sessions vs zstd streaming |
 | `bench/telemetry.py` | ESA spacecraft telemetry: sedge vs CCSDS 121 and zstd |
 | `src/packet.rs`, `examples/packet_bench.rs` | Packet profile for fixed-length housekeeping packets |
+| `src/packet_fast.rs`, `examples/packet_fast_bench.rs` | Fast packet profile: one decision per byte, one symbol per changed byte |
 | `examples/packet_robust.rs` | Packet profile under simulated packet loss (key packets, epochs, priming) |
 | `src/fec.rs`, `examples/packet_fec.rs` | Packet-level Reed–Solomon erasure code; packet profile + erasure code under loss |
 | `bench/c/ccsds124_loss.c` | CCSDS 124 under the same simulated loss (open C implementation) |

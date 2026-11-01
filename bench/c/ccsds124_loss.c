@@ -17,10 +17,12 @@
  *   ccsds124_loss PACKETS.bin PACKET_LEN SKIP PT FT RT R LOSS_PER_MILLE [SIZES_OUT]
  * SKIP packets at the start are excluded (the "history" of packet_robust).
  */
+#define _POSIX_C_SOURCE 199309L
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "ccsds124.h"
 
@@ -62,6 +64,8 @@ int main(int argc, char **argv) {
     packet_t *pk = calloc(n, sizeof *pk);
     size_t total = 0;
     FILE *sizes = argc > 9 ? fopen(argv[9], "w") : NULL;
+    struct timespec t0, t1;
+    double busy = 0.0; /* time inside the compressor only */
     for (size_t i = 0; i < n; i++) {
         bitvector_t v;
         bitbuffer_t out;
@@ -83,7 +87,10 @@ int main(int argc, char **argv) {
             else { comp.rt_counter--; p.uncompressed_flag = 0; }
             if (i <= (size_t)r) { p.send_mask_flag = 1; p.uncompressed_flag = 1; p.new_mask_flag = 0; }
         }
+        clock_gettime(CLOCK_MONOTONIC, &t0);
         if (ccsds124_compress_packet(&comp, &v, &out, &p) != CCSDS124_OK) return 1;
+        clock_gettime(CLOCK_MONOTONIC, &t1);
+        busy += (double)(t1.tv_sec - t0.tv_sec) + 1e-9 * (double)(t1.tv_nsec - t0.tv_nsec);
         pk[i].bits = out.num_bits;
         pk[i].data = malloc((out.num_bits + 7) / 8 + 1);
         size_t bytes = bitbuffer_to_bytes(&out, pk[i].data, (out.num_bits + 7) / 8 + 1);
@@ -111,9 +118,9 @@ int main(int argc, char **argv) {
         correct += ok;
         if (rc == CCSDS124_OK) { guaranteed++; wrong_guaranteed += !ok; }
     }
-    printf("R=%d pt=%d ft=%d rt=%d: %zu packets, %zu bytes; loss %llu/1000: "
+    printf("R=%d pt=%d ft=%d rt=%d: %zu packets, %zu bytes, compress %.1f MB/s; loss %llu/1000: "
            "correct %.2f%%, guaranteed %.2f%%, guaranteed-but-wrong %zu\n",
-           r, pt, ft, rt, n, total, (unsigned long long)loss, 100.0 * correct / n,
-           100.0 * guaranteed / n, wrong_guaranteed);
+           r, pt, ft, rt, n, total, (double)(n * plen) / busy / 1e6, (unsigned long long)loss,
+           100.0 * correct / n, 100.0 * guaranteed / n, wrong_guaranteed);
     return 0;
 }

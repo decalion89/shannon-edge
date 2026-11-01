@@ -14,10 +14,47 @@
 //!
 //! CCSDS_SIZES (optional): the per-packet sizes of CCSDS 124 on the same
 //! test packets (`bench/c/ccsds124_loss.c`), to report its size with the
-//! same erasure code. Set SEDGE_PACKET_V2=1 for version 2 of the profile.
+//! same erasure code. Set SEDGE_PACKET_V2=1 for version 2 of the profile,
+//! SEDGE_PACKET_FAST=1 for the fast profile (`packet_fast`).
 
 use shannon_edge::fec;
 use shannon_edge::packet::PacketSession;
+use shannon_edge::packet_fast::FastPacketSession;
+use shannon_edge::Error;
+
+/// Either packet profile, behind one interface.
+#[derive(Clone)]
+enum Codec {
+    Cm(Box<PacketSession>),
+    Fast(FastPacketSession),
+}
+
+impl Codec {
+    fn prime(&mut self, packets: &[&[u8]]) {
+        match self {
+            Codec::Cm(s) => s.prime(packets.iter().copied()),
+            Codec::Fast(s) => s.prime(packets.iter().copied()),
+        }
+    }
+    fn with_epochs(self, every: u64) -> Self {
+        match self {
+            Codec::Cm(s) => Codec::Cm(Box::new(s.with_epochs(every))),
+            Codec::Fast(s) => Codec::Fast(s.with_epochs(every)),
+        }
+    }
+    fn compress(&mut self, p: &[u8]) -> Vec<u8> {
+        match self {
+            Codec::Cm(s) => s.compress(p),
+            Codec::Fast(s) => s.compress(p),
+        }
+    }
+    fn decompress_indexed(&mut self, i: u64, p: &[u8]) -> Result<Vec<u8>, Error> {
+        match self {
+            Codec::Cm(s) => s.decompress_indexed(i, p),
+            Codec::Fast(s) => s.decompress_indexed(i, p),
+        }
+    }
+}
 
 struct Rng(u64);
 impl Rng {
@@ -54,22 +91,29 @@ fn main() {
     let (history, test) = packets.split_at(packets.len() / 10);
 
     let v2 = std::env::var_os("SEDGE_PACKET_V2").is_some();
-    let mut base = if v2 {
-        PacketSession::v2(len, tb)
+    let fast = std::env::var_os("SEDGE_PACKET_FAST").is_some();
+    let mut base = if fast {
+        Codec::Fast(FastPacketSession::new(len))
+    } else if v2 {
+        Codec::Cm(Box::new(PacketSession::v2(len, tb)))
     } else {
-        PacketSession::new(len, tb)
+        Codec::Cm(Box::new(PacketSession::new(len, tb)))
     };
-    base.prime(history.iter().copied());
+    base.prime(history);
     let make = || base.clone().with_epochs(EPOCH);
     let mut tx = make();
     let payloads: Vec<Vec<u8>> = test.iter().map(|p| tx.compress(p)).collect();
     let size: usize = payloads.iter().map(Vec::len).sum();
     let sizes: Vec<usize> = payloads.iter().map(Vec::len).collect();
     println!(
-        "test {} packets ({} bytes), tables 2^{tb}{}, primed, epochs of {EPOCH}: {size} bytes without parity",
+        "test {} packets ({} bytes), {}, primed, epochs of {EPOCH}: {size} bytes without parity",
         test.len(),
         test.len() * len,
-        if v2 { ", v2" } else { "" }
+        if fast {
+            "fast profile".to_string()
+        } else {
+            format!("tables 2^{tb}{}", if v2 { ", v2" } else { "" })
+        }
     );
     print!("| Group G | Parity m | sedge + parity: bytes |");
     if ccsds.is_some() {

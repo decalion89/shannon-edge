@@ -38,6 +38,29 @@ impl Encoder {
         }
     }
 
+    /// Encode a symbol occupying `[cum, cum + freq)` of `total` (multi-symbol
+    /// coding on the same interval; `total` at most 2^16). Returns `false`,
+    /// coding nothing, if the current interval is narrower than `total`:
+    /// both ends see the same interval, so the caller then codes the symbol
+    /// another way (e.g. bit by bit).
+    #[inline]
+    pub fn encode_freq(&mut self, cum: u32, freq: u32, total: u32) -> bool {
+        let w = (self.x2 - self.x1) as u64 + 1;
+        if w < total as u64 {
+            return false;
+        }
+        let lo = self.x1 + (w * cum as u64 / total as u64) as u32;
+        let hi = self.x1 + (w * (cum + freq) as u64 / total as u64 - 1) as u32;
+        self.x1 = lo;
+        self.x2 = hi;
+        while (self.x1 ^ self.x2) & 0xff00_0000 == 0 {
+            self.out.push((self.x2 >> 24) as u8);
+            self.x1 <<= 8;
+            self.x2 = (self.x2 << 8) | 0xff;
+        }
+        true
+    }
+
     /// Flush the final state and return the encoded bytes.
     pub fn finish(mut self) -> Vec<u8> {
         // Any value in [x1, x2] identifies the stream; emit x1 in full.
@@ -107,6 +130,35 @@ impl<'a> Decoder<'a> {
         let b = self.input.get(self.pos).copied().unwrap_or(0);
         self.pos += 1;
         b as u32
+    }
+
+    /// Multi-symbol decoding, step 1: the cumulative count the next symbol
+    /// covers (`cum <= v < cum + freq`), or `None` if the interval is
+    /// narrower than `total` (see [`Encoder::encode_freq`]).
+    #[inline]
+    pub fn decode_target(&self, total: u32) -> Option<u32> {
+        let w = (self.x2 - self.x1) as u64 + 1;
+        if w < total as u64 {
+            return None;
+        }
+        let y = self.x.wrapping_sub(self.x1) as u64;
+        Some((((y + 1) * total as u64 - 1) / w).min(total as u64 - 1) as u32)
+    }
+
+    /// Multi-symbol decoding, step 2: consume the symbol found for the
+    /// target (same arguments as the encoder's `encode_freq`).
+    #[inline]
+    pub fn decode_freq(&mut self, cum: u32, freq: u32, total: u32) {
+        let w = (self.x2 - self.x1) as u64 + 1;
+        let lo = self.x1 + (w * cum as u64 / total as u64) as u32;
+        let hi = self.x1 + (w * (cum + freq) as u64 / total as u64 - 1) as u32;
+        self.x1 = lo;
+        self.x2 = hi;
+        while (self.x1 ^ self.x2) & 0xff00_0000 == 0 {
+            self.x1 <<= 8;
+            self.x2 = (self.x2 << 8) | 0xff;
+            self.x = (self.x << 8) | self.next_byte();
+        }
     }
 
     /// Decode one bit given the same 12-bit probability the encoder used.
