@@ -232,3 +232,24 @@ relevant one. Still not measured: cycles on real NOEL-V or LEON hardware
 (caches, multiply/divide latency), and the learned-layout variant on
 RISC-V. RV64 has hardware 64-bit division, so `encode_freq` is not a
 problem there; on 32-bit LEON3 it would be.
+
+### Two speed ideas that did not pay (recorded)
+
+* **Code the change mask as a whole.** A packet's change mask (which
+  bytes differ from the previous packet) is rarely repeated (55,449
+  distinct masks in 151,199 packets; even a 256-entry cache finds only
+  19%), but it differs from the previous mask in only ~6 of 90 positions.
+  Coding just those flips as gaps would replace ~90 decisions by ~6
+  symbols, but loses the per-column probabilities: 416,178 bytes (gaps in
+  a ground-learned column order) or 519,888 (natural order) against
+  ~260,000 for the per-column decisions on the test packets, about +5% in
+  total. With coding classes, only ~31 columns still pay a decision, so
+  the remaining speed-up would be small.
+* **Learn in batches.** Counting with one increment and rebuilding a
+  coding table normalised to 2^15 every few symbols removes both 64-bit
+  divisions and the Fenwick walks from the encoder (the interval is scaled
+  by a shift). But rebuilding a 255-symbol table costs about what the tree
+  saved: rebuilding every 16 symbols ran no faster than the Fenwick
+  version and was +0.27% larger (3,855,796 bytes); every 32 symbols,
+  somewhat faster but +0.46%. For 256-symbol alphabets updated at this
+  rate, the Fenwick tree is already close to the best.
