@@ -105,3 +105,59 @@ that is at least as good as a strong general compressor on normal beats.
 Two hand-built codes failed. A plausible route, not tried, is to build the
 template into the general model itself, as a context of the flight
 profile, so that Q ⊇ R by construction.
+
+## Third attempt: a beat-shape code and the per-sample bound (`--design kraft`)
+
+There is no second code this time. The beat-shape code Q of the delta
+design (shift 0, so strictly sequential) is used on its own. A sample
+alarms when its cost under Q reaches b + t bits (b = 11). The Kraft bound
+needs only that Q is not overconfident. A model that *expects* the normal
+shape turns a deformed beat into per-sample surprise. Q's residual law is a
+Laplace with a small wide component of weight w (8x the scale) for heavy
+tails.
+
+**Protocol.** The first exploratory runs looked at all 44 records. From
+then on, the standard inter-patient split of de Chazal et al. (2004) was
+used. w and t were chosen on DS1 (22 records) and DS2 (22 records) was
+evaluated once.
+
+* DS1, t = 8: w = 0 flags 64% of VEB at 5.5% normal-beat FPR, but it is
+  overconfident. w = 0.05 is calibrated but blind (1% of VEB).
+* w = 1e-4 was chosen: it matches w = 0 in power (63.5% VEB, 4.9% FPR)
+  and stays within the bound.
+
+**DS2, held out, evaluated once:**
+
+| t (bits) | Abnormal beats flagged (sensitivity) | SVEB | VEB | F | Normal beats flagged (FPR) | False beat alarms per hour | Bound: beats * 2^-t |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| auto (ceil log2 beats per record) | 0.001 (4/5453) | 0.000 (0/1837) | 0.001 (4/3221) | 0.000 (0/388) | 0.0000 (1/44259) | 0.09 | 22.0 |
+| 8 | 0.541 (2951/5453) | 0.023 (43/1837) | 0.854 (2752/3221) | 0.394 (153/388) | 0.0265 (1173/44259) | 106.31 | 55,859.4 |
+
+* **t = 8, no training, no data from any other patient: 85.4% of
+  ventricular beats are flagged, with 2.65% of normal beats flagged.**
+  For orientation only: de Chazal et al.'s *supervised* classifier,
+  trained on DS1, reported VEB sensitivity 77.7% and positive
+  predictivity 81.9% on DS2. Ours flags "abnormal", not a class, so the
+  two are not directly comparable. Our VEB positive predictivity is about
+  0.67.
+* Supraventricular beats are not seen (2%). Their shape is normal; what is
+  abnormal is their timing, which this code does not model.
+* With t = auto, a guarantee of one expected false alarm per record, it is
+  blind (4 of 5,453).
+
+**Why a strict guarantee is blind here: the rarity limit.** In the
+records rich in ventricular beats, they are not rare: 34% of beats in 208,
+32% in 200, 27% in 233, 26% in 106, 22% in 119 and 15% in 203. A calibrated
+adaptive model learns them, and assigns each one roughly the probability of
+its frequency. A sample that recurs at frequency f cannot cost much more
+than log₂(1/f) plus the bits of its shape. So a detector that guarantees
+false-alarm rate α can only flag events that are about as rare as α, under
+the patient's own law. Clinical abnormality is defined by medical
+knowledge, not by rarity. **A training-free statistical guarantee and a
+clinical definition of abnormal are different targets.** A frequent
+abnormality can be detected only by a code that has *not* learned it,
+which means bringing in prior knowledge of what a normal beat is.
+
+Where that is acceptable, a loose bound at t = 8 gives a useful,
+training-free detector of ventricular beats. That bound allows up to
+N·2^-8 false sample-alarms, and observed false alarms are far below it.

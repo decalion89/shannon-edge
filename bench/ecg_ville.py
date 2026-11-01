@@ -24,6 +24,13 @@ sample by the mean change at the same offset over the last 8 unflagged
 beats (insensitive to baseline wander), with a per-offset Laplace scale
 from those beats' residuals. It picks the best alignment shift in -2..2
 and pays log2(5) bits to signal it (a two-part code, still a valid code).
+
+--design kraft (third attempt): no second code. The beat-shape code Q of the
+delta design (shift 0, so purely sequential) is used alone, and a sample
+alarms when its cost under Q reaches b + t bits, b = 11 (the ADC width).
+By the Kraft bound this needs only that Q is not overconfident, not that it
+beats a general code. A beat is flagged if any of its samples alarms.
+t = auto: ceil(log2(samples in the record)).
 """
 import argparse
 import sys
@@ -45,6 +52,16 @@ def laplace_bits(r: np.ndarray, s: float) -> np.ndarray:
 
 
 K_BEATS, SHIFTS, MAXLEN = 8, (-2, -1, 0, 1, 2), 720
+TAIL = 0.0
+DS1 = set("101 106 108 109 112 114 115 116 118 119 122 124 201 203 205 207 208 209 215 220 223 230".split())
+DS2 = set("100 103 105 111 113 117 121 123 200 202 210 212 213 214 219 221 222 228 231 232 233 234".split())
+
+
+def mix_bits(r, s):
+    """-log2 of (1 - TAIL) Laplace(s) + TAIL Laplace(8 s)."""
+    if TAIL == 0:
+        return laplace_bits(r, s)
+    return -np.log2((1 - TAIL) * 2.0 ** -laplace_bits(r, s) + TAIL * 2.0 ** -laplace_bits(r, 8 * s))
 
 
 def delta_design(x, pos, cost_r, tt):
@@ -98,13 +115,62 @@ def delta_design(x, pos, cost_r, tt):
     return flagged
 
 
+def kraft_design(x, pos, tt, b):
+    """Per-sample Kraft alarms under the beat-shape code (delta design, shift 0)."""
+    d = np.diff(x, prepend=x[:1])
+    flagged = np.zeros(len(pos), bool)
+    hist_d, hist_r = [], []
+    n_alarm = 0
+    for j in range(len(pos) - 1):
+        lo, hi = pos[j] - PRE, pos[j + 1] - PRE
+        if lo < 2:
+            continue
+        n = min(hi - lo, MAXLEN)
+        idx = np.arange(lo, lo + n)
+        seg = np.full(MAXLEN, np.nan)
+        seg[:n] = d[idx]
+        if len(hist_d) < 2:
+            hist_d.append(seg)
+            hist_r.append(np.full(MAXLEN, np.nan))
+            continue
+        tmpl = np.nanmean(np.array(hist_d[-K_BEATS:]), axis=0)[:n]
+        rs = np.abs(np.array(hist_r[-K_BEATS:]))
+        with np.errstate(all="ignore"):
+            scale = np.nanmean(rs, axis=0)[:n] if np.isfinite(rs).any() else np.full(n, 8.0)
+        scale = np.where(np.isfinite(scale), np.maximum(scale, 1.0), 8.0)
+        pred = np.where(np.isfinite(tmpl), tmpl, 0.0)
+        res = np.round(d[idx] - pred)
+        cost = mix_bits(res, scale)
+        alarm = cost >= b + tt
+        n_alarm += int(alarm.sum())
+        if alarm.any():
+            flagged[j] = True
+        else:
+            hist_d.append(seg)
+            rr = np.full(MAXLEN, np.nan)
+            rr[:n] = res
+            hist_r.append(rr)
+            if len(hist_d) > K_BEATS:
+                hist_d.pop(0)
+                hist_r.pop(0)
+    return flagged, n_alarm
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("mitdb", type=Path)
     ap.add_argument("--t", nargs="+", default=["auto"])
-    ap.add_argument("--design", choices=["template", "delta"], default="template")
+    ap.add_argument("--design", choices=["template", "delta", "kraft"], default="template")
+    ap.add_argument("--split", choices=["all", "DS1", "DS2"], default="all",
+                    help="de Chazal et al. (2004) inter-patient split: develop on DS1, report DS2 once")
+    ap.add_argument("--tail", type=float, default=0.0,
+                    help="kraft design: weight of a wide Laplace component (8x the scale) mixed into Q")
     args = ap.parse_args()
     records = [r for r in (args.mitdb / "RECORDS").read_text().split() if r not in PACED]
+    if args.split != "all":
+        records = [r for r in records if r in (DS1 if args.split == "DS1" else DS2)]
+    global TAIL
+    TAIL = args.tail
     tot = {t: Counter() for t in args.t}
     for rec in records:
         r = wfdb.rdrecord(str(args.mitdb / rec), physical=False)
@@ -116,8 +182,14 @@ def main() -> None:
         normal = np.array([sym in NORMAL for _, sym in beats])
         for t in args.t:
             tt = float(np.ceil(np.log2(len(pos)))) if t == "auto" else float(t)
-            if args.design == "delta":
-                flagged = delta_design(x, pos, cost_r, tt)
+            if args.design in ("delta", "kraft"):
+                if args.design == "kraft":
+                    tt = float(np.ceil(np.log2(len(x)))) if t == "auto" else float(t)
+                    flagged, n_alarm = kraft_design(x, pos, tt, 11)
+                    tot[t]["alarm_samples"] += n_alarm
+                    tot[t]["samples"] += len(x)
+                else:
+                    flagged = delta_design(x, pos, cost_r, tt)
                 c = tot[t]
                 for (s, sym), f in zip(beats, flagged):
                     c[f"{AAMI[sym]}_n"] += 1
@@ -166,6 +238,8 @@ def main() -> None:
         ab_h = sum(c[f"{k}_hit"] for k in ("SVEB", "VEB", "F", "Q"))
         sens = lambda k: f"{c[k + '_hit'] / c[k + '_n']:.3f} ({c[k + '_hit']}/{c[k + '_n']})" if c[k + "_n"] else "-"
         bound = len(records) if t == "auto" else c["beats"] * 2.0 ** -float(t)
+        if args.design == "kraft":
+            bound = len(records) if t == "auto" else c["samples"] * 2.0 ** -float(t)
         print(f"| {'auto (ceil log2 beats per record)' if t == 'auto' else t} | {ab_h / ab_n:.3f} ({ab_h}/{ab_n}) | "
               f"{sens('SVEB')} | {sens('VEB')} | {sens('F')} | {c['N_hit'] / c['N_n']:.4f} ({c['N_hit']}/{c['N_n']}) | "
               f"{c['fp'] / c['hours']:.2f} | {bound:,.1f} |")
