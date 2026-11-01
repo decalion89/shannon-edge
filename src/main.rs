@@ -49,6 +49,10 @@ OPTIONS:
                      larger than this are split into independent blocks that
                      compress and decompress on all cores. Smaller blocks =
                      more speed, slightly worse ratio. 0 = never split.
+    -r <bytes>       Record length for data made of fixed-length records
+                     (telemetry packets, table rows, scanlines): enables
+                     column contexts. Default: detected automatically;
+                     -r 0 disables it.
     -t <n>           Worker threads (default: all cores). Each thread holds
                      its own model, so memory grows with the thread count.
     --budget <bytes> Dictionary size for 'train'.
@@ -69,6 +73,7 @@ struct Args {
     model: Option<String>,
     budget: usize,
     lines: bool,
+    record_len: Option<usize>,
     force: bool,
 }
 
@@ -84,6 +89,7 @@ fn parse_args() -> Result<Option<Args>, String> {
     let mut model = None;
     let mut budget = shannon_edge::train::TrainOptions::default().budget;
     let mut lines = false;
+    let mut record_len = None;
     let mut force = false;
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -124,6 +130,10 @@ fn parse_args() -> Result<Option<Args>, String> {
                     .map_err(|_| "--budget must be a number of bytes")?;
             }
             "--lines" => lines = true,
+            "-r" => {
+                let v = it.next().ok_or("-r needs a value")?;
+                record_len = Some(v.parse().map_err(|_| "-r must be a number of bytes")?);
+            }
             "-f" => force = true,
             _ if command.is_none() => command = Some(a),
             _ => inputs.push(a),
@@ -143,6 +153,7 @@ fn parse_args() -> Result<Option<Args>, String> {
         model,
         budget,
         lines,
+        record_len,
         force,
     }))
 }
@@ -192,6 +203,7 @@ fn run(args: Args) -> Result<(), String> {
         mem_bits: args.mem_bits,
         block_size: args.block_size,
         threads: args.threads,
+        record_len: args.record_len,
     };
     let knowledge = match (&args.dict, &args.model) {
         (Some(_), Some(_)) => return Err("use either -D or -M, not both".into()),

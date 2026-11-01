@@ -28,19 +28,21 @@ the best result in each row is in bold.
 | cp.html | 24,603 | 7,940 | 7,624 | 7,652 | 7,713 | 6,894 | **6,485** |
 | fields.c | 11,150 | 3,115 | 3,039 | 3,032 | 3,015 | 2,717 | **2,461** |
 | grammar.lsp | 3,721 | 1,222 | 1,283 | 1,292 | 1,211 | 1,124 | **1,019** |
-| kennedy.xls | 1,029,744 | 207,029 | 130,280 | 51,868 | 64,825 | 61,498 | **41,244** |
+| kennedy.xls | 1,029,744 | 207,029 | 130,280 | 51,868 | 64,825 | 61,498 | **22,050** |
 | lcet10.txt | 426,754 | 144,439 | 107,706 | 119,488 | 121,336 | 113,416 | **91,658** |
 | plrabn12.txt | 481,861 | 194,332 | 145,577 | 165,456 | 167,438 | 163,267 | **129,350** |
-| ptt5 | 513,216 | 52,221 | 49,759 | **39,860** | 43,640 | 40,939 | 44,755 |
+| ptt5 | 513,216 | 52,221 | 49,759 | 39,860 | 43,640 | 40,939 | **31,866** |
 | sum | 38,240 | 12,838 | 12,909 | **9,500** | 11,107 | 10,144 | 10,147 |
 | xargs.1 | 4,227 | 1,736 | 1,762 | 1,812 | 1,724 | **1,464** | 1,483 |
-| **Total** | 2,810,784 | 727,820 (25.9%) | 542,710 (19.3%) | 493,080 (17.5%) | 516,357 (18.4%) | 490,662 (17.5%) | **401,417 (14.3%)** |
+| **Total** | 2,810,784 | 727,820 (25.9%) | 542,710 (19.3%) | 493,080 (17.5%) | 516,357 (18.4%) | 490,662 (17.5%) | **369,334 (13.1%)** |
 
-`sedge` wins 8 of 11 files and the total: its output is **18% smaller than
-the best competitor** (brotli -11). It still loses on a fax image (`ptt5`)
-and a SPARC executable (`sum`), which need 2-D and record models (Phase 2),
-and on `xargs.1`, where brotli's built-in English dictionary — shared
-knowledge — pays off (Phase 3).
+`sedge` wins 9 of 11 files and the total: its output is **25% smaller than
+the best competitor** (brotli -11). On `kennedy.xls` (a spreadsheet) and
+`ptt5` (a fax image) the **record model** switches on by itself: it detects
+fixed-length records (13-byte spreadsheet records, 216-byte scanlines) and
+predicts each byte from the same column of the previous record — 57% below
+xz on `kennedy.xls`. It still loses on a SPARC executable (`sum`) and on
+`xargs.1`, where brotli's built-in English dictionary pays off.
 
 ### enwik8 (first 100 MB of English Wikipedia, the Hutter Prize data)
 
@@ -277,6 +279,34 @@ flight CPU with room to spare — still an estimate until it is timed on
 flight-class hardware. `examples/telemetry_lite.rs` keeps the floating-point
 research prototype and `examples/flight_bench.rs` reproduces the table.
 
+### vs CCSDS 124 (POCKET+), the housekeeping-telemetry standard
+
+CCSDS 124.0-B-1, based on ESA's POCKET+, is the CCSDS standard for
+fixed-length housekeeping packets (adopted 2023; flown on OPS-SAT). Its
+public test vectors include **real Venus Express housekeeping telemetry**
+and the output of the ESA reference implementation, so the comparison
+needs none of its code: the CCSDS 124 size is read from the reference
+output, and sedge codes the same 151,200 packets **one by one, as they
+arrive**, every packet verified:
+
+| Venus Express, 90-byte packets, packet by packet | Bytes | Ratio | vs CCSDS 124 |
+|---|---:|---:|---:|
+| CCSDS 124 / POCKET+ (ESA reference output, robustness R=2) | 5,891,500 | 2.31× | — |
+| zstd -19, streaming, flushed per packet | 8,236,002 | 1.65× | +39.8% |
+| sedge lean session | 4,687,459 | 2.90× | −20.4% |
+| **sedge lean session + record model** | **3,202,177** | **4.25×** | **−45.6%** |
+
+The record model came from a clue in the data: on the whole file, xz
+(4.0 MB) beat sedge (4.3 MB), which meant sedge was ignoring structure. The
+missing structure was the column: byte *k* of a packet is best predicted by
+byte *k* of the previous packet — which is exactly what POCKET+ exploits
+with bit masks. Adding two column contexts brought the whole file to
+2.87 MB (−29% vs xz) and the packet-by-packet session to −45.6% vs the
+standard. Caveats: the reference output uses robustness R=2 (a little
+redundancy to survive lost packets; lean sedge frames have none, and a
+lost packet desynchronises sedge), and POCKET+ is designed for far weaker
+CPUs than sedge's full model needs. Reproduce with `bench/ccsds124.py`.
+
 ### A whole mission: 14 years of a satellite's life
 
 `bench/mission.py` runs **every channel** of ESA-AD Mission 1 — 75 channels
@@ -351,6 +381,7 @@ cargo build --release
 ./target/release/sedge bench      file1 file2 ...    # ratio + speed, verified
 ./target/release/sedge compress   big.log -b 0 -m 24 # max ratio: one block, more memory
 ./target/release/sedge compress   big.log -t 2       # limit to 2 threads
+./target/release/sedge compress   packets.bin -r 90  # force 90-byte records (auto by default)
 ./target/release/sedge train samples/*.json -o samples.dict    # distil samples into a dictionary
 ./target/release/sedge compress   msg.json -D samples.dict   # shared-knowledge dictionary
 ./target/release/sedge decompress msg.json.sedge -D samples.dict
@@ -456,6 +487,7 @@ The file format is specified in [`docs/FORMAT.md`](docs/FORMAT.md).
 | `bench/small_messages.py` | Many small records: sedge vs zstd with a trained dictionary |
 | `bench/streams.py`, `examples/session_bench.rs` | Record streams: sedge sessions vs zstd streaming |
 | `bench/telemetry.py` | ESA spacecraft telemetry: sedge vs CCSDS 121 and zstd |
+| `bench/ccsds124.py` | Venus Express packets vs CCSDS 124 / POCKET+ reference output |
 | `bench/mission.py`, `bench/results/` | Every channel of an ESA mission through CCSDS 121 and the flight profile |
 | `bench/anomaly.py`, `examples/flight_surprise.rs` | Anomaly detection from the compressor's surprise (ESA labels) |
 | `docs/THEORY.md` | The limits, with proofs, and how to move them honestly |

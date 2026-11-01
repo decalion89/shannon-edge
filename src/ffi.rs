@@ -344,6 +344,23 @@ pub unsafe extern "C" fn sedge_session_new(
     Box::into_raw(Box::new(SedgeSession(s)))
 }
 
+/// Turn on the record model for fixed-length records of `len` bytes (e.g.
+/// fixed-size telemetry packets). Only for a fresh session started without
+/// a model; both sides must call it with the same length.
+///
+/// # Safety
+/// `session` valid.
+#[no_mangle]
+pub unsafe extern "C" fn sedge_session_set_record_len(
+    session: *mut SedgeSession,
+    len: usize,
+) -> i32 {
+    if session.is_null() || !(*session).0.set_record_len(len) {
+        return SEDGE_E_ARGUMENT;
+    }
+    SEDGE_OK
+}
+
 /// Compress the next record of a session (and learn from it).
 ///
 /// # Safety

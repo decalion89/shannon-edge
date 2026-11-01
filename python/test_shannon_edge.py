@@ -110,6 +110,14 @@ class Sessions(unittest.TestCase):
             self.assertLess(len(frame), len(full.compress(r)))
             self.assertEqual(rx.decompress(frame), r)
 
+    def test_record_session(self):
+        packets = [bytes([i % 256, 7, 7, (i * 3) % 256, 42, 42, 0, 1]) for i in range(500)]
+        tx, rx = se.Session(mem_bits=16, record_len=8), se.Session(mem_bits=16, record_len=8)
+        for p in packets:
+            self.assertEqual(rx.decompress(tx.compress(p)), p)
+        with self.assertRaises(se.SedgeError):
+            se.Session(se.PrimedModel(b"x" * 100, mem_bits=16), record_len=8)
+
     def test_session_from_model(self):
         dictionary = b"".join(events(300, seed=2))
         model = se.PrimedModel(dictionary, mem_bits=18)

@@ -106,8 +106,13 @@ v0.1 single core: ~0.5 MiB/s. Target: 10× without losing ratio, then more.
       3,520 labelled events: 2,173 found at 0.1% false alarms vs 1,696
       (z-score) and 1,322 (jump); 1,527 vs 903 vs 785 at 0.01%; best on
       54/58 channels
-- [ ] Compare with CCSDS 124.0-B-1 (POCKET+), the CCSDS standard for
-      housekeeping telemetry, which is the right baseline for this data
+- [x] Compare with CCSDS 124.0-B-1 (POCKET+): on the real Venus Express
+      packets of its test vectors, a lean session with the record model is
+      45.6% smaller than the ESA reference output (packet by packet)
+- [x] Record model (column contexts, auto-detected record length, method 4):
+      kennedy.xls −47%, ptt5 −29%, Venus Express whole file −34%
+- [ ] Record model in the flight profile (column contexts for packets of
+      several fields), and a robustness mode that survives lost packets
 - [x] Whole-mission measurement (ESA-AD Mission 1, 75 channels, 734 M
       samples, 14 years): flight profile beats CCSDS 121 on 75/75 channels,
       −38% in total; 16 channels below 1% of float32

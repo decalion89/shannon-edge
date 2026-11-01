@@ -44,6 +44,10 @@ const METHOD_STORED: u8 = 0;
 const METHOD_CM: u8 = 1;
 const METHOD_BLOCKS: u8 = 2;
 const METHOD_CM_DICT: u8 = 3;
+const METHOD_CM_RECORD: u8 = 4;
+
+/// Largest record length the record model supports.
+pub const MAX_RECORD_LEN: usize = 1 << 16;
 
 /// First byte of a session message: marker in the high bits, kind below.
 const SESSION_MARK: u8 = 0xE0;
@@ -73,6 +77,11 @@ pub struct Options {
     /// Worker threads (`0` = all available cores). Each thread holds its own
     /// model, so peak memory grows with the thread count.
     pub threads: usize,
+    /// Fixed record length of the data (telemetry packets, table rows, image
+    /// scanlines), which switches on the column contexts of the record model.
+    /// `None` (default) detects it automatically; `Some(0)` disables it.
+    /// Ignored when a dictionary is used.
+    pub record_len: Option<usize>,
 }
 
 impl Default for Options {
@@ -81,7 +90,70 @@ impl Default for Options {
             mem_bits: 22,
             block_size: DEFAULT_BLOCK_SIZE,
             threads: 0,
+            record_len: None,
         }
+    }
+}
+
+/// Detect a fixed record length: the period `p` (2..=4096) at which bytes
+/// best repeat (`data[i] == data[i - p]`), measured on the first 64 KiB.
+/// The period must make clearly fewer mismatches than a typical period
+/// (at most 60% of the median mismatch rate) and match at least 30% of the
+/// time; among its divisors that do nearly as well, the smallest wins
+/// (multiples of a record length match too). Returns 0 when the data shows
+/// no record structure. This is only a candidate: compression keeps it only
+/// if a trial on a sample actually comes out smaller.
+pub fn detect_record_len(data: &[u8]) -> usize {
+    let n = data.len().min(64 << 10);
+    let max_p = 4096.min(n / 4);
+    if max_p < 2 {
+        return 0;
+    }
+    let d = &data[..n];
+    // err[p - 1]: fraction of positions where data[i] != data[i - p].
+    let err: Vec<f64> = (1..=max_p)
+        .map(|p| {
+            let diff = d[p..].iter().zip(d).filter(|(a, b)| a != b).count();
+            diff as f64 / (n - p) as f64
+        })
+        .collect();
+    let mut sorted = err[1..].to_vec();
+    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let median = sorted[sorted.len() / 2];
+    let (best_p, best) = err
+        .iter()
+        .enumerate()
+        .skip(1)
+        .fold(
+            (0, f64::MAX),
+            |acc, (i, &e)| if e < acc.1 { (i + 1, e) } else { acc },
+        );
+    if best > 0.7 || best > 0.6 * median {
+        return 0;
+    }
+    (2..=best_p)
+        .find(|&p| best_p % p == 0 && err[p - 1] <= best * 1.05 + 0.002)
+        .unwrap_or(best_p)
+}
+
+/// Keep a detected record length only if it actually helps: compress a
+/// sample (up to 256 KiB) with and without the record model.
+fn confirm_record_len(data: &[u8], record: usize, mem_bits: u8) -> usize {
+    if record == 0 {
+        return 0;
+    }
+    let sample = &data[..data.len().min(256 << 10)];
+    let bits = effective_mem_bits(sample.len(), mem_bits);
+    let cost = |rec: usize| {
+        let mut pred = Predictor::with_record(bits as u32, rec);
+        pred.start();
+        let mut hist = Vec::with_capacity(sample.len());
+        encode_payload(&mut pred, &mut hist, sample).map_or(usize::MAX, |p| p.len())
+    };
+    if cost(record) < cost(0) {
+        record
+    } else {
+        0
     }
 }
 
@@ -280,13 +352,18 @@ fn compress_prior(data: &[u8], prior: Prior, opts: &Options) -> Vec<u8> {
         (data.len() as u64) < u32::MAX as u64,
         "format v1 supports inputs below 4 GiB"
     );
+    let record = match (prior, opts.record_len) {
+        (Prior::None, None) => confirm_record_len(data, detect_record_len(data), opts.mem_bits),
+        (Prior::None, Some(r)) => r.min(MAX_RECORD_LEN),
+        _ => 0,
+    };
     if opts.block_size == 0 || data.len() <= opts.block_size {
-        return compress_single(data, opts.mem_bits, prior);
+        return compress_single(data, opts.mem_bits, prior, record);
     }
 
     let blocks: Vec<&[u8]> = data.chunks(opts.block_size).collect();
     let streams = parallel_map(&blocks, opts.threads, |b| {
-        compress_single(b, opts.mem_bits, prior)
+        compress_single(b, opts.mem_bits, prior, record)
     });
 
     let total: usize = streams.iter().map(Vec::len).sum();
@@ -349,7 +426,7 @@ fn start_model(
 }
 
 /// Compress one block as a self-contained stored, CM or CM+dictionary stream.
-fn compress_single(data: &[u8], mem_bits: u8, prior: Prior) -> Vec<u8> {
+fn compress_single(data: &[u8], mem_bits: u8, prior: Prior, record: usize) -> Vec<u8> {
     let dict = prior.dict();
     assert!(
         ((dict.len() + data.len()) as u64) < u32::MAX as u64,
@@ -361,6 +438,27 @@ fn compress_single(data: &[u8], mem_bits: u8, prior: Prior) -> Vec<u8> {
     };
     if data.is_empty() {
         return stored(data);
+    }
+    if record > 0 && dict.is_empty() {
+        // Record model: column contexts over fixed-length records.
+        let mut pred = Predictor::with_record(bits as u32, record);
+        pred.start();
+        let mut hist = Vec::with_capacity(data.len());
+        let Some(payload) = encode_payload(&mut pred, &mut hist, data) else {
+            return stored(data);
+        };
+        if payload.len() + 4 >= data.len() {
+            return stored(data);
+        }
+        let mut out = header(
+            METHOD_CM_RECORD,
+            bits,
+            data.len() as u64,
+            crc32::crc32(data),
+        );
+        out.extend_from_slice(&(record as u32).to_le_bytes());
+        out.extend_from_slice(&payload);
+        return out;
     }
     let (mut pred, mut hist) = start_model(bits, dict, model, data.len());
     let payload = encode_payload(&mut pred, &mut hist, data);
@@ -579,6 +677,14 @@ fn decompress_single(input: &[u8], prior: Prior) -> Result<Vec<u8>, Error> {
     let mut payload = &input[HEADER_LEN..];
     let mut dict: &[u8] = &[];
     let mut model = None;
+    let mut record = 0;
+    if method == METHOD_CM_RECORD {
+        record = read_u32(payload, 0)?;
+        if !(1..=MAX_RECORD_LEN).contains(&record) {
+            return Err(Error::BadBlockTable);
+        }
+        payload = &payload[4..];
+    }
     if method == METHOD_CM_DICT {
         let crc = read_u32(payload, 0)? as u32;
         let dlen = read_u32(payload, 4)?;
@@ -604,7 +710,7 @@ fn decompress_single(input: &[u8], prior: Prior) -> Result<Vec<u8>, Error> {
             }
             payload[..len].to_vec()
         }
-        METHOD_CM | METHOD_CM_DICT => {
+        METHOD_CM | METHOD_CM_DICT | METHOD_CM_RECORD => {
             if !(MIN_MEM_BITS..=MAX_MEM_BITS).contains(&bits) {
                 return Err(Error::BadMemBits(bits));
             }
@@ -613,7 +719,13 @@ fn decompress_single(input: &[u8], prior: Prior) -> Result<Vec<u8>, Error> {
             if payload.is_empty() && len > 0 {
                 return Err(Error::Truncated);
             }
-            let (mut pred, mut hist) = start_model(bits, dict, model, len);
+            let (mut pred, mut hist) = if record > 0 {
+                let mut p = Predictor::with_record(bits as u32, record);
+                p.start();
+                (p, Vec::with_capacity(len))
+            } else {
+                start_model(bits, dict, model, len)
+            };
             decode_payload(&mut pred, &mut hist, payload, len);
             hist.drain(..dict.len());
             hist
@@ -885,6 +997,35 @@ impl Session {
     pub fn lean(mut self) -> Self {
         self.lean = true;
         self
+    }
+
+    /// Records of a fixed length (e.g. fixed-size telemetry packets): turns
+    /// on the record model's column contexts, which predict each byte from
+    /// the same position in the previous record. Only for a fresh session
+    /// started with [`Session::new`]; both sides must use the same length.
+    ///
+    /// # Panics
+    /// If the session already processed a message, started from a primed
+    /// model, or `len` is 0 or above [`MAX_RECORD_LEN`].
+    pub fn with_record_len(mut self, len: usize) -> Self {
+        assert!(
+            self.set_record_len(len),
+            "record length only for a fresh Session::new, 1..=MAX_RECORD_LEN"
+        );
+        self
+    }
+
+    /// Non-panicking form of [`Session::with_record_len`]: returns `false`
+    /// (and changes nothing) if the session is not fresh or `len` is out of
+    /// range.
+    pub fn set_record_len(&mut self, len: usize) -> bool {
+        if self.seq != 0 || !self.model.dict.is_empty() || !(1..=MAX_RECORD_LEN).contains(&len) {
+            return false;
+        }
+        let mut pred = Predictor::with_record(self.model.bits as u32, len);
+        pred.start();
+        self.model.pred = pred;
+        true
     }
 
     /// Slide the window if the history outgrew it. Runs at the same point

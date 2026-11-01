@@ -69,6 +69,7 @@ _session_new = _sig("sedge_session_new", ctypes.c_void_p, ctypes.c_void_p, ctype
 _session_compress = _sig("sedge_session_compress", ctypes.c_int32, ctypes.c_void_p, ctypes.c_char_p, _size, *_out)
 _session_decompress = _sig("sedge_session_decompress", ctypes.c_int32, ctypes.c_void_p, ctypes.c_char_p, _size, *_out)
 _session_free = _sig("sedge_session_free", None, ctypes.c_void_p)
+_session_set_record = _sig("sedge_session_set_record_len", ctypes.c_int32, ctypes.c_void_p, _size)
 _u16p = ctypes.POINTER(ctypes.c_uint16)
 _flight_new = _sig("sedge_flight_new", ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32)
 _flight_compress = _sig("sedge_flight_compress", ctypes.c_int32, ctypes.c_void_p, _u16p, _size, *_out)
@@ -171,12 +172,21 @@ class Session:
 
     `lean=True` drops the per-record sequence number and CRC (2-3 bytes of
     framing instead of ~8). Use it only on links that already guarantee
-    integrity and order: corruption or loss is then not detected."""
+    integrity and order: corruption or loss is then not detected.
 
-    def __init__(self, model: PrimedModel | None = None, mem_bits: int = 0, lean: bool = False):
+    `record_len` (fresh sessions without a model) turns on column contexts
+    for fixed-length records such as telemetry packets."""
+
+    def __init__(self, model: PrimedModel | None = None, mem_bits: int = 0, lean: bool = False,
+                 record_len: int = 0):
         self._h = _session_new(model._h if model is not None else None, mem_bits, 1 if lean else 0)
         if not self._h:
             raise SedgeError(-1)
+        if record_len:
+            rc = _session_set_record(self._h, record_len)
+            if rc != 0:
+                self.close()
+                raise SedgeError(rc)
 
     def compress(self, record: bytes) -> bytes:
         r = _buf(record)

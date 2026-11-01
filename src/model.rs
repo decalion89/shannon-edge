@@ -490,6 +490,9 @@ pub struct Predictor {
     c8: u32,
     word: u32,
     prev_word: u32,
+    /// Fixed record (packet) length, or 0. When set, two contexts look at
+    /// the same column of the previous record instead of words.
+    record: usize,
 }
 
 impl Predictor {
@@ -521,7 +524,19 @@ impl Predictor {
             c8: 0,
             word: 0,
             prev_word: 0,
+            record: 0,
         }
+    }
+
+    /// A predictor for data made of fixed-length records (telemetry packets,
+    /// table rows, image scanlines): the word-bigram and sparse contexts are
+    /// replaced by two column contexts — the byte in the same position of the
+    /// previous record, alone and with its left neighbour and the previous
+    /// byte. `record` = 0 is the same as [`Predictor::new`].
+    pub fn with_record(bits: u32, record: usize) -> Self {
+        let mut p = Self::new(bits);
+        p.record = record;
+        p
     }
 
     /// Probability (12-bit) that the next bit is 1.
@@ -641,6 +656,19 @@ impl Predictor {
             hash2(hash2(6, self.word), self.prev_word),
             hash2(7, (c4 >> 8) & 0xffff),
         ];
+        let n = hist.len();
+        let rec = self.record;
+        if rec > 0 && n > rec {
+            // `hist[n - rec]` is the byte above the one about to be coded.
+            let col = (n % rec) as u32;
+            let above = hist[n - rec] as u32;
+            let above_left = hist[n - rec - 1] as u32;
+            self.ctx[5] = hash2(hash2(16, col), above);
+            self.ctx[6] = hash2(
+                hash2(17, col),
+                above | (above_left << 8) | ((c4 & 0xff) << 16),
+            );
+        }
         self.mm.byte_update(hist);
         self.predict();
     }

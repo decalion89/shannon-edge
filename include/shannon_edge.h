@@ -62,6 +62,9 @@ void sedge_model_free(SedgeModel *m);
  * (only for links that already guarantee integrity and order). */
 #define SEDGE_SESSION_LEAN 1u
 SedgeSession *sedge_session_new(const SedgeModel *model, int32_t mem_bits, uint32_t flags);
+/* Fixed-length records (e.g. telemetry packets): column contexts. Fresh
+ * sessions without a model only; both sides must use the same length. */
+int32_t sedge_session_set_record_len(SedgeSession *s, size_t len);
 int32_t sedge_session_compress(SedgeSession *s, const uint8_t *data, size_t len, uint8_t **out,
                                size_t *out_len);
 int32_t sedge_session_decompress(SedgeSession *s, const uint8_t *data, size_t len, uint8_t **out,

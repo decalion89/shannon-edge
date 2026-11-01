@@ -745,3 +745,101 @@ fn lean_sessions_roundtrip_with_smaller_frames() {
         Err(Error::NotThisSession)
     ));
 }
+
+// ---------------------------------------------------------------------------
+// Record model (fixed-length records: telemetry packets, rows, scanlines)
+// ---------------------------------------------------------------------------
+
+/// Fixed 24-byte records: a counter, slowly varying fields, flags.
+fn records(n: usize) -> Vec<u8> {
+    let mut rng = Rng(12);
+    let mut out = Vec::new();
+    let (mut a, mut b) = (1000u32, 50_000u32);
+    for i in 0..n as u32 {
+        a = a.wrapping_add((rng.next() % 3) as u32);
+        if rng.next() % 50 == 0 {
+            b = b.wrapping_add(17);
+        }
+        out.extend_from_slice(&i.to_le_bytes());
+        out.extend_from_slice(&a.to_le_bytes());
+        out.extend_from_slice(&b.to_le_bytes());
+        out.extend_from_slice(&[0xA5, 0x5A, 0, 0]);
+        out.extend_from_slice(&(rng.next() as u16 & 0x0f0f).to_le_bytes());
+        out.extend_from_slice(&[1, 2, 3, 4, 5, 6]);
+    }
+    out
+}
+
+#[test]
+fn record_length_is_detected_and_helps() {
+    let data = records(20_000);
+    assert_eq!(shannon_edge::detect_record_len(&data), 24);
+    let auto = compress(&data, &Options::default());
+    assert_eq!(auto[5], 4, "record method expected");
+    let off = compress(
+        &data,
+        &Options {
+            record_len: Some(0),
+            ..Options::default()
+        },
+    );
+    assert!(auto.len() < off.len(), "{} vs {}", auto.len(), off.len());
+    assert_eq!(decompress(&auto).unwrap(), data);
+    assert_eq!(decompress(&off).unwrap(), data);
+}
+
+#[test]
+fn record_detection_stays_off_for_text_and_noise() {
+    assert_eq!(shannon_edge::detect_record_len(&sample_text()), 0);
+    assert_eq!(shannon_edge::detect_record_len(&Rng(3).bytes(100_000)), 0);
+    assert_eq!(compress(&sample_text(), &Options::default())[5], 1);
+}
+
+#[test]
+fn record_model_in_block_mode_and_forced_lengths() {
+    let data = records(5_000);
+    for r in [1, 7, 24, 48, 1000] {
+        let packed = compress(
+            &data,
+            &Options {
+                record_len: Some(r),
+                block_size: 16_384,
+                ..Options::default()
+            },
+        );
+        assert_eq!(decompress(&packed).unwrap(), data, "record {r}");
+    }
+}
+
+#[test]
+fn record_sessions_roundtrip_and_beat_plain_sessions() {
+    let data = records(2_000);
+    let opts = Options {
+        mem_bits: 18,
+        ..Options::default()
+    };
+    let mut tx = Session::new(&opts).lean().with_record_len(24);
+    let mut rx = Session::new(&opts).lean().with_record_len(24);
+    let mut plain = Session::new(&opts).lean();
+    let (mut with, mut without) = (0, 0);
+    for rec in data.chunks(24) {
+        let frame = tx.compress(rec);
+        with += frame.len();
+        without += plain.compress(rec).len();
+        assert_eq!(rx.decompress(&frame).unwrap(), rec);
+    }
+    assert!(with < without, "{with} vs {without}");
+}
+
+const GOLDEN_V1_RECORD: &[u8] = include_bytes!("fixtures/golden-v1-record.sedge");
+
+#[test]
+fn golden_v1_record_stream_is_stable() {
+    let packed = compress(&records(3_000), &Options::default());
+    if std::env::var_os("SEDGE_BLESS").is_some() {
+        std::fs::write("tests/fixtures/golden-v1-record.sedge", &packed).unwrap();
+        return;
+    }
+    assert_eq!(packed, GOLDEN_V1_RECORD, "record format is not stable");
+    assert_eq!(decompress(GOLDEN_V1_RECORD).unwrap(), records(3_000));
+}
