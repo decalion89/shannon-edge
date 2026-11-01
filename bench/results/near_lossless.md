@@ -57,3 +57,30 @@ sensor and signal for another); bounds relative to each field's noise are.
   originals.
 * It is not lossless and does not compete with the lossless results; it
   answers a different question: how much of the remaining cost was noise.
+
+## Checking the field layout (what the heuristic might have missed)
+
+The bound above is guaranteed for the fields as the heuristic layout
+defines them. Three alternative readings of the bytes were checked:
+
+* **Two 12-bit values packed in 3 bytes** (typical ADC output): splitting
+  every 3-byte field into two 12-bit values makes the first-difference
+  entropy *higher* for all ten 3-byte fields (e.g. bytes 18–20: 12.00 bits
+  as one 24-bit value, 12.80 as two 12-bit values). Not packed 12-bit.
+* **IEEE float32**: the 4-byte fields read as big-endian floats give
+  values like −1.2·10³⁰ or denormals; no field is plausible as float32.
+* **Signed 32-bit integers aligned at byte 21** (bytes 21–24, 25–28, …
+  start with 02/03 or f0/f1/ed, suggesting big-endian signed integers):
+  plausible. On that reading the heuristic's 3-byte fields are the low 24
+  bits of 32-bit values, and a carry into the high byte could in principle
+  break the bound. Measured on the 32-bit reading, the maximum error of
+  every field is still exactly the δ chosen (e.g. bytes 21–24: 568 at
+  k = 1, for a median change of 580 between packets; bytes 57–60: 11; no
+  carry occurred). The alignment itself is ambiguous: the sum of
+  first-difference entropies prefers 32-bit fields starting at byte 18
+  (161.7 bits) to those starting at 21 (165.2).
+
+So the bound held on every reading tried, but by observation, not by
+construction for the 32-bit reading. This is the concrete reason a
+deployment must take field boundaries, types and tolerances from the
+mission's telemetry database rather than from a heuristic.
