@@ -167,6 +167,81 @@ better. Its strength is precision: thresholds at the extremes of what the
 model has seen keep false alarms rare where the published methods raise
 thousands.
 
+## Every ESA-ADB metric, computed with ESA-ADB's own code
+
+`--official PATH` imports ESA-ADB's metric modules (`ESAScores`,
+`ChannelAwareFScore`, `ADTQC`; MIT) unmodified from a checkout and scores
+the rule chosen on validation with all of them. The test labels are built
+as ESA-ADB builds them: target channels, events entirely inside the test
+period, anomaly-type columns. Subsystems come from `channels.csv`. A
+flagged sample covers the interval up to the next sample. Original samples.
+
+    python3 bench/anomaly_esaadb.py ESA-Mission1.zip --channels 41 42 43 44 45 46 \
+        --quantiles 1.0 --official ESA-ADB/
+
+**Cross-check.** ESA-ADB's code reproduces our corrected event-wise F0.5
+exactly on three of the four settings: 0.690, 0.725 and 0.798. On Mission 1
+full it gives 0.284 instead of our 0.279: it counts one more event as
+detected (40 of 91), because a flag covers the interval up to the next
+sample, which reaches into one more event.
+
+Published values: ESA-ADB Table 2 (all events except communication gaps).
+The rank counts ours among the published algorithms that report the metric.
+The benchmark ranks hierarchically, corrected event-wise F0.5 first.
+
+| Metric | sedge | Best published | Rank |
+|---|---:|---:|---:|
+| **Mission 1, lightweight (6 channels, 65 events)** | | | |
+| Corrected event-wise F0.5 | 0.690 | 0.786 (Telemanom-ESA-Pruned) | 2nd of 12 |
+| Alarming precision | 0.833 | 0.875 (Telemanom-ESA-Pruned) | 3rd |
+| ADTQC score | **0.949** | 0.901 (DC-VAE-ESA STD3) | **1st** |
+| Affiliation-based F0.5 | 0.525 | 0.734 (DC-VAE-ESA STD5) | 7th |
+| Channel-aware F0.5 | 0.205 | 0.837 (Telemanom-ESA) | 6th of 7 |
+| **Mission 1, full set (58 channels, 91 events)** | | | |
+| Corrected event-wise F0.5 | **0.284** | 0.061 (Telemanom-ESA-Pruned) | **1st** |
+| Alarming precision | **0.388** | 0.206 (Telemanom-ESA-Pruned) | **1st** |
+| ADTQC score | **0.894** | 0.752 (DC-VAE-ESA STD3) | **1st** |
+| Affiliation-based F0.5 | **0.636** | 0.607 (Telemanom-ESA-Pruned) | **1st** |
+| Subsystem-aware F0.5 | 0.384 | 0.689 (Telemanom-ESA) | 7th of 7 |
+| Channel-aware F0.5 | 0.180 | 0.477 (Telemanom-ESA) | 7th of 7 |
+| **Mission 2, lightweight (11 channels, 350 events)** | | | |
+| Corrected event-wise F0.5 | 0.725 | 0.949 (Windowed iForest) | 3rd of 12 |
+| Alarming precision | 0.813 | 0.912 (Telemanom-ESA) | 3rd |
+| ADTQC score | 0.996 | 0.999 (PCC) | 5th |
+| Affiliation-based F0.5 | 0.599 | 0.976 (iForest) | 9th |
+| Channel-aware F0.5 | 0.220 | 0.822 (Telemanom-ESA) | 7th of 7 |
+| **Mission 2, full set (47 channels, 362 events)** | | | |
+| Corrected event-wise F0.5 | **0.798** | 0.079 (PCC) | **1st** |
+| Alarming precision | 0.689 | 0.790 (Telemanom-ESA-Pruned) | 3rd of 11 |
+| ADTQC score | 0.972 | 0.993 (GlobalSTD5) | 5th |
+| Affiliation-based F0.5 | 0.714 | 0.831 (GlobalSTD5) | 4th |
+| Subsystem-aware F0.5 | 0.541 | 0.969 (GlobalSTD5) | 5th of 7 |
+| Channel-aware F0.5 | 0.221 | 0.791 (GlobalSTD3) | 7th of 7 |
+
+Supporting values (precision / recall):
+
+| Setting | Event-wise | Affiliation | Channel-aware | Subsystem-aware | ADTQC after ratio |
+|---|---|---|---|---|---:|
+| Mission 1, lightweight | 1.000 / 0.308 | 0.650 / 0.297 | 0.308 / 0.103 | 0.308 / 0.308 | 1.000 |
+| Mission 1, full | 0.261 / 0.440 | 0.683 / 0.500 | 0.386 / 0.072 | 0.440 / 0.277 | 0.975 |
+| Mission 2, lightweight | 0.914 / 0.397 | 0.697 / 0.385 | 0.394 / 0.091 | 0.397 / 0.397 | 1.000 |
+| Mission 2, full | 0.894 / 0.558 | 0.773 / 0.545 | 0.547 / 0.078 | 0.550 / 0.527 | 1.000 |
+
+What this shows:
+
+* **Under the benchmark's own hierarchy (event-wise F0.5 first) the
+  surprise is the best method on both full sets.** On Mission 1 full it is
+  also best on every secondary metric except channel attribution.
+* **Timing is a strength.** The after ratio is about 1: the surprise never
+  fires before an event starts, because it is not a forecaster. Mission 1
+  ADTQC is the best published on both channel sets.
+* **Channel attribution is the clear weakness**: last on channel-aware F0.5
+  in all four settings. Channel recall is 7–10%. When an event is detected,
+  only one or two of the many channels ESA labels as affected cross their
+  thresholds; the detection is right, the list of channels is too short. The
+  next improvement targets this.
+* The lightweight subsets keep the weaknesses already reported: recall.
+
 ## Are the test sets the same as the paper's?
 
 Event counts of our test and validation sets against ESA-ADB's

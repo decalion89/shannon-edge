@@ -192,6 +192,16 @@ and each drop looks like an anomaly to the model. Earlier simple controls (`esa_
 0.1% false alarms it flags 2,173 of 3,520 events against 1,696 for a
 rolling z-score.
 
+All of ESA-ADB's metrics, computed with ESA-ADB's own code (`--official`;
+it reproduces our event-wise F0.5 exactly on three settings, 0.284 against
+0.279 on the fourth). On both full sets the surprise ranks first under
+the benchmark's hierarchy. On Mission 1 full it is also first on alarming
+precision (0.388 vs 0.206), ADTQC timing (0.894 vs 0.752) and
+affiliation F0.5 (0.636 vs 0.607); Mission 1 lightweight timing is best
+too (0.949 vs 0.901). It is last on channel-aware F0.5 in every setting
+(0.18–0.22 vs 0.48–0.84): it detects the event but names too few of the
+affected channels (channel recall 7–10%).
+
 ### 3.7 Optional error-bounded mode (`bench/results/near_lossless.md`)
 
 Header and time exact; every numeric field reconstructed within ±δ by a
