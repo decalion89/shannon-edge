@@ -38,3 +38,29 @@ too small or already predicted from the telemetry's own past. Not tried:
 modelling specific commands against specific channels, which could still
 matter for rare mode changes but is bounded by the tiny share of bits
 involved.
+
+## Is the remainder really noise? (Venus Express)
+
+Our own repeated claim was that what remains after compression is sensor
+noise. Checked on the 18 numeric fields found by `bench/analysis/fields.py`
+plus the remaining single bytes (`bench/analysis/noise_floor.py`):
+
+* Four fields (bytes 33–36, 37–40, 42–44, 10–11) show a lag-1
+  autocorrelation of −0.50 between consecutive differences, the textbook
+  signature of "slow signal + white noise". But predicting them from the
+  mean of the last k values makes the residual entropy *worse* (field
+  37–40: 10.52 bits with the previous value, 13.56 with k = 2, 17.13 with
+  k = 8), and predicting from two packets back (a hidden period-2
+  multiplexing) helps no field at all (173.0 vs 179.9 bits/packet in
+  total). The −0.5 comes from isolated spikes (a jump out and back), i.e.
+  heavy-tailed noise, not hidden structure.
+* A Gaussian "noise floor" computed from those variances (5.06 MB) is
+  *above* what the codecs achieve, so it is not a valid bound: heavy tails
+  make variance-based entropy estimates meaningless here.
+* The sum over fields of the entropy of each field's first difference is
+  175.2 bits/packet (3.31 MB); packet profile v2 at 2^18 already reaches
+  158.7 bits/packet (3.00 MB), i.e. it already exploits more than
+  per-field first-order structure.
+
+No hidden periodicity or mis-modelled structure was found; the evidence is
+consistent with the remainder being noise.
