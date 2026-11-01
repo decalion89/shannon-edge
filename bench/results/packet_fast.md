@@ -138,6 +138,23 @@ This is the third independent pointer to numeric prediction:
 
 It is the most promising model to add to sedge.
 
+## The orbit as a context: visible, not useful
+
+Venus Express orbited Venus every 24 h. The file covers 7 days at one
+packet every 4 s, so an orbit is 21,600 packets. The earlier periodicity
+search stopped at lag 4,000 and never looked that far.
+
+**Visible.** The share of bytes equal to the byte at lag L peaks near one
+orbit (0.3244 at L ≈ 21,600–21,650 against 0.3128 at L = 21,000). The
+orbit leaves a faint fingerprint.
+
+**Not useful.** Each changed byte's delta was coded with the delta one
+orbit earlier as an extra context, on top of the previous delta. The
+ideal adaptive cost on the last 129,599 packets goes from 3,263,209 to
+3,323,947 bytes, 1.9% *worse*. No column gains. The deltas do not repeat
+from orbit to orbit; packet-to-packet noise dominates, and the extra
+context only dilutes the statistics.
+
 ## Under packet loss (fast profile + erasure code)
 
 `SEDGE_PACKET_FAST=1 examples/packet_fec` (same setup as `venus_fec.md`):
