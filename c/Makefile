@@ -132,6 +132,9 @@ warnings: | $(BUILD)
 	           sedge_fields.c test_fields_golden.c test_fields.c crosscheck_fields.c; do \
 	    $$cc $(STD) $(WARN) -Werror -O2 -c $$f -o $(BUILD)/w.o || exit 1; \
 	  done; \
+	  for d in SEDGE_FAST_TEST_HOOKS SEDGE_FAST_NO_LEARN; do \
+	    $$cc $(STD) $(WARN) -Werror -O2 -D$$d -c sedge_fast.c -o $(BUILD)/w.o || exit 1; \
+	  done; \
 	  for d in SEDGE_FLIGHT_TEST_HOOKS SEDGE_FLIGHT_NO_CUSUM; do \
 	    $$cc $(STD) $(WARN) -Werror -O2 -D$$d -c sedge_flight.c -o $(BUILD)/w.o || exit 1; \
 	    $$cc $(STD) $(WARN) -Werror -O2 -D$$d -c test_flight_golden.c -o $(BUILD)/w.o || exit 1; \

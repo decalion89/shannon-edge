@@ -55,8 +55,8 @@ int main(int argc, char **argv)
     for (r = 0; r < runs; r++) {
         sedge_fast *tx, *rx;
         double t;
-        if (sedge_fast_init(&tx, mt, bytes, len, NULL, NULL, 0) != 0 ||
-            sedge_fast_init(&rx, mr, bytes, len, NULL, NULL, 0) != 0) {
+        if (sedge_fast_init(&tx, mt, bytes, len, NULL, NULL, NULL, 0) != 0 ||
+            sedge_fast_init(&rx, mr, bytes, len, NULL, NULL, NULL, 0) != 0) {
             return 2;
         }
         t = now();

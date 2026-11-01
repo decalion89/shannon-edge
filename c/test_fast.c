@@ -1,6 +1,6 @@
 /* Unit tests of the C fast profile: the Rust tests/packet_fast.rs cases
  * (round trips, compression, garbage, lost packets and epochs, learned
- * recipes and classes) plus C-specific ones (argument errors, memory and
+ * recipes, classes and windows, slopes) plus C-specific ones (argument errors, memory and
  * buffer sizes, alignment, copies, the payload bound). Run them under
  * -fsanitize=address,undefined too (make test does). */
 #include "sedge_fast.h"
@@ -23,12 +23,13 @@ static int failures;
 
 /* A session in freshly allocated memory (released by the caller). */
 static sedge_fast *new_session(void **mem, size_t len, const uint8_t *recipes,
-                               const uint8_t *classes, unsigned flags)
+                               const uint8_t *classes, const uint8_t *windows, unsigned flags)
 {
     size_t bytes = sedge_fast_memory_bytes(len, recipes, flags);
     sedge_fast *s = NULL;
     *mem = malloc(bytes);
-    if (*mem == NULL || sedge_fast_init(&s, *mem, bytes, len, recipes, classes, flags) != 0) {
+    if (*mem == NULL ||
+        sedge_fast_init(&s, *mem, bytes, len, recipes, classes, windows, flags) != 0) {
         fprintf(stderr, "cannot create a session of length %zu\n", len);
         exit(2);
     }
@@ -71,12 +72,13 @@ static size_t roundtrip_with(sedge_fast *tx, sedge_fast *rx, const uint8_t *ps, 
     return total;
 }
 
-static size_t roundtrip(const uint8_t *ps, size_t n, size_t len, const uint8_t *recipes,
-                        const uint8_t *classes, const uint8_t *prime, size_t nprime)
+static size_t roundtrip_w(const uint8_t *ps, size_t n, size_t len, const uint8_t *recipes,
+                          const uint8_t *classes, const uint8_t *windows, const uint8_t *prime,
+                          size_t nprime)
 {
     void *mt, *mr;
-    sedge_fast *tx = new_session(&mt, len, recipes, classes, 0u);
-    sedge_fast *rx = new_session(&mr, len, recipes, classes, 0u);
+    sedge_fast *tx = new_session(&mt, len, recipes, classes, windows, 0u);
+    sedge_fast *rx = new_session(&mr, len, recipes, classes, windows, 0u);
     size_t total;
     CHECK(sedge_fast_prime(tx, prime, nprime) == 0);
     CHECK(sedge_fast_prime(rx, prime, nprime) == 0);
@@ -84,6 +86,12 @@ static size_t roundtrip(const uint8_t *ps, size_t n, size_t len, const uint8_t *
     free(mt);
     free(mr);
     return total;
+}
+
+static size_t roundtrip(const uint8_t *ps, size_t n, size_t len, const uint8_t *recipes,
+                        const uint8_t *classes, const uint8_t *prime, size_t nprime)
+{
+    return roundtrip_w(ps, n, len, recipes, classes, NULL, prime, nprime);
 }
 
 static void test_roundtrips_and_compresses(void)
@@ -104,8 +112,8 @@ static void test_roundtrips_and_compresses(void)
 static void test_random_and_extreme(void)
 {
     uint64_t rng = 9;
-    size_t i, k, len = 64, n = 2000;
-    uint8_t *ps = malloc(n * len), recipes[64], classes[64];
+    size_t i, k, w, len = 64, n = 2000;
+    uint8_t *ps = malloc(n * len), recipes[64], classes[64], windows[64];
     for (i = 0; i < n * len; i++) {
         ps[i] = (uint8_t)rng_next(&rng);
     }
@@ -115,12 +123,22 @@ static void test_random_and_extreme(void)
     for (k = 0; k < len; k++) {
         recipes[k] = (uint8_t)(k % 5);
         classes[k] = (uint8_t)(k / 5 % 3);
+        windows[k] = (uint8_t)(k / 15 % 7);
     }
-    roundtrip(ps, n, len, recipes, classes, NULL, 0);
+    roundtrip_w(ps, n, len, recipes, classes, windows, NULL, 0);
     memset(classes, SEDGE_FAST_CLASS_ALWAYS, len);
-    roundtrip(ps, n, len, recipes, classes, NULL, 0);
+    roundtrip_w(ps, n, len, recipes, classes, windows, NULL, 0);
     memset(classes, SEDGE_FAST_CLASS_STATIC, len);
-    roundtrip(ps, n, len, recipes, classes, NULL, 0);
+    roundtrip_w(ps, n, len, recipes, classes, windows, NULL, 0);
+    /* Every window on every column, every class (the small limits halve
+     * often, the small increments rarely). */
+    for (w = 0; w < SEDGE_FAST_WINDOW_COUNT; w++) {
+        memset(windows, (int)w, len);
+        for (k = 0; k < len; k++) {
+            classes[k] = (uint8_t)(k % 3);
+        }
+        roundtrip_w(ps, n, len, recipes, classes, windows, NULL, 0);
+    }
     free(ps);
     /* Alternating extremes: every byte changes, by every delta. */
     n = 600;
@@ -141,15 +159,20 @@ static void test_garbage(void)
 {
     uint64_t rng = 4;
     size_t len = 40, n, k, i, layout;
-    uint8_t payload[400], q[40], recipes[40], classes[40];
+    uint8_t payload[400], q[40], recipes[40], classes[40], windows[40];
     for (layout = 0; layout < 4; layout++) {
         void *m;
         sedge_fast *rx;
         for (k = 0; k < len; k++) {
             recipes[k] = (uint8_t)(layout == 0 ? 0 : k % 5);
             classes[k] = (uint8_t)(layout < 2 ? 0 : layout == 2 ? k % 3 : 2);
+            windows[k] = (uint8_t)(layout == 0 ? 0 : (k + layout) % 7);
         }
-        rx = new_session(&m, len, recipes, classes, SEDGE_FAST_EPOCHS);
+        rx = new_session(&m, len, recipes, classes, windows, SEDGE_FAST_EPOCHS);
+        for (k = 0; k < len; k++) {
+            recipes[k] = (uint8_t)(layout > 0 && k % 2 == 1); /* slopes */
+        }
+        CHECK(sedge_fast_set_slopes(rx, recipes) == 0);
         CHECK(sedge_fast_set_epochs(rx, 7) == 0);
         for (n = 0; n < 3000; n++) {
             size_t plen = n % 400;
@@ -177,8 +200,8 @@ static void test_lost_packet_epochs(void)
     uint8_t *ps = make_packets(300, len, 5), *hist = make_packets(50, len, 6);
     uint8_t out[SEDGE_FAST_MAX_PAYLOAD(32)], q[32];
     void *mt, *mr;
-    sedge_fast *tx = new_session(&mt, len, NULL, NULL, SEDGE_FAST_EPOCHS);
-    sedge_fast *rx = new_session(&mr, len, NULL, NULL, SEDGE_FAST_EPOCHS);
+    sedge_fast *tx = new_session(&mt, len, NULL, NULL, NULL, SEDGE_FAST_EPOCHS);
+    sedge_fast *rx = new_session(&mr, len, NULL, NULL, NULL, SEDGE_FAST_EPOCHS);
     CHECK(sedge_fast_prime(tx, hist, 50) == 0 && sedge_fast_set_epochs(tx, 64) == 0);
     CHECK(sedge_fast_prime(rx, hist, 50) == 0 && sedge_fast_set_epochs(rx, 64) == 0);
     CHECK(sedge_fast_prime(rx, hist, 1) == SEDGE_FAST_E_STATE);
@@ -208,18 +231,33 @@ static void test_learned_layouts(void)
 {
     size_t len = 32, k, r;
     uint8_t *all = make_packets(3000, len, 11), *test = all + 300 * len;
-    uint8_t recipes[32], again[32], fixed[32], classes[32];
+    uint8_t recipes[32], again[32], fixed[32], classes[32], windows[32];
+    /* Rust learn_recipes and learn_windows (NORMAL classes) on these 300
+     * packets. Column 3 (the counter's low byte, delta always 1) is an exact
+     * tie between recipes 0 and 2: the same symbols in the same tables, in
+     * another order. Rust's f64 sums differ in the last bit and it takes 2;
+     * C's fixed-point sums are equal, so it keeps 0. */
+    static const uint8_t rust_recipes[32] = {0, 0, 0, 0 /* Rust: 2 */, 0, 3, 3, 3, 3};
     void *scratch = malloc(SEDGE_FAST_LEARN_SCRATCH_BYTES);
-    size_t learned, base;
+    size_t learned, base, w;
     CHECK(sedge_fast_learn_recipes(len, all, 300, scratch, SEDGE_FAST_LEARN_SCRATCH_BYTES, recipes) == 0);
     CHECK(sedge_fast_learn_recipes(len, all, 300, scratch, SEDGE_FAST_LEARN_SCRATCH_BYTES, again) == 0);
     CHECK(memcmp(recipes, again, len) == 0);
+    CHECK(memcmp(recipes, rust_recipes, len) == 0);
+    CHECK(sedge_fast_learn_windows(len, all, 300, recipes, NULL, scratch,
+                                   SEDGE_FAST_LEARN_SCRATCH_BYTES, windows) == 0);
+    memset(fixed, 0, len);
+    CHECK(memcmp(windows, fixed, len) == 0);
     for (k = 0; k < len; k++) {
         CHECK(recipes[k] < SEDGE_FAST_RECIPE_COUNT);
     }
     for (r = 0; r < SEDGE_FAST_RECIPE_COUNT; r++) {
         memset(fixed, (int)r, len);
         roundtrip(test, 2700, len, fixed, NULL, all, 300);
+    }
+    for (w = 0; w < SEDGE_FAST_WINDOW_COUNT; w++) {
+        memset(fixed, (int)w, len);
+        roundtrip_w(test, 2700, len, recipes, NULL, fixed, all, 300);
     }
     learned = roundtrip(test, 2700, len, recipes, NULL, all, 300);
     base = roundtrip(test, 2700, len, NULL, NULL, all, 300);
@@ -233,7 +271,20 @@ static void test_learned_layouts(void)
     CHECK(memchr(classes, SEDGE_FAST_CLASS_STATIC, len) != NULL);
     CHECK(memchr(classes, SEDGE_FAST_CLASS_ALWAYS, len) != NULL);
     CHECK(sedge_fast_learn_recipes(len, all, 200, scratch, SEDGE_FAST_LEARN_SCRATCH_BYTES, recipes) == 0);
-    roundtrip(test, 1800, len, recipes, classes, all, 200);
+    CHECK(sedge_fast_learn_windows(len, all, 200, recipes, classes, scratch,
+                                   SEDGE_FAST_LEARN_SCRATCH_BYTES, windows) == 0);
+    for (k = 0; k < len; k++) {
+        CHECK(windows[k] < SEDGE_FAST_WINDOW_COUNT);
+    }
+    base = roundtrip(test, 1800, len, recipes, classes, all, 200);
+    learned = roundtrip_w(test, 1800, len, recipes, classes, windows, all, 200);
+    printf("learned windows (recipes + classes): %zu bytes vs default windows %zu\n", learned, base);
+    /* Every ALWAYS column on a short history picks a window too. */
+    memset(classes, SEDGE_FAST_CLASS_ALWAYS, len);
+    CHECK(sedge_fast_learn_windows(len, all, 200, NULL, classes, scratch,
+                                   SEDGE_FAST_LEARN_SCRATCH_BYTES, windows) == 0);
+    roundtrip_w(test, 1800, len, NULL, classes, windows, all, 200);
+    CHECK(sedge_fast_learn_classes(len, all, 200, 10000, 900000, classes) == 0);
     memset(classes, SEDGE_FAST_CLASS_STATIC, len);
     roundtrip(test, 1800, len, recipes, classes, all, 200);
     memset(classes, SEDGE_FAST_CLASS_ALWAYS, len);
@@ -243,13 +294,96 @@ static void test_learned_layouts(void)
     CHECK(classes[0] == SEDGE_FAST_CLASS_STATIC);
     CHECK(sedge_fast_learn_recipes(len, all, 1, scratch, SEDGE_FAST_LEARN_SCRATCH_BYTES, recipes) == 0);
     CHECK(sedge_fast_learn_recipes(len, all, 1, scratch, 100, recipes) == SEDGE_FAST_E_MEMORY);
+    CHECK(sedge_fast_learn_windows(len, NULL, 0, NULL, NULL, scratch,
+                                   SEDGE_FAST_LEARN_SCRATCH_BYTES, windows) == 0);
+    CHECK(windows[0] == SEDGE_FAST_WINDOW_DEFAULT);
+    CHECK(sedge_fast_learn_windows(len, all, 1, NULL, NULL, scratch, 100, windows) ==
+          SEDGE_FAST_E_MEMORY);
+    CHECK(sedge_fast_learn_windows(len, NULL, 1, NULL, NULL, scratch,
+                                   SEDGE_FAST_LEARN_SCRATCH_BYTES, windows) == SEDGE_FAST_E_ARGUMENT);
+    CHECK(sedge_fast_learn_windows(len, all, 1, NULL, NULL, scratch,
+                                   SEDGE_FAST_LEARN_SCRATCH_BYTES, NULL) == SEDGE_FAST_E_ARGUMENT);
+    recipes[3] = SEDGE_FAST_RECIPE_COUNT;
+    CHECK(sedge_fast_learn_windows(len, all, 1, recipes, NULL, scratch,
+                                   SEDGE_FAST_LEARN_SCRATCH_BYTES, windows) == SEDGE_FAST_E_ARGUMENT);
+    classes[3] = SEDGE_FAST_CLASS_COUNT;
+    CHECK(sedge_fast_learn_windows(len, all, 1, NULL, classes, scratch,
+                                   SEDGE_FAST_LEARN_SCRATCH_BYTES, windows) == SEDGE_FAST_E_ARGUMENT);
     free(scratch);
     free(all);
 }
 
+/* tests/packet_fast.rs slopes_follow_ramps_round_trip_and_survive_epochs
+ * (with the slopes Rust's learn_slopes_checked picks there: column 0). */
+static void test_slopes(void)
+{
+    size_t n = 6000, len = 3, i, cap = SEDGE_FAST_MAX_PAYLOAD(3), plen, with, without;
+    uint8_t *ps = malloc(n * len), out[SEDGE_FAST_MAX_PAYLOAD(3)], q[3], classes[3];
+    static const uint8_t slopes[3] = {1, 0, 0}, none[3] = {0, 0, 0}, all[3] = {1, 1, 1};
+    uint64_t rng = 42;
+    void *mt, *mr;
+    sedge_fast *tx, *rx;
+    for (i = 0; i < n; i++) {
+        ps[i * len] = (uint8_t)((i * i) / 200);
+        ps[i * len + 1] = (uint8_t)(rng_next(&rng) % 4);
+        ps[i * len + 2] = 9;
+    }
+    for (i = 0; i < 2; i++) {
+        size_t total;
+        tx = new_session(&mt, len, NULL, NULL, NULL, 0u);
+        rx = new_session(&mr, len, NULL, NULL, NULL, 0u);
+        CHECK(sedge_fast_set_slopes(tx, i ? slopes : none) == 0);
+        CHECK(sedge_fast_set_slopes(rx, i ? slopes : none) == 0);
+        total = roundtrip_with(tx, rx, ps, n, len);
+        if (i) {
+            with = total;
+        } else {
+            without = total;
+        }
+        free(mt);
+        free(mr);
+    }
+    printf("ramp: %zu bytes with slopes, %zu without\n", with, without);
+    CHECK(with < without);
+    /* With epochs, a receiver that skips packets still decodes the rest. */
+    tx = new_session(&mt, len, NULL, NULL, NULL, SEDGE_FAST_EPOCHS);
+    rx = new_session(&mr, len, NULL, NULL, NULL, SEDGE_FAST_EPOCHS);
+    CHECK(sedge_fast_set_slopes(tx, slopes) == 0 && sedge_fast_set_epochs(tx, 64) == 0);
+    CHECK(sedge_fast_set_slopes(rx, slopes) == 0 && sedge_fast_set_epochs(rx, 64) == 0);
+    CHECK(sedge_fast_set_slopes(rx, slopes) == SEDGE_FAST_E_STATE);
+    for (i = 0; i < n; i++) {
+        int r;
+        CHECK(sedge_fast_compress(tx, ps + i * len, out, cap, &plen) == 0);
+        if (i % 64 == 10) {
+            continue; /* lost */
+        }
+        r = sedge_fast_decompress_indexed(rx, i, out, plen, q);
+        if (i % 64 > 10) {
+            CHECK(r == SEDGE_FAST_E_OUT_OF_SYNC);
+        } else {
+            CHECK(r == 0 && memcmp(q, ps + i * len, len) == 0);
+        }
+    }
+    free(mt);
+    free(mr);
+    /* Every class with slopes everywhere, primed (STATIC ignores them),
+     * and slopes set after priming. */
+    for (i = 0; i < 3; i++) {
+        memset(classes, (int)i, len);
+        tx = new_session(&mt, len, NULL, classes, NULL, 0u);
+        rx = new_session(&mr, len, NULL, classes, NULL, 0u);
+        CHECK(sedge_fast_prime(tx, ps, 100) == 0 && sedge_fast_prime(rx, ps, 100) == 0);
+        CHECK(sedge_fast_set_slopes(tx, all) == 0 && sedge_fast_set_slopes(rx, all) == 0);
+        roundtrip_with(tx, rx, ps + 100 * len, n - 100, len);
+        free(mt);
+        free(mr);
+    }
+    free(ps);
+}
+
 static void test_api_errors(void)
 {
-    uint8_t bad_recipe[2] = {0, 9}, bad_class[2] = {0, 7}, ok2[2] = {0, 0};
+    uint8_t bad_recipe[2] = {0, 9}, bad_class[2] = {0, 7}, bad_window[2] = {6, 7}, ok2[2] = {0, 0};
     uint8_t p[16] = {1, 2, 3}, out[300], q[16];
     unsigned char *mem;
     size_t bytes, plen, off;
@@ -270,17 +404,18 @@ static void test_api_errors(void)
 
     bytes = sedge_fast_memory_bytes(16, NULL, 0);
     mem = malloc(bytes + 64);
-    CHECK(sedge_fast_init(NULL, mem, bytes, 16, NULL, NULL, 0) == SEDGE_FAST_E_ARGUMENT);
-    CHECK(sedge_fast_init(&s, NULL, bytes, 16, NULL, NULL, 0) == SEDGE_FAST_E_ARGUMENT);
-    CHECK(sedge_fast_init(&s, mem, bytes, 0, NULL, NULL, 0) == SEDGE_FAST_E_ARGUMENT);
-    CHECK(sedge_fast_init(&s, mem, bytes, 2, bad_recipe, NULL, 0) == SEDGE_FAST_E_ARGUMENT);
-    CHECK(sedge_fast_init(&s, mem, bytes, 2, NULL, bad_class, 0) == SEDGE_FAST_E_ARGUMENT);
-    CHECK(sedge_fast_init(&s, mem, bytes - 8 - 1, 16, NULL, NULL, 0) == SEDGE_FAST_E_MEMORY);
+    CHECK(sedge_fast_init(NULL, mem, bytes, 16, NULL, NULL, NULL, 0) == SEDGE_FAST_E_ARGUMENT);
+    CHECK(sedge_fast_init(&s, NULL, bytes, 16, NULL, NULL, NULL, 0) == SEDGE_FAST_E_ARGUMENT);
+    CHECK(sedge_fast_init(&s, mem, bytes, 0, NULL, NULL, NULL, 0) == SEDGE_FAST_E_ARGUMENT);
+    CHECK(sedge_fast_init(&s, mem, bytes, 2, bad_recipe, NULL, NULL, 0) == SEDGE_FAST_E_ARGUMENT);
+    CHECK(sedge_fast_init(&s, mem, bytes, 2, NULL, bad_class, NULL, 0) == SEDGE_FAST_E_ARGUMENT);
+    CHECK(sedge_fast_init(&s, mem, bytes, 2, NULL, NULL, bad_window, 0) == SEDGE_FAST_E_ARGUMENT);
+    CHECK(sedge_fast_init(&s, mem, bytes - 8 - 1, 16, NULL, NULL, NULL, 0) == SEDGE_FAST_E_MEMORY);
     CHECK(s == NULL);
-    CHECK(sedge_fast_init(&s, mem, 3, 16, NULL, NULL, 0) == SEDGE_FAST_E_MEMORY);
+    CHECK(sedge_fast_init(&s, mem, 3, 16, NULL, NULL, NULL, 0) == SEDGE_FAST_E_MEMORY);
     /* Any alignment works with the advertised size. */
     for (off = 0; off < 8; off++) {
-        CHECK(sedge_fast_init(&s, mem + off, bytes, 16, NULL, NULL, 0) == 0);
+        CHECK(sedge_fast_init(&s, mem + off, bytes, 16, NULL, NULL, NULL, 0) == 0);
         CHECK(sedge_fast_packet_len(s) == 16);
     }
     CHECK(sedge_fast_set_epochs(s, 4) == SEDGE_FAST_E_STATE); /* no room */
@@ -293,11 +428,14 @@ static void test_api_errors(void)
     CHECK(sedge_fast_decompress(NULL, out, 3, q) == SEDGE_FAST_E_ARGUMENT);
     CHECK(sedge_fast_prime(s, NULL, 1) == SEDGE_FAST_E_ARGUMENT);
     CHECK(sedge_fast_count(NULL) == 0 && sedge_fast_packet_len(NULL) == 0);
-    CHECK(sedge_fast_init(&s, mem, bytes, 2, ok2, ok2, 0) == 0);
+    CHECK(sedge_fast_init(&s, mem, bytes, 2, ok2, ok2, ok2, 0) == 0);
+    CHECK(sedge_fast_set_slopes(s, bad_class) == SEDGE_FAST_E_ARGUMENT);
+    CHECK(sedge_fast_set_slopes(NULL, ok2) == SEDGE_FAST_E_ARGUMENT);
+    CHECK(sedge_fast_set_slopes(s, NULL) == 0);
     CHECK(sedge_fast_copy(&c, mem, 10, s) == SEDGE_FAST_E_MEMORY);
     free(mem);
 
-    s = new_session(&m, 16, NULL, NULL, SEDGE_FAST_EPOCHS);
+    s = new_session(&m, 16, NULL, NULL, NULL, SEDGE_FAST_EPOCHS);
     CHECK(sedge_fast_set_epochs(s, 0) == SEDGE_FAST_E_ARGUMENT);
     CHECK(sedge_fast_set_epochs(s, UINT64_C(1) << 40) == 0);
     /* Huge indices: 64-bit epoch arithmetic without 64-bit division. */
@@ -317,7 +455,7 @@ static void test_copy(void)
     uint8_t *ps = make_packets(400, len, 3), oa[SEDGE_FAST_MAX_PAYLOAD(90)],
             ob[SEDGE_FAST_MAX_PAYLOAD(90)];
     void *m;
-    sedge_fast *a = new_session(&m, len, NULL, NULL, SEDGE_FAST_EPOCHS), *b;
+    sedge_fast *a = new_session(&m, len, NULL, NULL, NULL, SEDGE_FAST_EPOCHS), *b;
     size_t bytes = sedge_fast_memory_bytes(len, NULL, SEDGE_FAST_EPOCHS);
     unsigned char *mb = malloc(bytes + 3);
     CHECK(sedge_fast_set_epochs(a, 50) == 0);
@@ -342,6 +480,7 @@ int main(void)
     test_garbage();
     test_lost_packet_epochs();
     test_learned_layouts();
+    test_slopes();
     test_api_errors();
     test_copy();
     printf("largest payload: %.3f x packet length (bound 14 x + 8); "

@@ -1,6 +1,6 @@
 /* sedge_fast: the shannon-edge fast packet profile in portable C99.
- * Bit-exact port of src/packet_fast.rs and the parts of src/coder.rs it
- * uses. Every arithmetic step is on uint32_t (or narrower, explicitly cast),
+ * Bit-exact port of src/packet_fast.rs (model version 2) and the parts of
+ * src/coder.rs it uses. Every arithmetic step is on uint32_t (or narrower, explicitly cast),
  * so it behaves the same on 16-, 32- and 64-bit targets of either
  * endianness; uint64_t only holds packet counts.
  */
@@ -22,10 +22,31 @@
 #define SF_INLINE inline
 #endif
 
-#define SF_INC 32u          /* frequency increment */
-#define SF_LIMIT 32768u     /* total that triggers halving */
 #define SF_HEADER 128u      /* bytes reserved for struct sedge_fast */
-#define SF_MAGIC 0x53664331u
+#define SF_MAGIC 0x53664332u
+
+/* Windows (SEDGE_FAST_WINDOW_*): frequency increment and log2 of the total
+ * that triggers halving, as packet_fast::window. */
+static const uint8_t sf_win_inc[SEDGE_FAST_WINDOW_COUNT] = {32, 32, 32, 32, 16, 8, 4};
+static const uint8_t sf_win_shift[SEDGE_FAST_WINDOW_COUNT] = {15, 14, 13, 12, 15, 15, 15};
+
+/* "Same as above?" flags: per context a fast estimate (rate 2^-4) and a
+ * slow, state-counted one (rate 1/(n + 1.5) after n observations, then
+ * 2^-7 from n = SF_FLAG_WARM on), averaged. */
+#define SF_FLAG_WARM 126u
+/* The slow estimate's warm-up rates, 15-bit: 65536 / (2n + 3). */
+static const uint16_t sf_flag_rate[SF_FLAG_WARM] = {
+    21845, 13107, 9362, 7281, 5957, 5041, 4369, 3855, 3449, 3120, 2849, 2621,
+    2427, 2259, 2114, 1985, 1872, 1771, 1680, 1598, 1524, 1456, 1394, 1337,
+    1285, 1236, 1191, 1149, 1110, 1074, 1040, 1008, 978, 949, 923, 897,
+    873, 851, 829, 809, 789, 771, 753, 736, 720, 704, 689, 675,
+    661, 648, 636, 624, 612, 601, 590, 579, 569, 560, 550, 541,
+    532, 524, 516, 508, 500, 492, 485, 478, 471, 464, 458, 451,
+    445, 439, 434, 428, 422, 417, 412, 407, 402, 397, 392, 387,
+    383, 378, 374, 370, 366, 362, 358, 354, 350, 346, 343, 339,
+    336, 332, 329, 326, 322, 319, 316, 313, 310, 307, 304, 302,
+    299, 296, 293, 291, 288, 286, 283, 281, 278, 276, 274, 271,
+    269, 267, 265, 263, 261, 259};
 
 /* Tests only: count the symbols coded bit by bit (interval narrower than
  * the frequency total), to show the cross-checks exercise that path. */
@@ -36,21 +57,26 @@ extern unsigned long sedge_fast_test_fallbacks;
 #define SF_FALLBACK() ((void)0)
 #endif
 
-/* Adaptive frequencies of the deltas, with a Fenwick tree. */
+/* Adaptive frequencies of the deltas, with a Fenwick tree. Rust keeps the
+ * symbol count, increment and limit; this keeps the same information in
+ * the four bytes left after the 16-bit total. */
 typedef struct {
     uint16_t f[256];
-    uint16_t tree[257]; /* partial sums never exceed SF_LIMIT */
-    uint16_t syms;      /* 255 (deltas 1..255) or 256 (deltas 0..255) */
-    uint32_t total;
+    uint16_t tree[257]; /* partial sums never exceed the limit (<= 32768) */
+    uint16_t total;     /* <= limit */
+    uint16_t room;      /* limit - inc: halve first when total > room */
+    uint8_t inc;        /* frequency increment */
+    uint8_t top;        /* last symbol: 254 (deltas 1..255) or 255 (0..255) */
 } sf_freq;
 
 /* Per-column state. */
 typedef struct {
     uint32_t base;      /* index of the column's first delta table */
-    uint8_t run;        /* packets since the column last changed, <= 15 */
-    uint8_t changed_last;
+    uint8_t state;      /* run * 4 + changed_last; run: packets since the
+                           byte last differed from its prediction, <= 15 */
     uint8_t last_delta; /* delta of the last change (0 before the first) */
-    uint8_t rc;         /* recipe | class << 4 */
+    uint8_t prev_d;     /* delta from above at the previous packet (0: none) */
+    uint8_t rc;         /* recipe | class << 4 | slope << 6 */
 } sf_col;
 
 /* Scalar model state, first in the model region (snapshotted with it). */
@@ -76,7 +102,7 @@ struct sedge_fast {
     size_t used;       /* bytes from the session start */
     size_t model_size; /* bytes of one model copy */
     size_t origin_off; /* snapshot offset (model is at SF_HEADER) */
-    size_t freq_off, same_off, cols_off, above_off; /* within the model */
+    size_t freq_off, same_off, seen_off, cols_off, above_off; /* within the model */
 };
 
 SF_STATIC_ASSERT(freq_size, sizeof(sf_freq) == 1032u);
@@ -88,7 +114,8 @@ SF_STATIC_ASSERT(header_size, sizeof(struct sedge_fast) <= SF_HEADER);
 typedef struct {
     sf_mhdr *h;
     sf_freq *freq;
-    uint16_t *same; /* 64 contexts per column */
+    uint16_t *same; /* 64 contexts per column: fast and slow estimates */
+    uint8_t *seen;  /* per context: the slow estimate's count, <= SF_FLAG_WARM */
     sf_col *cols;
     uint8_t *above;
     uint32_t len;
@@ -104,6 +131,7 @@ static sf_view sf_view_of(sedge_fast *s)
     v.h = (sf_mhdr *)(void *)m;
     v.freq = (sf_freq *)(void *)(m + s->freq_off);
     v.same = (uint16_t *)(void *)(m + s->same_off);
+    v.seen = m + s->seen_off;
     v.cols = (sf_col *)(void *)(m + s->cols_off);
     v.above = m + s->above_off;
     v.len = s->len;
@@ -244,30 +272,35 @@ static SF_INLINE uint32_t dec_bit(sf_dec *d, uint32_t p1)
 
 /* ---------------------------------------------------- frequency tables */
 
+/* Rebuild the tree from the frequencies in linear time: each node passes
+ * its sum on to its parent (as Freq::rebuild). */
 static void freq_rebuild(sf_freq *f)
 {
     uint32_t i, total = 0;
     f->tree[0] = 0u;
-    for (i = 1; i <= 256u; i++) {
-        f->tree[i] = f->f[i - 1u];
+    for (i = 0; i < 256u; i++) {
+        f->tree[i + 1u] = f->f[i];
+        total += f->f[i];
     }
-    for (i = 1; i <= 256u; i++) {
+    for (i = 1; i < 256u; i++) {
         uint32_t p = i + (i & (0u - i));
-        total += f->f[i - 1u];
         if (p <= 256u) {
             f->tree[p] = (uint16_t)(f->tree[p] + f->tree[i]);
         }
     }
-    f->total = total;
+    f->total = (uint16_t)total;
 }
 
-static void freq_init(sf_freq *f, uint32_t syms)
+/* A table of `syms` (255 or 256) symbols with window w. */
+static void freq_init(sf_freq *f, uint32_t syms, uint32_t w)
 {
-    uint32_t i;
+    uint32_t i, inc = sf_win_inc[w];
     for (i = 0; i < 256u; i++) {
         f->f[i] = (uint16_t)(i < syms ? 1u : 0u);
     }
-    f->syms = (uint16_t)syms;
+    f->top = (uint8_t)(syms - 1u);
+    f->inc = (uint8_t)inc;
+    f->room = (uint16_t)((UINT32_C(1) << sf_win_shift[w]) - inc);
     freq_rebuild(f);
 }
 
@@ -302,28 +335,28 @@ static SF_INLINE uint32_t freq_find(const sf_freq *f, uint32_t v, uint32_t *cum_
         cum += t & m;
     }
     *cum_out = cum;
-    return pos < (uint32_t)f->syms - 1u ? pos : (uint32_t)f->syms - 1u;
+    return pos < f->top ? pos : f->top;
 }
 
 static SF_INLINE void freq_update(sf_freq *f, uint32_t s)
 {
-    uint32_t i, j;
-    if (f->total + SF_INC > SF_LIMIT) {
-        for (i = 0; i < f->syms; i++) {
+    uint32_t i, j, inc = f->inc;
+    if (f->total > f->room) { /* total + inc > limit */
+        for (i = 0; i <= f->top; i++) {
             uint32_t h = (uint32_t)f->f[i] >> 1;
             f->f[i] = (uint16_t)(h != 0u ? h : 1u);
         }
         freq_rebuild(f);
     }
-    f->f[s] = (uint16_t)(f->f[s] + SF_INC);
-    f->total += SF_INC;
+    f->f[s] = (uint16_t)(f->f[s] + inc);
+    f->total = (uint16_t)(f->total + inc);
     /* j = s + 1, then j += lowbit(j) while j <= 256: at most 9 nodes; the
      * steps past 256 add 0 to tree[0] (never read) instead of branching. */
     j = s + 1u;
     for (i = 0; i < 9u; i++) {
         uint32_t in = 0u - (uint32_t)(j <= 256u);
         uint32_t idx = j & in;
-        f->tree[idx] = (uint16_t)(f->tree[idx] + (SF_INC & in));
+        f->tree[idx] = (uint16_t)(f->tree[idx] + (inc & in));
         j += j & (0u - j);
     }
 }
@@ -361,8 +394,8 @@ static SF_INLINE uint32_t dec_symbol(sf_freq *f, sf_dec *d)
         for (i = 0; i < 8u; i++) {
             s = (s << 1) | dec_bit(d, 2048u);
         }
-        if (s > (uint32_t)f->syms - 1u) {
-            s = (uint32_t)f->syms - 1u;
+        if (s > f->top) {
+            s = f->top;
         }
     }
     freq_update(f, s);
@@ -384,6 +417,31 @@ static SF_INLINE uint16_t sf_adapt(uint32_t p16, uint32_t bit)
         return (uint16_t)(p16 + ((UINT32_C(65536) - p16) >> 4));
     }
     return (uint16_t)(p16 - ((p16 + 15u) >> 4));
+}
+
+/* A "same" flag's probability (the average of its two estimates). */
+static SF_INLINE uint32_t sf_flag_p1(const uint16_t *pr)
+{
+    return sf_p1(((uint32_t)pr[0] + pr[1]) >> 1);
+}
+
+/* Learn a "same" flag: the fast estimate as sf_adapt; the slow one by
+ * slow += ((target - slow) * rate) >> 15 while young, then
+ * (target - slow) >> 7, Rust's arithmetic shifts written in unsigned form
+ * (a negative step rounds away from zero). Products stay below 2^31. */
+static SF_INLINE void sf_flag_update(uint16_t *pr, uint8_t *seen, uint32_t bit)
+{
+    uint32_t slow = pr[1], n = *seen;
+    pr[0] = sf_adapt(pr[0], bit);
+    if (n < SF_FLAG_WARM) {
+        uint32_t r = sf_flag_rate[n];
+        *seen = (uint8_t)(n + 1u);
+        slow = bit != 0u ? slow + (((UINT32_C(65536) - slow) * r) >> 15)
+                         : slow - ((slow * r + UINT32_C(32767)) >> 15);
+    } else {
+        slow = bit != 0u ? slow + ((UINT32_C(65536) - slow) >> 7) : slow - ((slow + 127u) >> 7);
+    }
+    pr[1] = (uint16_t)slow;
 }
 
 /* Size and sign class of a delta: 0 (none), 1, 2..3, 4..15, 16+; x2 sign. */
@@ -418,13 +476,33 @@ static SF_INLINE uint32_t recipe_context(uint32_t r, uint32_t lc, uint32_t ld,
     }
 }
 
-#define SF_CLASS(c) ((uint32_t)(c)->rc >> 4)
-#define SF_RECIPE(c) ((uint32_t)(c)->rc & 15u)
+#define SF_CLASS(rc) (((rc) >> 4) & 3u)
+#define SF_RECIPE(rc) ((rc) & 15u)
+
+/* The column's prediction: the byte above, or above + the previous delta
+ * when the column follows slopes (bit 6 of rc). */
+#define SF_PRED(c, rc, a) (((a) + ((uint32_t)(c)->prev_d & (0u - ((rc) >> 6)))) & 0xffu)
+
+/* The column's delta table for the current context (lc, ld: the left
+ * neighbour's change and delta in this packet). */
+#define SF_TABLE(c, rc, a) \
+    (freq + (c)->base + recipe_context(SF_RECIPE(rc), lc, ld, (c)->last_delta, (a)))
+
+/* The "same" flag's run and changed_last after a hit or a miss. */
+static SF_INLINE uint8_t sf_next_state(uint32_t state, uint32_t same)
+{
+    if (!same) {
+        return 1u; /* run 0, changed last */
+    }
+    return (uint8_t)(state < 60u ? (state & ~3u) + 4u : 60u);
+}
 
 /* Code one packet (encoder). The caller copies the packet to `above`.
  * The coder state and the model pointers are copied to locals: byte stores
  * may alias anything reached through a pointer, which would keep them in
- * memory instead of registers. */
+ * memory instead of registers. Per column, as code_packet in Rust: the
+ * "same as predicted?" flag, then the residual from the prediction as one
+ * symbol; contexts use the delta from above. */
 static void enc_packet(const sf_view *v, const uint8_t *pk, sf_enc *ep)
 {
     uint32_t k, len = v->len, group_changed = 1u, lc = 0u, ld = 0u;
@@ -432,11 +510,12 @@ static void enc_packet(const sf_view *v, const uint8_t *pk, sf_enc *ep)
     sf_col *cols = v->cols;
     sf_freq *freq = v->freq;
     uint16_t *samep = v->same;
+    uint8_t *seen = v->seen;
     const uint8_t *above = v->above;
     if (v->has_static) {
         uint32_t g = v->h->group_last, p16 = v->h->group[g], changed = 0u;
         for (k = 0; k < len; k++) {
-            if (SF_CLASS(&cols[k]) == SEDGE_FAST_CLASS_STATIC && pk[k] != above[k]) {
+            if (SF_CLASS(cols[k].rc) == SEDGE_FAST_CLASS_STATIC && pk[k] != above[k]) {
                 changed = 1u;
                 break;
             }
@@ -448,46 +527,33 @@ static void enc_packet(const sf_view *v, const uint8_t *pk, sf_enc *ep)
     }
     for (k = 0; k < len; k++) {
         sf_col *c = &cols[k];
-        uint32_t a = above[k], cls = SF_CLASS(c);
+        uint32_t a = above[k], rc = c->rc, cls = SF_CLASS(rc);
         uint32_t d = ((uint32_t)pk[k] - a) & 0xffu;
-        uint32_t ctx, p16, same;
+        uint32_t x = ((uint32_t)pk[k] - SF_PRED(c, rc, a)) & 0xffu; /* residual */
         if (cls == SEDGE_FAST_CLASS_STATIC && !group_changed) {
             lc = 0u;
             ld = 0u;
+            c->prev_d = 0u;
             continue;
         }
         if (cls == SEDGE_FAST_CLASS_ALWAYS) {
-            enc_symbol(freq + c->base + recipe_context(SF_RECIPE(c), lc, ld, c->last_delta, a),
-                       d, e);
-            lc = d != 0u;
-            ld = d;
-            if (d != 0u) {
-                c->last_delta = (uint8_t)d;
-            }
-            continue;
-        }
-        /* 1. Same as above? */
-        ctx = k * 64u + (uint32_t)c->run * 4u + lc * 2u + c->changed_last;
-        p16 = samep[ctx];
-        same = d == 0u;
-        enc_bit(e, same, sf_p1(p16));
-        samep[ctx] = sf_adapt(p16, same);
-        if (same) {
-            c->run = (uint8_t)(c->run < 15u ? c->run + 1u : 15u);
-            c->changed_last = 0u;
-            lc = 0u;
-            ld = 0u;
+            enc_symbol(SF_TABLE(c, rc, a), x, e); /* the residual directly, 0 included */
         } else {
-            sf_freq *f = freq + c->base +
-                         recipe_context(SF_RECIPE(c), lc, ld, c->last_delta, a);
-            c->run = 0u;
-            c->changed_last = 1u;
-            /* 2. The delta from above, one symbol. */
-            enc_symbol(f, d - 1u, e);
-            lc = 1u;
-            ld = d;
+            /* 1. Same as predicted? */
+            uint32_t ctx = k * 64u + c->state + lc * 2u, same = x == 0u;
+            enc_bit(e, same, sf_flag_p1(samep + 2u * ctx));
+            sf_flag_update(samep + 2u * ctx, seen + ctx, same);
+            c->state = sf_next_state(c->state, same);
+            if (!same) {
+                enc_symbol(SF_TABLE(c, rc, a), x - 1u, e); /* 2. The residual, one symbol. */
+            }
+        }
+        lc = d != 0u;
+        ld = d;
+        if (d != 0u) {
             c->last_delta = (uint8_t)d;
         }
+        c->prev_d = (uint8_t)d;
     }
     *ep = st;
 }
@@ -500,6 +566,7 @@ static void dec_packet(const sf_view *v, sf_dec *dp, uint8_t *out)
     sf_col *cols = v->cols;
     sf_freq *freq = v->freq;
     uint16_t *samep = v->same;
+    uint8_t *seen = v->seen;
     uint8_t *above = v->above;
     if (v->has_static) {
         uint32_t g = v->h->group_last, p16 = v->h->group[g];
@@ -510,47 +577,34 @@ static void dec_packet(const sf_view *v, sf_dec *dp, uint8_t *out)
     }
     for (k = 0; k < len; k++) {
         sf_col *c = &cols[k];
-        uint32_t a = above[k], cls = SF_CLASS(c);
-        uint32_t ctx, p16, same, d;
+        uint32_t a = above[k], rc = c->rc, cls = SF_CLASS(rc), value, d;
         if (cls == SEDGE_FAST_CLASS_STATIC && !group_changed) {
             lc = 0u;
             ld = 0u;
+            c->prev_d = 0u;
             out[k] = (uint8_t)a;
             continue;
         }
+        value = SF_PRED(c, rc, a);
         if (cls == SEDGE_FAST_CLASS_ALWAYS) {
-            d = dec_symbol(freq + c->base +
-                               recipe_context(SF_RECIPE(c), lc, ld, c->last_delta, a),
-                           dc);
-            lc = d != 0u;
-            ld = d;
-            if (d != 0u) {
-                c->last_delta = (uint8_t)d;
-            }
-            above[k] = out[k] = (uint8_t)(a + d);
-            continue;
-        }
-        ctx = k * 64u + (uint32_t)c->run * 4u + lc * 2u + c->changed_last;
-        p16 = samep[ctx];
-        same = dec_bit(dc, sf_p1(p16));
-        samep[ctx] = sf_adapt(p16, same);
-        if (same) {
-            c->run = (uint8_t)(c->run < 15u ? c->run + 1u : 15u);
-            c->changed_last = 0u;
-            lc = 0u;
-            ld = 0u;
-            out[k] = (uint8_t)a;
+            value += dec_symbol(SF_TABLE(c, rc, a), dc);
         } else {
-            sf_freq *f = freq + c->base +
-                         recipe_context(SF_RECIPE(c), lc, ld, c->last_delta, a);
-            c->run = 0u;
-            c->changed_last = 1u;
-            d = dec_symbol(f, dc) + 1u;
-            lc = 1u;
-            ld = d;
-            c->last_delta = (uint8_t)d;
-            above[k] = out[k] = (uint8_t)(a + d);
+            uint32_t ctx = k * 64u + c->state + lc * 2u;
+            uint32_t same = dec_bit(dc, sf_flag_p1(samep + 2u * ctx));
+            sf_flag_update(samep + 2u * ctx, seen + ctx, same);
+            c->state = sf_next_state(c->state, same);
+            if (!same) {
+                value += dec_symbol(SF_TABLE(c, rc, a), dc) + 1u;
+            }
         }
+        d = (value - a) & 0xffu;
+        lc = d != 0u;
+        ld = d;
+        if (d != 0u) {
+            c->last_delta = (uint8_t)d;
+        }
+        c->prev_d = (uint8_t)d;
+        above[k] = out[k] = (uint8_t)value;
     }
     *dp = st;
 }
@@ -579,7 +633,7 @@ static uint64_t sf_mod64(uint64_t a, uint64_t b)
 }
 
 typedef struct {
-    size_t nfreq, freq_off, same_off, cols_off, above_off, model, used;
+    size_t nfreq, freq_off, same_off, seen_off, cols_off, above_off, model, used;
 } sf_layout;
 
 /* a * b + c, or 0 with *ok cleared on overflow. */
@@ -609,7 +663,8 @@ static int sf_layout_of(size_t len, const uint8_t *recipes, unsigned flags, sf_l
     }
     l->freq_off = sizeof(sf_mhdr);
     l->same_off = sf_mad(l->nfreq, sizeof(sf_freq), l->freq_off, &ok);
-    l->cols_off = sf_mad(len, 128u, l->same_off, &ok);
+    l->seen_off = sf_mad(len, 256u, l->same_off, &ok);
+    l->cols_off = sf_mad(len, 64u, l->seen_off, &ok);
     l->above_off = sf_mad(len, sizeof(sf_col), l->cols_off, &ok);
     off = sf_mad(len, 1u, l->above_off, &ok);
     if (!ok || off > (size_t)-1 - 7u) {
@@ -647,7 +702,8 @@ static void *sf_align(void *mem, size_t mem_bytes, size_t need)
 static int sf_valid(const sedge_fast *s) { return s != NULL && s->magic == SF_MAGIC; }
 
 int sedge_fast_init(sedge_fast **out, void *mem, size_t mem_bytes, size_t len,
-                    const uint8_t *recipes, const uint8_t *classes, unsigned flags)
+                    const uint8_t *recipes, const uint8_t *classes, const uint8_t *windows,
+                    unsigned flags)
 {
     sf_layout l;
     sedge_fast *s;
@@ -661,11 +717,10 @@ int sedge_fast_init(sedge_fast **out, void *mem, size_t mem_bytes, size_t len,
     if (mem == NULL || !sf_layout_of(len, recipes, flags, &l)) {
         return SEDGE_FAST_E_ARGUMENT;
     }
-    if (classes != NULL) {
-        for (k = 0; k < len; k++) {
-            if (classes[k] >= SEDGE_FAST_CLASS_COUNT) {
-                return SEDGE_FAST_E_ARGUMENT;
-            }
+    for (k = 0; k < len; k++) {
+        if ((classes != NULL && classes[k] >= SEDGE_FAST_CLASS_COUNT) ||
+            (windows != NULL && windows[k] >= SEDGE_FAST_WINDOW_COUNT)) {
+            return SEDGE_FAST_E_ARGUMENT;
         }
     }
     s = (sedge_fast *)sf_align(mem, mem_bytes, l.used);
@@ -682,6 +737,7 @@ int sedge_fast_init(sedge_fast **out, void *mem, size_t mem_bytes, size_t len,
     s->origin_off = SF_HEADER + l.model;
     s->freq_off = l.freq_off;
     s->same_off = l.same_off;
+    s->seen_off = l.seen_off;
     s->cols_off = l.cols_off;
     s->above_off = l.above_off;
     v = sf_view_of(s);
@@ -689,20 +745,21 @@ int sedge_fast_init(sedge_fast **out, void *mem, size_t mem_bytes, size_t len,
     for (k = 0; k < len; k++) {
         uint32_t r = recipes ? recipes[k] : SEDGE_FAST_RECIPE_LEFT_CHANGED;
         uint32_t cl = classes ? classes[k] : SEDGE_FAST_CLASS_NORMAL;
+        uint32_t w = windows ? windows[k] : SEDGE_FAST_WINDOW_DEFAULT;
         uint32_t t, n = recipe_tables(r);
         sf_col *c = &v.cols[k];
         c->base = base;
         c->rc = (uint8_t)(r | cl << 4);
         for (t = 0; t < n; t++) {
-            freq_init(&v.freq[base + t], cl == SEDGE_FAST_CLASS_ALWAYS ? 256u : 255u);
+            freq_init(&v.freq[base + t], cl == SEDGE_FAST_CLASS_ALWAYS ? 256u : 255u, w);
         }
         base += n;
         if (cl == SEDGE_FAST_CLASS_STATIC) {
             s->has_static = 1u;
         }
     }
-    for (k = 0; k < len * 64u; k++) {
-        v.same[k] = 32768u;
+    for (k = 0; k < len * 128u; k++) {
+        v.same[k] = 32768u; /* seen[] is zeroed with the model */
     }
     *out = s;
     return SEDGE_FAST_OK;
@@ -788,6 +845,31 @@ int sedge_fast_set_epochs(sedge_fast *s, uint64_t every)
     s->phase = 0u;
     memcpy(sf_bytes(s) + s->origin_off, sf_bytes(s) + SF_HEADER, s->model_size);
     s->origin_set = 1u;
+    return SEDGE_FAST_OK;
+}
+
+int sedge_fast_set_slopes(sedge_fast *s, const uint8_t *slopes)
+{
+    sf_view v;
+    uint32_t k;
+    if (!sf_valid(s)) {
+        return SEDGE_FAST_E_ARGUMENT;
+    }
+    if (s->origin_set) {
+        return SEDGE_FAST_E_STATE;
+    }
+    v = sf_view_of(s);
+    for (k = 0; slopes != NULL && k < s->len; k++) {
+        if (slopes[k] > 1u) {
+            return SEDGE_FAST_E_ARGUMENT;
+        }
+    }
+    for (k = 0; k < s->len; k++) {
+        sf_col *c = &v.cols[k];
+        uint32_t on = slopes != NULL && slopes[k] != 0u &&
+                      SF_CLASS(c->rc) != SEDGE_FAST_CLASS_STATIC;
+        c->rc = (uint8_t)((c->rc & 63u) | on << 6);
+    }
     return SEDGE_FAST_OK;
 }
 
@@ -924,11 +1006,49 @@ static uint32_t sf_log2_q24(uint32_t x)
     return (ip << 24) | frac;
 }
 
+/* Ideal cost (Q24 bits) of column k of the history with recipe r, class
+ * cl and window w, in `tables` (20 of them). The left neighbour's context
+ * comes from the packets, not from its model, so columns are independent:
+ * lc/ld are the left column's change and delta in this packet. As in
+ * learn_recipes and learn_windows, a NORMAL or STATIC column codes its
+ * changed bytes only and an ALWAYS column every byte, 0 included. */
+static uint64_t sf_column_cost(size_t len, const uint8_t *history, size_t n, size_t k,
+                               uint32_t r, uint32_t cl, uint32_t w, sf_freq *tables)
+{
+    uint32_t t, nt = recipe_tables(r), above = 0, last = 0;
+    uint32_t always = cl == SEDGE_FAST_CLASS_ALWAYS;
+    uint64_t cost = 0;
+    size_t i;
+    for (t = 0; t < nt; t++) {
+        freq_init(&tables[t], always ? 256u : 255u, w);
+    }
+    for (i = 0; i < n; i++) {
+        const uint8_t *p = history + i * len;
+        uint32_t d = ((uint32_t)p[k] - above) & 0xffu;
+        if (d != 0u || always) {
+            uint32_t ld = 0, s = always ? d : d - 1u;
+            sf_freq *f;
+            if (k > 0u) {
+                uint32_t prev = i > 0u ? history[(i - 1u) * len + k - 1u] : 0u;
+                ld = ((uint32_t)p[k - 1u] - prev) & 0xffu;
+            }
+            f = &tables[recipe_context(r, ld != 0u, ld, last, above)];
+            cost += sf_log2_q24(f->total) - sf_log2_q24(f->f[s]);
+            freq_update(f, s);
+            if (d != 0u) {
+                last = d;
+            }
+        }
+        above = p[k];
+    }
+    return cost;
+}
+
 int sedge_fast_learn_recipes(size_t len, const uint8_t *history, size_t n, void *scratch,
                              size_t scratch_bytes, uint8_t *recipes)
 {
     sf_freq *tables;
-    size_t k, i;
+    size_t k;
     if (len < 1u || len - 1u > SEDGE_FAST_MAX_LEN - 1u || recipes == NULL ||
         (history == NULL && n != 0u)) {
         return SEDGE_FAST_E_ARGUMENT;
@@ -937,40 +1057,55 @@ int sedge_fast_learn_recipes(size_t len, const uint8_t *history, size_t n, void 
     if (tables == NULL) {
         return SEDGE_FAST_E_MEMORY;
     }
-    /* Columns are independent: the left neighbour's context comes from the
-     * packets, not from its model. */
     for (k = 0; k < len; k++) {
         uint64_t best = 0;
         uint32_t r, best_r = 0;
         for (r = 0; r < SEDGE_FAST_RECIPE_COUNT; r++) {
-            uint32_t t, nt = recipe_tables(r), above = 0, last = 0;
-            uint64_t cost = 0;
-            for (t = 0; t < nt; t++) {
-                freq_init(&tables[t], 255u);
-            }
-            for (i = 0; i < n; i++) {
-                const uint8_t *p = history + i * len;
-                uint32_t d = ((uint32_t)p[k] - above) & 0xffu;
-                if (d != 0u) {
-                    uint32_t ld = 0, s = d - 1u;
-                    sf_freq *f;
-                    if (k > 0u) {
-                        uint32_t prev = i > 0u ? history[(i - 1u) * len + k - 1u] : 0u;
-                        ld = ((uint32_t)p[k - 1u] - prev) & 0xffu;
-                    }
-                    f = &tables[recipe_context(r, ld != 0u, ld, last, above)];
-                    cost += sf_log2_q24(f->total) - sf_log2_q24(f->f[s]);
-                    freq_update(f, s);
-                    last = d;
-                }
-                above = p[k];
-            }
+            uint64_t cost = sf_column_cost(len, history, n, k, r, SEDGE_FAST_CLASS_NORMAL,
+                                           SEDGE_FAST_WINDOW_DEFAULT, tables);
             if (r == 0u || cost < best) {
                 best = cost;
                 best_r = r;
             }
         }
         recipes[k] = (uint8_t)best_r;
+    }
+    return SEDGE_FAST_OK;
+}
+
+int sedge_fast_learn_windows(size_t len, const uint8_t *history, size_t n,
+                             const uint8_t *recipes, const uint8_t *classes, void *scratch,
+                             size_t scratch_bytes, uint8_t *windows)
+{
+    sf_freq *tables;
+    size_t k;
+    if (len < 1u || len - 1u > SEDGE_FAST_MAX_LEN - 1u || windows == NULL ||
+        (history == NULL && n != 0u)) {
+        return SEDGE_FAST_E_ARGUMENT;
+    }
+    for (k = 0; k < len; k++) {
+        if ((recipes != NULL && recipes[k] >= SEDGE_FAST_RECIPE_COUNT) ||
+            (classes != NULL && classes[k] >= SEDGE_FAST_CLASS_COUNT)) {
+            return SEDGE_FAST_E_ARGUMENT;
+        }
+    }
+    tables = (sf_freq *)sf_align(scratch, scratch_bytes, 20u * sizeof(sf_freq));
+    if (tables == NULL) {
+        return SEDGE_FAST_E_MEMORY;
+    }
+    for (k = 0; k < len; k++) {
+        uint32_t r = recipes ? recipes[k] : SEDGE_FAST_RECIPE_LEFT_CHANGED;
+        uint32_t cl = classes ? classes[k] : SEDGE_FAST_CLASS_NORMAL;
+        uint64_t best = 0;
+        uint32_t w, best_w = SEDGE_FAST_WINDOW_DEFAULT;
+        for (w = 0; w < SEDGE_FAST_WINDOW_COUNT; w++) {
+            uint64_t cost = sf_column_cost(len, history, n, k, r, cl, w, tables);
+            if (w == 0u || cost < best) {
+                best = cost;
+                best_w = w;
+            }
+        }
+        windows[k] = (uint8_t)best_w;
     }
     return SEDGE_FAST_OK;
 }

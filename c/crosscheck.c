@@ -3,13 +3,15 @@
  * and verify every packet too.
  *
  *   crosscheck PACKETS LEN RUST_PAYLOADS [--recipes F] [--classes F]
- *              [--prime N] [--epochs E] [--learn]
+ *              [--windows F] [--slopes F] [--prime N] [--epochs E] [--learn]
  *
  * RUST_PAYLOADS: for each compressed packet, a 4-byte little-endian length
  * then the payload (the Rust dumper is shown in README.md). --prime N:
  * both ends are primed with the first N packets, the rest are compressed.
- * --recipes/--classes: layout files (LEN bytes each). --learn: also run
- * the C learn_classes (10000, 900000 ppm) and learn_recipes on the priming
+ * --recipes/--classes/--windows/--slopes: layout files (LEN bytes each;
+ * slopes are 0 or 1, as Rust learn_slopes_checked). --learn:
+ * also run the C learn_classes (10000, 900000 ppm), learn_recipes and
+ * learn_windows (with the given recipes and classes) on the priming
  * history and compare them with the layout files.
  * Exit status 0 only if every payload is identical and every packet
  * decodes. Host tool (uses stdio and malloc; the codec does not).
@@ -41,12 +43,13 @@ static unsigned char *read_file(const char *path, size_t *n)
     return b;
 }
 
-static sedge_fast *session(size_t len, const uint8_t *r, const uint8_t *c, unsigned flags)
+static sedge_fast *session(size_t len, const uint8_t *r, const uint8_t *c, const uint8_t *w,
+                           unsigned flags)
 {
     size_t bytes = sedge_fast_memory_bytes(len, r, flags);
     sedge_fast *s = NULL;
     void *m = malloc(bytes);
-    int e = m ? sedge_fast_init(&s, m, bytes, len, r, c, flags) : SEDGE_FAST_E_MEMORY;
+    int e = m ? sedge_fast_init(&s, m, bytes, len, r, c, w, flags) : SEDGE_FAST_E_MEMORY;
     if (e != 0) {
         fprintf(stderr, "init: %s\n", sedge_fast_error_message(e));
         exit(2);
@@ -60,12 +63,13 @@ int main(int argc, char **argv)
     size_t first_mismatch = (size_t)-1, cap, plen, nl;
     unsigned long epochs = 0;
     int learn = 0, a;
-    unsigned char *packets, *rust, *recipes = NULL, *classes = NULL;
+    unsigned char *packets, *rust, *recipes = NULL, *classes = NULL, *windows = NULL,
+                  *slopes = NULL;
     uint8_t *out, *q;
     sedge_fast *tx, *rx;
     if (argc < 4) {
         fprintf(stderr, "usage: %s PACKETS LEN RUST_PAYLOADS [--recipes F] [--classes F] "
-                        "[--prime N] [--epochs E] [--learn]\n", argv[0]);
+                        "[--windows F] [--slopes F] [--prime N] [--epochs E] [--learn]\n", argv[0]);
         return 2;
     }
     packets = read_file(argv[1], &npk);
@@ -77,6 +81,12 @@ int main(int argc, char **argv)
             if (nl != len) return 2;
         } else if (!strcmp(argv[a], "--classes") && a + 1 < argc) {
             classes = read_file(argv[++a], &nl);
+            if (nl != len) return 2;
+        } else if (!strcmp(argv[a], "--windows") && a + 1 < argc) {
+            windows = read_file(argv[++a], &nl);
+            if (nl != len) return 2;
+        } else if (!strcmp(argv[a], "--slopes") && a + 1 < argc) {
+            slopes = read_file(argv[++a], &nl);
             if (nl != len) return 2;
         } else if (!strcmp(argv[a], "--prime") && a + 1 < argc) {
             prime = (size_t)strtoul(argv[++a], NULL, 10);
@@ -94,9 +104,10 @@ int main(int argc, char **argv)
         return 2;
     }
     npk /= len;
-    tx = session(len, recipes, classes, epochs ? SEDGE_FAST_EPOCHS : 0u);
-    rx = session(len, recipes, classes, epochs ? SEDGE_FAST_EPOCHS : 0u);
-    if (sedge_fast_prime(tx, packets, prime) != 0 || sedge_fast_prime(rx, packets, prime) != 0 ||
+    tx = session(len, recipes, classes, windows, epochs ? SEDGE_FAST_EPOCHS : 0u);
+    rx = session(len, recipes, classes, windows, epochs ? SEDGE_FAST_EPOCHS : 0u);
+    if (sedge_fast_set_slopes(tx, slopes) != 0 || sedge_fast_set_slopes(rx, slopes) != 0 ||
+        sedge_fast_prime(tx, packets, prime) != 0 || sedge_fast_prime(rx, packets, prime) != 0 ||
         (epochs && (sedge_fast_set_epochs(tx, epochs) != 0 || sedge_fast_set_epochs(rx, epochs) != 0))) {
         fprintf(stderr, "prime/epochs failed\n");
         return 2;
@@ -141,17 +152,31 @@ int main(int argc, char **argv)
         printf("first mismatch at packet %zu\n", first_mismatch);
     }
     if (learn && recipes && classes && prime > 0) {
-        uint8_t *lc = malloc(len), *lr = malloc(len);
+        uint8_t *lc = malloc(len), *lr = malloc(len), *lw = malloc(len);
         void *scratch = malloc(SEDGE_FAST_LEARN_SCRATCH_BYTES);
-        size_t same_c = 0, same_r = 0;
+        size_t same_c = 0, same_r = 0, same_w = 0;
         sedge_fast_learn_classes(len, packets, prime, 10000, 900000, lc);
         sedge_fast_learn_recipes(len, packets, prime, scratch, SEDGE_FAST_LEARN_SCRATCH_BYTES, lr);
+        sedge_fast_learn_windows(len, packets, prime, recipes, classes, scratch,
+                                 SEDGE_FAST_LEARN_SCRATCH_BYTES, lw);
         for (k = 0; k < len; k++) {
             same_c += lc[k] == classes[k];
             same_r += lr[k] == recipes[k];
+            same_w += windows != NULL && lw[k] == windows[k];
+            if (lr[k] != recipes[k]) {
+                printf("  recipe differs on column %zu: C %u, Rust %u\n", k, lr[k], recipes[k]);
+            }
+            if (windows != NULL && lw[k] != windows[k]) {
+                printf("  window differs on column %zu: C %u, Rust %u\n", k, lw[k], windows[k]);
+            }
         }
-        printf("C learn_classes = Rust on %zu / %zu columns; C learn_recipes = Rust on %zu / %zu columns\n",
+        printf("C learn_classes = Rust on %zu / %zu columns; C learn_recipes = Rust on %zu / %zu "
+               "columns",
                same_c, len, same_r, len);
+        if (windows != NULL) {
+            printf("; C learn_windows = Rust on %zu / %zu columns", same_w, len);
+        }
+        printf("\n");
         if (same_c != len) {
             mismatches++;
         }

@@ -1,8 +1,9 @@
 /* sedge_fast: the shannon-edge fast packet profile in portable C99.
  *
- * Bit-exact with the Rust `shannon_edge::packet_fast::FastPacketSession`:
- * same payload bytes for the same packets, layout, priming and epochs, so
- * either side can talk to the other. See c/README.md.
+ * Bit-exact with the Rust `shannon_edge::packet_fast::FastPacketSession`
+ * (model version 2): same payload bytes for the same packets, layout,
+ * priming and epochs, so either side can talk to the other. See
+ * c/README.md.
  *
  * Properties: C99, no malloc (the caller provides one memory block, sized by
  * sedge_fast_memory_bytes), no recursion, no floating point, integer
@@ -31,6 +32,11 @@ extern "C" {
 #define SEDGE_FAST_E_STATE       -22  /* prime after epochs; epochs without
                                          memory reserved for them */
 
+/* Model version of the coded bytes (docs/FORMAT.md, "Model version 2"):
+ * two-speed "same as above?" flags and per-column windows. Version 1
+ * payloads do not decode with this version. */
+#define SEDGE_FAST_MODEL_VERSION 2u
+
 /* Packet length range. */
 #define SEDGE_FAST_MAX_LEN 65536u
 
@@ -48,6 +54,16 @@ extern "C" {
 #define SEDGE_FAST_CLASS_ALWAYS 2u /* the delta directly, 0 included */
 #define SEDGE_FAST_CLASS_COUNT  3u
 
+/* Adaptation windows of a column's delta tables (frequency increment,
+ * total that triggers halving), as packet_fast::window. A table forgets
+ * by halving every limit / inc / 2 to limit / inc changes. The work per
+ * byte is the same for all. */
+#define SEDGE_FAST_WINDOW_DEFAULT 0u /* 32, 2^15: 512-1024 changes */
+                                     /* 1: 32, 2^14   2: 32, 2^13
+                                        3: 32, 2^12   4: 16, 2^15
+                                        5:  8, 2^15   6:  4, 2^15 */
+#define SEDGE_FAST_WINDOW_COUNT   7u
+
 /* Flag for sedge_fast_memory_bytes / sedge_fast_init: reserve room for the
  * epoch snapshot (needed by sedge_fast_set_epochs; doubles the model). */
 #define SEDGE_FAST_EPOCHS 1u
@@ -59,16 +75,17 @@ extern "C" {
 /* Memory block size, as a constant expression for static allocation.
  * `tables` is the total number of delta tables: 2 * len with the default
  * recipes, otherwise the sum over columns of the recipe's tables (at most
- * 20 * len). `epochs` is 0 or 1. Equal to sedge_fast_memory_bytes. */
+ * 20 * len). `epochs` is 0 or 1. Windows and classes do not change it.
+ * Equal to sedge_fast_memory_bytes. */
 #define SEDGE_FAST_MEMORY_BYTES(len, tables, epochs) \
     (8u + 128u + (1u + (epochs)) * \
-     (((8u + 1032u * (size_t)(tables) + 137u * (size_t)(len)) + 7u) & ~(size_t)7u))
+     (((8u + 1032u * (size_t)(tables) + 329u * (size_t)(len)) + 7u) & ~(size_t)7u))
 
 /* Largest payload of one packet of `len` bytes (a proven bound; typical
  * payloads are far smaller). */
 #define SEDGE_FAST_MAX_PAYLOAD(len) (14u * (size_t)(len) + 8u)
 
-/* Scratch memory for sedge_fast_learn_recipes. */
+/* Scratch memory for sedge_fast_learn_recipes and sedge_fast_learn_windows. */
 #define SEDGE_FAST_LEARN_SCRATCH_BYTES (8u + 20u * 1032u)
 
 typedef struct sedge_fast sedge_fast;
@@ -83,13 +100,15 @@ size_t sedge_fast_memory_bytes(size_t len, const uint8_t *recipes,
 size_t sedge_fast_max_payload(size_t len);
 
 /* Create a session in `mem` (any alignment; `mem_bytes` at least
- * sedge_fast_memory_bytes(len, recipes, flags)). `recipes` and `classes`
- * are NULL (defaults: LEFT_CHANGED, NORMAL) or `len` bytes each; both ends
- * must use the same layout. On success *out is the session (inside `mem`).
- * Rust: FastPacketSession::new / with_recipes / with_layout. */
+ * sedge_fast_memory_bytes(len, recipes, flags)). `recipes`, `classes` and
+ * `windows` are NULL (defaults: LEFT_CHANGED, NORMAL, WINDOW_DEFAULT) or
+ * `len` bytes each; both ends must use the same layout. On success *out is
+ * the session (inside `mem`). Rust: FastPacketSession::new / with_recipes
+ * / with_layout / with_layout_windows. */
 int sedge_fast_init(sedge_fast **out, void *mem, size_t mem_bytes,
                     size_t len, const uint8_t *recipes,
-                    const uint8_t *classes, unsigned flags);
+                    const uint8_t *classes, const uint8_t *windows,
+                    unsigned flags);
 
 /* Clone `src` into another block of at least the same memory_bytes. */
 int sedge_fast_copy(sedge_fast **out, void *mem, size_t mem_bytes,
@@ -103,6 +122,15 @@ int sedge_fast_prime(sedge_fast *s, const uint8_t *packets, size_t n);
 /* Restart from the current state every `every` packets on both ends (the
  * Rust with_epochs). Needs SEDGE_FAST_EPOCHS at init. Resets the count. */
 int sedge_fast_set_epochs(sedge_fast *s, uint64_t every);
+
+/* Make the columns with slopes[k] == 1 follow slopes: predict "the byte
+ * above + the column's previous delta" (a ramp continues) instead of "the
+ * byte above"; STATIC columns ignore it. `slopes` is NULL (none, the
+ * default) or len bytes of 0 or 1 (else SEDGE_FAST_E_ARGUMENT). Both ends
+ * must use the same slopes. Call it before sedge_fast_prime (Rust
+ * with_slopes, which the ground chooses with learn_slopes_checked); after
+ * sedge_fast_set_epochs it returns SEDGE_FAST_E_STATE. */
+int sedge_fast_set_slopes(sedge_fast *s, const uint8_t *slopes);
 
 /* Compress one packet of len bytes into out[0..cap); *out_len receives the
  * payload length. With cap >= sedge_fast_max_payload(len) it cannot fail.
@@ -154,6 +182,16 @@ int sedge_fast_learn_classes(size_t len, const uint8_t *history, size_t n,
 int sedge_fast_learn_recipes(size_t len, const uint8_t *history, size_t n,
                              void *scratch, size_t scratch_bytes,
                              uint8_t *recipes);
+
+/* Ground side: adaptation window per column from `n` historical packets,
+ * by the ideal cost of its deltas under every window with the layout both
+ * ends will use (`recipes`, `classes`: NULL for the defaults, or len bytes
+ * each). Rust learn_windows(history, recipes, classes). Fixed-point costs
+ * as in learn_recipes. Needs SEDGE_FAST_LEARN_SCRATCH_BYTES of scratch. */
+int sedge_fast_learn_windows(size_t len, const uint8_t *history, size_t n,
+                             const uint8_t *recipes, const uint8_t *classes,
+                             void *scratch, size_t scratch_bytes,
+                             uint8_t *windows);
 
 const char *sedge_fast_error_message(int code);
 
