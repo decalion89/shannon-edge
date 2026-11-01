@@ -35,6 +35,13 @@ struct Column {
 
 /// One end of a link carrying fixed-length packets. Both ends must use the
 /// same `packet_len` and `table_bits` and process the same packets in order.
+///
+/// **Robustness to lost packets** (see [`PacketSession::with_epochs`]): every
+/// `E` packets both ends return to a common *origin* state, so a lost packet
+/// only affects the rest of its epoch. The origin can be a model already
+/// trained on historical packets ([`PacketSession::prime`]), which makes
+/// frequent resets cheap: the model restarts knowing the spacecraft.
+#[derive(Clone)]
 pub struct PacketSession {
     len: usize,
     above: Vec<u8>,
@@ -43,6 +50,19 @@ pub struct PacketSession {
     res: Table,
     /// Mixer weights per bit depth (1.0 = 65536): 4 inputs + bias.
     w: [[i32; 5]; 8],
+    /// Epoch length in packets (0 = no epochs) and the state to restart from.
+    epoch: u64,
+    origin: Option<Box<PacketSession>>,
+    /// Packets processed since the session started (sender and receiver).
+    count: u64,
+    /// Receiver only: lost sync after a gap, waiting for the next epoch.
+    desynced: bool,
+    /// Epoch number of the current state.
+    cur_epoch: u64,
+    /// Key-packet interval (1 = every packet teaches the model).
+    key: u64,
+    /// Whether the packet being coded is a key packet (updates the model).
+    learning: bool,
 }
 
 enum Io<'a, 'b> {
@@ -86,7 +106,79 @@ impl PacketSession {
             ],
             res: Table::new(table_bits),
             w: [[16_000; 5]; 8],
+            epoch: 0,
+            origin: None,
+            count: 0,
+            desynced: false,
+            cur_epoch: 0,
+            key: 1,
+            learning: true,
         }
+    }
+
+    /// Only one packet in `every` (a *key packet*) teaches the model and
+    /// becomes the reference ("above") for the next ones; the others are
+    /// coded with the model frozen, relative to the last key packet. Losing
+    /// a non-key packet then affects nothing else: only key packets need
+    /// protection (e.g. sent twice, or with retransmission). Both ends must
+    /// use the same interval; combine with [`PacketSession::with_epochs`]
+    /// (a multiple of it) to recover from a lost key packet.
+    ///
+    /// # Panics
+    /// If `every` is 0, or epochs are already enabled.
+    pub fn with_key_interval(mut self, every: u64) -> Self {
+        assert!(every > 0, "key interval must be positive");
+        assert!(self.origin.is_none(), "set the key interval before epochs");
+        self.key = every;
+        self
+    }
+
+    fn is_key(&self, index: u64) -> bool {
+        index % self.key == 0
+    }
+
+    /// Learn from historical packets before the link starts (both ends must
+    /// prime with the same packets). Nothing is transmitted.
+    ///
+    /// # Panics
+    /// If a packet has the wrong length, or epochs are already enabled.
+    pub fn prime<'a>(&mut self, packets: impl IntoIterator<Item = &'a [u8]>) {
+        assert!(self.origin.is_none(), "prime before enabling epochs");
+        let key = std::mem::replace(&mut self.key, 1); // learn from all of them
+        for p in packets {
+            self.compress(p);
+        }
+        self.key = key;
+        self.count = 0;
+    }
+
+    /// Restart from the current state (fresh, or primed) every `every`
+    /// packets, on both ends. A receiver that misses packets resumes at the
+    /// next epoch boundary ([`PacketSession::decompress_indexed`]).
+    ///
+    /// # Panics
+    /// If `every` is 0.
+    pub fn with_epochs(mut self, every: u64) -> Self {
+        assert!(every > 0, "epoch length must be positive");
+        self.epoch = every;
+        self.count = 0;
+        self.origin = Some(Box::new(self.clone()));
+        self
+    }
+
+    /// Return to the origin when packet `self.count` starts a new epoch.
+    fn maybe_restart(&mut self) {
+        if self.epoch > 0 && self.count / self.epoch != self.cur_epoch {
+            self.restart_at(self.count);
+        }
+    }
+
+    fn restart_at(&mut self, index: u64) {
+        let origin = self.origin.take().expect("origin is set with epochs");
+        *self = (*origin).clone();
+        self.origin = Some(origin);
+        self.count = index;
+        self.cur_epoch = index / self.epoch;
     }
 
     /// Packet length this session was created with.
@@ -125,12 +217,14 @@ impl PacketSession {
             let p = squash(((dot >> 16) as i32).clamp(-2047, 2047)).clamp(1, 4095) as u32;
             let bit = io.bit(p, (value >> i) & 1);
             total += cost(p, bit);
-            let err = ((bit as i32) << 12) - p as i32;
-            for (wk, xk) in w.iter_mut().zip(x) {
-                *wk += (xk * err) >> 10;
-            }
-            for (t, &sk) in self.t.iter_mut().zip(&s) {
-                t.t[sk].update(bit);
+            if self.learning {
+                let err = ((bit as i32) << 12) - p as i32;
+                for (wk, xk) in w.iter_mut().zip(x) {
+                    *wk += (xk * err) >> 10;
+                }
+                for (t, &sk) in self.t.iter_mut().zip(&s) {
+                    t.t[sk].update(bit);
+                }
             }
             node = (node << 1) | bit;
         }
@@ -153,7 +247,9 @@ impl PacketSession {
             let p = c.p12();
             let bit = io.bit(p, (len < n) as u32);
             total += cost(p, bit);
-            c.update(bit);
+            if self.learning {
+                c.update(bit);
+            }
             if bit == 0 || len >= 8 {
                 break;
             }
@@ -166,12 +262,16 @@ impl PacketSession {
             let p = c.p12();
             let bit = io.bit(p, (z >> i) & 1);
             total += cost(p, bit);
-            c.update(bit);
+            if self.learning {
+                c.update(bit);
+            }
             v = (v << 1) | bit;
         }
         let r = ((v >> 1) as i32) ^ -((v & 1) as i32);
         let out = above.wrapping_add(r as i8 as u8) as u32;
-        self.cols[k].last_len = len as u8;
+        if self.learning {
+            self.cols[k].last_len = len as u8;
+        }
         (out, total)
     }
 
@@ -187,13 +287,18 @@ impl PacketSession {
             let (_, ct) = self.transition(k, left, v, &mut Io::Dry);
             (v, ct, cr)
         };
-        let c = &mut self.cols[k];
-        c.cost_t = c.cost_t - (c.cost_t >> 4) + ct;
-        c.cost_r = c.cost_r - (c.cost_r >> 4) + cr;
+        if self.learning {
+            let c = &mut self.cols[k];
+            c.cost_t = c.cost_t - (c.cost_t >> 4) + ct;
+            c.cost_r = c.cost_r - (c.cost_r >> 4) + cr;
+        }
         v as u8
     }
 
     fn end_packet(&mut self, packet: &[u8]) {
+        if !self.learning {
+            return; // non-key packets leave no trace
+        }
         for (k, &b) in packet.iter().enumerate() {
             self.cols[k].above2 = self.above[k];
             self.above[k] = b;
@@ -206,6 +311,9 @@ impl PacketSession {
     /// If the packet has the wrong length.
     pub fn compress(&mut self, packet: &[u8]) -> Vec<u8> {
         assert_eq!(packet.len(), self.len, "packet length");
+        self.maybe_restart();
+        self.learning = self.is_key(self.count);
+        self.count += 1;
         let mut enc = Encoder::new(self.len);
         {
             let mut io = Io::Enc(&mut enc);
@@ -219,8 +327,60 @@ impl PacketSession {
         enc.finish_short()
     }
 
-    /// Decompress one packet and learn from it.
+    /// Decompress the packet with sequence number `index` (0-based, counted
+    /// by the sender; e.g. from the CCSDS packet sequence count). A gap that
+    /// lost only non-key packets ([`PacketSession::with_key_interval`]) is
+    /// harmless. After a lost key packet, packets cannot be decoded until
+    /// the next epoch boundary and return [`Error::SessionOutOfSync`]; from
+    /// there decoding resumes.
+    pub fn decompress_indexed(&mut self, index: u64, payload: &[u8]) -> Result<Vec<u8>, Error> {
+        if index < self.count {
+            return Err(Error::SessionOutOfSync {
+                expected: self.count,
+                got: index,
+            });
+        }
+        if index > self.count {
+            // Packets self.count..index were lost.
+            let mut from = self.count;
+            if let Some(n) = index.checked_div(self.epoch) {
+                let start = n * self.epoch;
+                if start >= from {
+                    // Both ends restarted at this epoch boundary: whatever
+                    // was lost before it no longer matters.
+                    self.restart_at(start);
+                    self.desynced = false;
+                    from = start;
+                }
+            }
+            // Only a lost key packet changes the model; lost non-key
+            // packets left no trace on either end.
+            if from.div_ceil(self.key) * self.key < index {
+                self.desynced = true;
+            }
+            self.count = index;
+        }
+        if self.desynced {
+            let epoch_start = self.epoch > 0 && index % self.epoch == 0;
+            if !epoch_start {
+                self.count = index + 1;
+                return Err(Error::SessionOutOfSync {
+                    expected: self.count,
+                    got: index,
+                });
+            }
+            // An epoch starts: back to the origin, in sync again.
+            self.restart_at(index);
+            self.desynced = false;
+        }
+        self.decompress(payload)
+    }
+
+    /// Decompress the next packet (no gap) and learn from it.
     pub fn decompress(&mut self, payload: &[u8]) -> Result<Vec<u8>, Error> {
+        self.maybe_restart();
+        self.learning = self.is_key(self.count);
+        self.count += 1;
         let mut dec = Decoder::new(payload);
         let mut io = Io::Dec(&mut dec);
         let mut out = Vec::with_capacity(self.len);

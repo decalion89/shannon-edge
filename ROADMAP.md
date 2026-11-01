@@ -116,8 +116,13 @@ v0.1 single core: ~0.5 MiB/s. Target: 10× without losing ratio, then more.
       kennedy.xls −47%, ptt5 −29%, Venus Express whole file −34%
 - [x] Packet profile (`packet::PacketSession`): flight-class column model
       for fixed-length packets, integer-only, golden-pinned
-- [ ] Packet profile: robustness against lost packets (resynchronisation),
-      speed (POCKET+ is ~10x faster), C/Python bindings
+- [x] Packet profile under packet loss (Venus Express, 1% i.i.d. loss):
+      epochs + primed origin are a negative result; key packets (sent
+      twice) + epochs decode 98.72% at −4.8% vs CCSDS 124 R=1. Robustness
+      costs most of the no-loss advantage
+- [ ] Packet profile: run the CCSDS 124 decoder under the same simulated
+      loss; a cheaper reference for non-key packets than a frozen model
+- [ ] Packet profile: speed (POCKET+ is ~10x faster), C/Python bindings
 - [x] Whole-mission measurement (ESA-AD Mission 1, 75 channels, 734 M
       samples, 14 years): flight profile beats CCSDS 121 on 75/75 channels,
       −38% in total; 16 channels below 1% of float32

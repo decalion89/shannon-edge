@@ -82,6 +82,7 @@ impl Counter {
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct Table {
     pub(crate) t: Vec<Counter>,
     shift: u32,

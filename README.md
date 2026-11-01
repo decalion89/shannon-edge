@@ -319,6 +319,18 @@ profile runs at 1.2–1.7 MB/s encode+decode on a desktop core and needs
 lean sedge: a lost packet desynchronises both. Reproduce with
 `bench/ccsds124.py ccsds124/test-vectors --cli <ccsds124 CLI>`.
 
+**Under packet loss the advantage mostly disappears**
+([`bench/results/venus_robustness.md`](bench/results/venus_robustness.md)).
+Epochs (periodic return to a common, optionally history-primed, state) were
+a negative result: E=100 costs +15% and still loses 37% of the packets at 1%
+loss. What works is *key packets* (`with_key_interval(K)`): only every K-th
+packet teaches the model, the others are coded with it frozen, so losing
+one harms nothing else; key packets are sent twice. On the last 90% of the
+file, K=16 with epochs of 1024 and a primed origin takes 4,737,620 bytes and
+decodes 98.72% of the packets at 1% i.i.d. loss — **−4.8% vs CCSDS 124
+R=1** (4,976,442) and −7.5% vs R=2, down from −34.9% vs R=0 without loss.
+CCSDS 124's own decoder was not run under simulated loss.
+
 ### A whole mission: 14 years of a satellite's life
 
 `bench/mission.py` runs **every channel** of ESA-AD Mission 1 — 75 channels
@@ -500,6 +512,7 @@ The file format is specified in [`docs/FORMAT.md`](docs/FORMAT.md).
 | `bench/streams.py`, `examples/session_bench.rs` | Record streams: sedge sessions vs zstd streaming |
 | `bench/telemetry.py` | ESA spacecraft telemetry: sedge vs CCSDS 121 and zstd |
 | `src/packet.rs`, `examples/packet_bench.rs` | Packet profile for fixed-length housekeeping packets |
+| `examples/packet_robust.rs` | Packet profile under simulated packet loss (key packets, epochs, priming) |
 | `bench/ccsds124.py` | Venus Express packets vs CCSDS 124 / POCKET+ (reference output and parameter sweep) |
 | `bench/mission.py`, `bench/results/` | Every channel of an ESA mission through CCSDS 121 and the flight profile |
 | `bench/anomaly.py`, `examples/flight_surprise.rs` | Anomaly detection from the compressor's surprise (ESA labels) |

@@ -112,3 +112,65 @@ fn golden_packet_stream_is_stable() {
 
 const GOLDEN_LEN: usize = 1448;
 const GOLDEN_HASH: u64 = 0x9b4e_9d6e_15f8_dfed;
+
+/// Send `ps` through a link that drops the packets in `lost`; returns, for
+/// each packet, whether the receiver decoded it (decoded packets verified).
+fn lossy_link(ps: &[Vec<u8>], make: impl Fn() -> PacketSession, lost: &[usize]) -> Vec<bool> {
+    let mut tx = make();
+    let payloads: Vec<Vec<u8>> = ps.iter().map(|p| tx.compress(p)).collect();
+    let mut rx = make();
+    (0..ps.len())
+        .map(|i| {
+            if lost.contains(&i) {
+                return false;
+            }
+            match rx.decompress_indexed(i as u64, &payloads[i]) {
+                Ok(out) => {
+                    assert_eq!(out, ps[i], "packet {i}");
+                    true
+                }
+                Err(_) => false,
+            }
+        })
+        .collect()
+}
+
+#[test]
+fn key_packets_roundtrip_and_absorb_lost_non_key_packets() {
+    let ps = packets(400, 32, 3);
+    let make = || PacketSession::new(32, 12).with_key_interval(8);
+    // No loss: everything decodes.
+    assert!(lossy_link(&ps, make, &[]).iter().all(|&d| d));
+    // Lost non-key packets (not multiples of 8): only they are missing.
+    let lost = [1, 2, 3, 13, 100, 101, 399];
+    let got = lossy_link(&ps, make, &lost);
+    for (i, &d) in got.iter().enumerate() {
+        assert_eq!(d, !lost.contains(&i), "packet {i}");
+    }
+}
+
+#[test]
+fn lost_key_packet_recovers_at_next_epoch() {
+    let ps = packets(400, 32, 4);
+    let make = |key| {
+        move || {
+            let mut s = PacketSession::new(32, 12).with_key_interval(key);
+            s.prime(packets(50, 32, 5).iter().map(Vec::as_slice));
+            s.with_epochs(64)
+        }
+    };
+    let check = |key, lost: &[usize], dead: std::ops::Range<usize>| {
+        let got = lossy_link(&ps, make(key), lost);
+        for (i, &d) in got.iter().enumerate() {
+            assert_eq!(d, !lost.contains(&i) && !dead.contains(&i), "packet {i}");
+        }
+    };
+    // Key packet 136 lost: the rest of its epoch is lost, 192.. decodes.
+    check(4, &[136], 137..192);
+    // The key packet that starts an epoch lost: that whole epoch.
+    check(4, &[190, 191, 192], 193..256);
+    // A gap spanning an epoch boundary, with no key packet lost after the
+    // boundary (key interval 5, so 192 is not a key packet): both ends
+    // restarted at 192, so decoding resumes right after the gap.
+    check(5, &[189, 190, 191, 192, 193], 0..0);
+}
