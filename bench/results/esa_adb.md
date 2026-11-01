@@ -261,7 +261,7 @@ training samples (7.63 M per channel):
   At t = 24 that is expected by chance; at t = 28, under one in 30
   (Poisson).
 
-Script: in the session scratchpad, not in the repository.
+Script: `bench/analysis/kraft_calibration.py ESA-Mission1.zip 2007-01-01 41 42 43 44 45 46`.
 
 **Scores.** Corrected event-wise F0.5, rule fixed a priori by `auto`, not
 chosen on validation:
