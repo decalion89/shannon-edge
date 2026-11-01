@@ -369,11 +369,19 @@ the model is far more overconfident than on average. A constant correction
 cannot fix that. A local one would also absorb the slow anomalies that the
 cumulative rule is meant to find. This is a real trade-off, not a bug.
 
-A side product: with the cumulative rule, the strongest unlabelled
-detection on Mission 2 lightweight starts at 2002-09-09 22:43. Nine
-channels (18–24, 26, 28) flag together, peaking at 39 bits, for hours,
-with no label in any channel. It is a candidate for a missed event, for an
-expert to check.
+**Correction.** An earlier version of this section called the strongest
+"unlabelled" cumulative detection on Mission 2 lightweight a candidate
+missed event: 2002-09-09 22:43, nine channels, peaking at 39 bits, for
+hours. It is not. ESA labels the rare event `id_368` (class_19) on
+channels 21–28 from 22:42:01 to 22:43:15. The detection starts 16 s after
+that label ends, so the exact-overlap test in `--report` missed it. The
+cumulative statistic then carries the event's evidence for hours: it is
+the tail of a labelled event.
+
+The Mission 1 full candidates were checked again against the distance to
+any label boundary, in any channel. 98 of the 113 unlabelled detections
+are more than a day away. The strongest, channels 57 and 59 on
+2009-04-18, are about 25 days from any label.
 
 ## Naming the affected channels
 
