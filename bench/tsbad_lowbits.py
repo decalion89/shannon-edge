@@ -15,6 +15,9 @@ Scores (VUS-PR, benchmark code):
 * F:        the compressor's change+state score (tsbad_cascade.onboard_score);
 * HYB_LB:   max(z(F), z(LB_dev));
 * HYB_DIM:  max(z(F), z(DIM_dev));
+* SW_SAMPLE: L-switching, fixed before its run. Where the windowed low-bit cost is >= SAT = 1.9
+            bits (noise-saturated fine scale), z(F) alone; elsewhere max(z(F), z(LB_dev)).
+* SW_SERIES: the same switch decided once per series, on the normal prefix's median low-bit cost.
 * GATED_LB: max(z(F), g * z(LB_dev)), where g = Var(low-bit cost) / Var(total cost) on the normal
             prefix (0..1). When the total cost fluctuates far more than the low-bit cost, the
             noise is in the amplitude, not the fine scale, and the low-bit channel is attenuated.
@@ -45,6 +48,7 @@ from tsbad_dimension import B, quantised_cost  # noqa: E402
 from tsbad_reference import moving_mean  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
+SAT = 1.9  # bits: low-bit cost at or above this = noise-saturated fine scale (LOW_BITS = 2)
 ZIP = None
 CODE = None
 
@@ -82,10 +86,18 @@ def one(name: str):
     f = onboard_score(x, train, L)
     vt, vl = float(np.var(total[pre])), float(np.var(low[pre]))
     g = min(1.0, vl / vt) if vt > 0 else 0.0
-    scores = {"LB_dev": lb_dev, "DIM_dev": dim_dev, "F": f,
+    # L-switching (fixed before the run): the fine scale is "saturated" when the windowed low-bit
+    # cost is >= SAT bits (the synthetic saturation curve: 1.97 at sigma = 4 quanta, 1.82 at 2).
+    # Saturated -> compressor score only; structured -> max of both channels.
+    sat = lb >= SAT
+    hz = np.maximum(zs_(f), zs_(lb_dev))
+    sw_sample = np.where(sat, zs_(f), hz)
+    sw_series = zs_(f) if np.median(lb[pre]) >= SAT else hz
+    scores = {"LB_dev": lb_dev, "DIM_dev": dim_dev, "F": f, "SW_SAMPLE": sw_sample, "SW_SERIES": sw_series,
               "HYB_LB": np.maximum(zs_(f), zs_(lb_dev)), "HYB_DIM": np.maximum(zs_(f), zs_(dim_dev)),
               "GATED_LB": np.maximum(zs_(f), g * zs_(lb_dev))}
-    out = {"file": name, "L": L, "n": len(label), "gate": g}
+    out = {"file": name, "L": L, "n": len(label), "gate": g, "sat_share": float(sat.mean()),
+           "prefix_saturated": bool(np.median(lb[pre]) >= SAT)}
     for k, v in scores.items():
         v = np.nan_to_num(v)
         a, b = v.min(), v.max()
