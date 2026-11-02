@@ -168,3 +168,34 @@ Reported, not selected:
    level with zero-shot foundation models. It ranks first on ESA
    Mission 2's whole-mission protocol, with a bounded false-alarm rate
    on its per-sample and windowed rules.
+
+## Development only: does the general model's match model see shapes? No
+
+**Hypothesis.** The general sedge model has a match model that follows
+the longest earlier repeat. It should predict periodic data almost
+perfectly and pay when a shape breaks, closing the shape gap.
+
+**Test** (`bench/tsbad_cm.py`). On TSB-AD-U's **47 tuning series only**:
+* values quantised to 8 bits on the normal prefix's range;
+* `byte_costs` at MEM_BITS 22.
+The evaluation set was not touched.
+
+| Score (47 tuning series) | Mean VUS-PR |
+|---|---:|
+| CM_raw (general model, per-sample cost) | 0.153 |
+| CM_mean (moving mean over L) | 0.143 |
+| CM_max (moving max over L) | 0.143 |
+| flight profile, adaptive windowed (A) | 0.249 |
+| flight, change + state (F) | 0.252 |
+
+**Result: refuted.** The general model is worse overall.
+* It wins on a few datasets: NEK 0.665 (moving max) vs 0.094, SED, and
+  Exathlon 0.971 (moving mean).
+* It fails on the shape datasets it was meant to fix: OPPORTUNITY 0.03,
+  MSL 0.05–0.09, UCR 0.01–0.04.
+* Exact byte repeats are too brittle for noisy real shapes. A match
+  model needs the same bytes; a shape anomaly needs "similar up to
+  noise", which is what subsequence-distance methods measure.
+
+Not pursued to the evaluation set. Per-series values:
+`bench/results/data/tsbad_cm_tuning.csv`.
