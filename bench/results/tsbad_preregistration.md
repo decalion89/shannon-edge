@@ -123,3 +123,26 @@ VUS-PR, the benchmark's own ranking measure.
 `uni_mergedTable_VUS-PR.csv`):
 * **H4.** F_max_z > A_adapt_win in mean VUS-PR.
 * **H5.** F_max_z > 0.423, the best published mean (Sub-PCA).
+
+## Stage 4: on-board triage cascade on TSB-AD-U (committed before its evaluation run)
+
+**Setup.** As developed on the 48 tuning series (`tsbad.md`,
+"on-board triage + ground Sub-PCA"; `bench/tsbad_cascade.py`, unchanged):
+* on board, the compressor's change+state score F_max_z ranks windows
+  of L samples, and the top q are downlinked;
+* on the ground, Sub-PCA keeps its scores only on downlinked windows;
+* control: the same q of windows, chosen at random (seed 0).
+
+The 90% criterion set before the development run failed there (85% at
+q = 20%). The criterion below is new and is stated as such.
+
+**Primary budget: q = 10%** (the others are reported).
+
+* **H6.** At q = 10%, the cascade keeps ≥ 75% of full Sub-PCA's mean
+  VUS-PR on TSB-AD-U-Eva.
+* **H7.** At q = 10%, the cascade keeps ≥ 2x the random control's mean
+  VUS-PR.
+
+It is refuted if either fails. The full Sub-PCA is computed by our run of
+the benchmark's model code and is also checked against the published
+`uni_mergedTable_VUS-PR.csv`.
