@@ -107,3 +107,64 @@ Reported, not selected:
 **Next, not yet run.** Combine the adaptive and the reference scores,
 with the combination chosen on the tuning set only. It must then be
 tested on data not used so far, for example TSB-AD-U.
+
+## Stage 3 result: TSB-AD-U, change + state combination (chosen on its tuning set, run once)
+
+Per-series scores: `bench/results/data/tsbad_u_eval.csv`.
+* 348 of the 350 evaluation series. Two Stock series (155, 165) did not
+  finish within 20 min in the benchmark's VUS-PR code and are left out.
+* Published values are compared on the same 348 series. On all 350,
+  Sub-PCA's mean is 0.423.
+
+| Score | Mean VUS-PR (348 series) | Rank among the 32 published + ours |
+|---|---:|---:|
+| Sub-PCA (best published) | 0.420 | 1 |
+| KShapeAD / POLY / Series2Graph / MOMENT (FT) | 0.398 / 0.387 / 0.385 / 0.382 | |
+| MatrixProfile / CNN / LSTMAD | 0.346 / 0.339 / 0.321 | |
+| TimesFM / IForest / OmniAnomaly | 0.296 / 0.294 / 0.287 | |
+| **F_max_z** (selected on the tuning set) | **0.269** | **18 of 33** |
+| Lag-Llama / Chronos (zero-shot foundation models) | 0.269 / 0.268 | |
+| TimesNet / AutoEncoder / TranAD | 0.258 / 0.257 / 0.253 | |
+| A_adapt_win (adaptive alone) | 0.219 | |
+
+Reported, not selected:
+* C_ref_win 0.283;
+* H_max_rank 0.241;
+* D_ref_mean 0.237;
+* G_mean_rank 0.223;
+* B_ref 0.172.
+
+* **H4 (F > A): holds.** 0.269 vs 0.219, Wilcoxon p = 0.027. Adding
+  state detection to change detection helps on data never used before.
+* **H5 (F > 0.423): refuted.** 0.269 vs Sub-PCA 0.420, p = 7e-11.
+* The training-free compressor ties the zero-shot foundation models
+  Lag-Llama and Chronos. It stays behind subsequence methods (Sub-PCA,
+  KShapeAD, Series2Graph, MatrixProfile), which compare whole shapes.
+  * Its largest losses are on shape anomalies: OPPORTUNITY 0.050 vs
+    0.914, NEK 0.154 vs 0.905, SVDB, MITDB.
+  * It beats every published mean on no dataset.
+  * On SMD (0.478) it is above Sub-PCA (0.449), but MOMENT (FT) is
+    better (0.750).
+
+## What the three TSB-AD stages show
+
+1. **Habituation is real and costs a lot.** Correcting it helped on all
+   three collections where it was tested: ESA, TSB-AD-M and TSB-AD-U.
+2. **Corroboration across channels does not generalise** beyond ESA
+   Mission 2.
+3. **The remaining gap is shape.** A per-sample predictive code does not
+   see an abnormal subsequence made of normal-looking steps. Methods that
+   compare subsequences do.
+
+   The same blind spot explains:
+   * ESA Mission 1's class_7;
+   * MSL and OPPORTUNITY here.
+
+   Closing it means adding subsequence memory, a match model, to the
+   flight profile. Subsequence methods already exist, so that would not
+   be new.
+4. **Where the compressor stands.** It is a training-free, onboard,
+   bit-exact by-product of compression. It is mid-table on TSB-AD,
+   level with zero-shot foundation models. It ranks first on ESA
+   Mission 2's whole-mission protocol, with a bounded false-alarm rate
+   on its per-sample and windowed rules.
