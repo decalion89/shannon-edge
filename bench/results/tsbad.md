@@ -66,3 +66,44 @@ the same mechanism behind:
 Stage 2 (`tsbad_preregistration.md`) replaces the adaptive model with a
 reference snapshot learned on the normal prefix. It was chosen on the 20
 tuning series and is evaluated once on these 180.
+
+## Stage 2 result: the reference-model score (chosen on the tuning set, run once)
+
+Per-series scores: `bench/results/data/tsbad_stage2.csv`.
+
+| Score | Mean VUS-PR (180 series) | Rank among the 23 published + ours |
+|---|---:|---:|
+| CNN | 0.313 | 1 |
+| OmniAnomaly / PCA / LSTMAD / USAD | 0.312 / 0.310 / 0.307 / 0.304 | 2–5 |
+| AutoEncoder / KMeansAD | 0.295 / 0.295 | 6–7 |
+| **D_ref_mean** (selected on the tuning set) | **0.275** | **8 of 25** |
+| CBLOF / MCD / OCSVM / Donut | 0.273 / 0.271 / 0.265 / 0.260 | |
+| S1 (stage 1, adaptive) | 0.190 | |
+
+Reported, not selected:
+* E_ref_summean 0.296;
+* C_ref_win 0.267;
+* A_adapt_win 0.190;
+* B_ref 0.152.
+
+* **H3 (D_ref_mean > 0.313): refuted.** D_ref_mean is below CNN on 110
+  of 180 series (Wilcoxon p = 0.0007).
+* **The habituation diagnosis is confirmed.** Removing habituation
+  raises the mean from 0.190 to 0.275 (p = 0.0008), and from 18th to
+  8th place.
+  * Exathlon: 0.306 → 0.890.
+  * SVDB (ECG): 0.121 → 0.211, above every published method's mean
+    except the best (0.352).
+  * Daphnet: 0.466, above every published method (best 0.340); a
+    single series.
+* **The adaptive and the reference models are complementary.** The
+  adaptive model wins on CATSv2 (0.168, best of all) and GECCO (0.205).
+  There the reference model falls to 0.036. Change detection and state
+  detection are different questions.
+* Nothing here is trained beyond the compressor's own online learning on
+  the normal prefix. There is no hyperparameter search; one choice was
+  made, on 20 tuning series.
+
+**Next, not yet run.** Combine the adaptive and the reference scores,
+with the combination chosen on the tuning set only. It must then be
+tested on data not used so far, for example TSB-AD-U.
