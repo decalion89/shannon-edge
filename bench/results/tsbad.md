@@ -445,3 +445,54 @@ The variance gate (g = Var(low)/Var(total) on the prefix) **destroys
 the OPPORTUNITY gain** (0.080) and is dropped. No combination is
 significantly better than F on the tuning set, so nothing is
 pre-registered from this.
+
+## Development: L-switching by fine-scale saturation, and the verdict on the low-bit channel
+
+**Rule, fixed before the run (commit 5ec6a54).** Saturated means the
+windowed low-bit cost is ≥ 1.9 bits; the threshold comes from the
+synthetic saturation curve (1.97 at σ = 4, 1.82 at σ = 2).
+* SW_SAMPLE: where saturated, z(F) alone; elsewhere max(z(F), z(LB_dev)).
+* SW_SERIES: the same switch, decided once per series on the normal
+  prefix.
+
+**Result on 45 of the 48 tuning series** (the three largest did not
+finish in the time slots;
+`bench/results/data/tsbad_switch_tuning.csv`):
+
+| Score | Mean VUS-PR | vs F (Wilcoxon) | Wins / losses vs F |
+|---|---:|---:|---:|
+| F (compressor change + state) | 0.258 | — | — |
+| HYB_LB (static max) | 0.267 | p = 0.131 | 13 / 30 |
+| **SW_SAMPLE** (L-switching) | 0.265 | **p = 0.077** | 13 / 29 |
+| SW_SERIES | 0.243 | p = 0.134 | 5 / 11 |
+
+| Domain | F | SW_SAMPLE |
+|---|---:|---:|
+| Shape (OPPORTUNITY, UCR, NAB, NEK; 14 series) | 0.079 | **0.166** |
+| Amplitude (YAHOO, WSD, SMAP, MSL, IOPS; 16 series) | **0.300** | 0.248 |
+
+**It fails both pre-set conditions:** it is not significant
+(p = 0.077 ≥ 0.05), and it does not improve both domains.
+
+**The exact failure point is MSL and SMAP.**
+* Their low-bit cost is almost never saturated (saturated share 0.001
+  and 0.000), so the switch turns the low-bit channel on. But these are
+  low-cardinality command and status channels: the low bits are cheap
+  because the signal takes few values, not because its fine scale has
+  geometric structure.
+* "Below saturation" cannot tell "structured fine scale" (OPPORTUNITY)
+  from "no fine scale at all" (discrete telemetry).
+* Result: MSL falls from 0.313 to 0.196 and SMAP from 0.340 to 0.188.
+
+**Redundancy criterion (stated in the same request, before the
+numbers).** The low-bit channel is discarded as a detector improvement
+if both hold on the tuning set:
+1. no pre-declared combination beats F at p < 0.05;
+2. it loses on more series than it wins.
+
+**Both hold** (best p = 0.077; 13 wins against 29 losses). The channel
+is **discarded** as a detection improvement and is not taken to
+TSB-AD-M.
+
+What remains is the measured physical law (low-bit saturation at 2 bits,
+invariant to noise amplitude) and the free `compress_scored_split` API.

@@ -57,6 +57,17 @@ It does not see abnormal subsequences made of normal-looking steps.
 Methods that compare subsequences (Sub-PCA, KShapeAD, matrix profile)
 do.
 
+## Measured, kept
+
+* **Low-bit saturation law.** The transition model's cost of the 2 least
+  significant bits saturates at 2.00 bits for white noise σ ≥ 4 quanta,
+  invariant to amplitude, while the total cost grows one bit per
+  doubling of σ (`tsbad.md`).
+* The free API is `FlightSession::compress_scored_split`.
+* As a detection channel it was **discarded** after L-switching:
+  p = 0.077, 13 wins against 29 losses. It confuses discrete telemetry
+  with structured fine scale.
+
 ## Competitors found in the literature (2026-11)
 
 * Alcarria et al., SPAICE 2026, arXiv:2609.10017: 0.700 / 0.698.
