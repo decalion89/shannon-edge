@@ -89,3 +89,37 @@ once on the 180 evaluation series and reported against:
 methods, it uses the tuning set to choose its configuration and the
 series' normal prefix. Unlike them, it trains nothing beyond the
 compressor's own online learning, and it has no hyperparameter search.
+
+## Stage 3: TSB-AD-U, combination of change and state detection (committed before its evaluation run)
+
+**Why.** On TSB-AD-M, the adaptive score (A, change detection) and the
+reference score (D, state detection) won on different datasets. Three
+combinations were added (`bench/tsbad_reference.py`):
+* F_max_z: max of their per-series z-scores;
+* G_mean_rank: mean of their percentile ranks;
+* H_max_rank: max of their percentile ranks.
+
+**Data never used before:** TSB-AD-U, the univariate collection.
+Candidates were compared **only on its 47 tuning series**
+(`TSB-AD-U-Tuning.csv`; `bench/results/data/tsbad_u_tuning.csv`):
+
+| Candidate | Mean VUS-PR (47 tuning series) | Mean rank |
+|---|---:|---:|
+| A_adapt_win | 0.249 | 5.24 |
+| B_ref | 0.149 | 6.34 |
+| C_ref_win | 0.241 | **4.57** |
+| D_ref_mean | 0.170 | 6.07 |
+| **F_max_z** | **0.252** | 5.01 |
+| G_mean_rank | 0.196 | 5.47 |
+| H_max_rank | 0.218 | 5.21 |
+
+**Selected: F_max_z**, by the criterion used in stage 2: best mean
+VUS-PR, the benchmark's own ranking measure.
+* Its margin over A is tiny (0.252 vs 0.249).
+* The mean-rank criterion would have picked C_ref_win.
+* All candidates are reported on the evaluation set.
+
+**Hypotheses for the single evaluation run** (TSB-AD-U-Eva, against
+`uni_mergedTable_VUS-PR.csv`):
+* **H4.** F_max_z > A_adapt_win in mean VUS-PR.
+* **H5.** F_max_z > 0.423, the best published mean (Sub-PCA).

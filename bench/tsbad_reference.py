@@ -25,7 +25,14 @@ Candidate scores, with excess = cost - b per channel:
 * E_ref_summean: sum over channels of the moving mean of the reference
                  excess.
 
-Usage: tsbad_reference.py TSB-AD-M.zip TSB-AD-checkout {tuning|eval} out.csv [--jobs 4]
+Combinations of change detection (A) and state detection (D), added for the
+TSB-AD-U stage (chosen on TSB-AD-U's tuning list, evaluated once on its
+evaluation list):
+* F_max_z:     max of the per-series z-scores of A and D;
+* G_mean_rank: mean of their percentile ranks;
+* H_max_rank:  max of their percentile ranks.
+
+Usage: tsbad_reference.py TSB-AD-{M,U}.zip TSB-AD-checkout {tuning|eval} out.csv [--collection M|U] [--jobs 4]
 """
 
 from __future__ import annotations
@@ -81,7 +88,8 @@ def one(name: str):
     from TSB_AD.evaluation.basic_metrics import basic_metricor, generate_curve
     from TSB_AD.utils.slidingWindows import find_length_rank
     z = zipfile.ZipFile(ZIP)
-    df = pd.read_csv(io.BytesIO(z.read(f"TSB-AD-M/{name}"))).dropna()
+    root = next(n.split("/")[0] for n in z.namelist() if n.endswith(name))
+    df = pd.read_csv(io.BytesIO(z.read(f"{root}/{name}"))).dropna()
     data = df.iloc[:, 0:-1].values.astype(float)
     label = df["Label"].astype(int).to_numpy()
     L = int(find_length_rank(data[:, 0].reshape(-1, 1), rank=1))
@@ -106,7 +114,21 @@ def one(name: str):
         D = np.maximum(D, mm)
         E += mm
     out = {"file": name, "L": L, "n": n, "d": d, "train": train}
-    for k, v in (("A_adapt_win", A), ("B_ref", B), ("C_ref_win", C), ("D_ref_mean", D), ("E_ref_summean", E)):
+
+    def zs(v):
+        v = np.nan_to_num(v, nan=0.0, posinf=1e6, neginf=-1e6)
+        sd = v.std()
+        return (v - v.mean()) / sd if sd > 0 else np.zeros_like(v)
+
+    def pr(v):
+        v = np.nan_to_num(v, nan=0.0, posinf=1e6, neginf=-1e6)
+        return pd.Series(v).rank(pct=True).to_numpy()
+    # Combinations of change detection (adaptive, A) and state detection (reference, D).
+    F = np.maximum(zs(A), zs(D))
+    G = (pr(A) + pr(D)) / 2
+    H = np.maximum(pr(A), pr(D))
+    for k, v in (("A_adapt_win", A), ("B_ref", B), ("C_ref_win", C), ("D_ref_mean", D), ("E_ref_summean", E),
+                 ("F_max_z", F), ("G_mean_rank", G), ("H_max_rank", H)):
         v = np.nan_to_num(v, nan=0.0, posinf=1e6, neginf=-1e6)
         lo, hi = v.min(), v.max()
         v = (v - lo) / (hi - lo) if hi > lo else np.zeros_like(v)
@@ -126,10 +148,11 @@ def main():
     ap.add_argument("zip")
     ap.add_argument("checkout")
     ap.add_argument("split", choices=["tuning", "eval"])
+    ap.add_argument("--collection", choices=["M", "U"], default="M")
     ap.add_argument("out")
     ap.add_argument("--jobs", type=int, default=os.cpu_count())
     args = ap.parse_args()
-    lst = {"tuning": "TSB-AD-M-Tuning.csv", "eval": "TSB-AD-M-Eva.csv"}[args.split]
+    lst = f"TSB-AD-{args.collection}-" + {"tuning": "Tuning.csv", "eval": "Eva.csv"}[args.split]
     files = pd.read_csv(Path(args.checkout) / "Datasets/File_List" / lst)["file_name"].tolist()
     done = set(pd.read_csv(args.out)["file"]) if Path(args.out).exists() else set()
     zsz = {i.filename.split("/")[-1]: i.file_size for i in zipfile.ZipFile(args.zip).infolist()}
