@@ -100,6 +100,17 @@ def one(name: str):
         out[f"random_{int(q * 100)}"] = vus(np.where(keep_r[blocks], g, 0.0))
         # Fraction of anomalous samples inside downlinked windows.
         out[f"anom_cov_{int(q * 100)}"] = float(label[keep[blocks]].sum() / max(label.sum(), 1))
+        # Event triage (development): send each chosen window together with its neighbours, so a
+        # contiguous anomaly goes down whole. Same budget: seeds are added in score order until k
+        # windows (seed and neighbours) are used.
+        keep_e = np.zeros(nb, bool)
+        for i in np.argsort(-bmax):
+            if keep_e.sum() >= k:
+                break
+            for j in (i - 1, i, i + 1):
+                if 0 <= j < nb and keep_e.sum() < k:
+                    keep_e[j] = True
+        out[f"event_{int(q * 100)}"] = vus(np.where(keep_e[blocks], g, 0.0))
     print(name + " " + " ".join(f"{k}={v:.3f}" for k, v in out.items() if k.startswith(("subpca", "cascade_20", "random_20"))),
           file=sys.stderr, flush=True)
     return out
