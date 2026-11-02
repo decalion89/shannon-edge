@@ -70,8 +70,8 @@ do.
 ## Open, in order of expected value
 
 1. **Done:** the cascade, see above.
-   * Next: triage by *events* (contiguous windows) rather than single
-     windows.
+   * Triage by events (window + neighbours) was tried in development: no
+     gain (68% vs 82% at q = 10%, n.s.).
    * Next: a shape-aware on-board score; it must stay cheap.
 2. **Calibration of the reference model under drift:** a quarantined
    update, accepting a window into the reference only under a stricter

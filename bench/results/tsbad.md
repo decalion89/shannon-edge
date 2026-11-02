@@ -272,3 +272,26 @@ Per-series values: `bench/results/data/tsbad_cascade_eval.csv`.
   optimizing data exports"; on-board image prioritisation). This
   measures it for a telemetry compressor's surprise on a public
   benchmark against a random control. It is not a new idea.
+
+## Development: triage by events (each chosen window with its neighbours) does not help
+
+On TSB-AD-U's 48 tuning series, with the same budget (`event_*` columns of
+`bench/tsbad_cascade.py`; `bench/results/data/tsbad_event_tuning.csv`).
+Values are the share of full Sub-PCA's mean VUS-PR.
+
+| Downlinked share q | Windows (as in stage 4) | Events (window + neighbours) | Random |
+|---:|---:|---:|---:|
+| 5% | 72% | 67% | 26% |
+| 10% | 82% | 68% | 28% |
+| 20% | 85% | 80% | 36% |
+| 30% | 78% | 81% | 42% |
+| 50% | 82% | 84% | 60% |
+
+* Events are worse at small budgets and similar at large ones; neither
+  difference is significant (Wilcoxon p = 0.23 at 10%, 0.79 at 20%).
+* Budget spent on neighbours is taken from other, independent surprise
+  peaks.
+* The window results reproduce the earlier development run exactly
+  (82% and 85%).
+
+Not taken to the evaluation set.
