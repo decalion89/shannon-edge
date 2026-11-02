@@ -323,7 +323,7 @@ made of. Dropped. The ground-learned PCA basis stays the shape channel to
 beat. Per-series values:
 `bench/results/data/tsbad_ordinal_tuning_partial.csv`.
 
-## Development: the compressor's local information dimension (partial)
+## Development: the compressor's local information dimension
 
 **Theory, which is not new.**
 * A lossless code's mean cost estimates the entropy rate of the
@@ -333,42 +333,52 @@ beat. Per-series values:
   information dimension. For deterministic chaos it tends to the
   Kolmogorov–Sinai entropy, the sum of the positive Lyapunov exponents
   (Pesin), and the slope goes to 0 (Gaspard and Wang's ε-entropy, 1993).
-* So the compressor's extra bits per extra bit of resolution are a
-  local, Kraft-calibrated estimate of the signal's dimension.
-* Measuring it needs a second, coarser model. It is not "zero extra
-  RAM".
+* So the extra bits per extra bit of resolution are a local,
+  Kraft-calibrated estimate of the signal's dimension.
 
-**Test** (`bench/tsbad_dimension.py`). Values are quantised at 8 and 6
-bits on the normal prefix's range, and each stream is coded by the
-adaptive flight profile. The per-sample slope is
-(cost_8 − cost_6)/2, averaged over L.
-* DIM_dev: |slope − its median on the normal prefix|.
-* DIM_mean: the slope itself.
-* COST_mean: the 8-bit cost alone.
+**Test** (`bench/tsbad_dimension.py`).
+* Values are quantised at 8 and 6 bits on the normal prefix's range,
+  and each stream is coded by the adaptive flight profile.
+* The per-sample slope is (cost_8 − cost_6)/2, averaged over L.
+* DIM_dev is |slope − its median on the normal prefix|.
 
-Run on the 29 smallest of the 48 tuning series (stopped at 10 min, with
-the CPU shared). Mean VUS-PR:
+**Result on all 48 tuning series**
+(`bench/results/data/tsbad_dimension_tuning.csv`):
 
 | Score | Mean VUS-PR |
 |---|---:|
-| DIM_mean | 0.088 |
-| **DIM_dev** | 0.169 |
-| COST_mean (entropy rate alone) | 0.129 |
-| F_max_z (stage-3 change + state score) | 0.248 |
+| DIM_mean (slope) | 0.137 |
+| DIM_dev | 0.181 |
+| COST_mean (entropy rate at 8 bits) | 0.181 |
+| F_max_z (compressor change + state) | **0.265** |
 
-* **Overall it is weaker** than the compressor's change+state score.
-  It beats it on 11 of 29 series.
-* **But on OPPORTUNITY it sees what nothing else in this project
-  did:**
-  * id 11: 0.977, vs 0.046 for F_max_z;
-  * id 23: 0.764, vs 0.020.
-  OPPORTUNITY is the shape dataset where the compressor's score was
-  0.05 on the evaluation set and Sub-PCA 0.91. A change of the signal's
-  *dimension* (how many bits each extra bit of resolution costs) is
-  invisible to the cost itself, but not to its slope.
-* Two series are an anecdote, not a result. If pursued, it must be as a
-  third channel of the hybrid (max of z-scores), chosen on the full
-  tuning set and pre-registered on data not yet used for triage, such as
-  TSB-AD-M.
+* **As a stand-alone detector it is refuted:** DIM_dev is below F_max_z
+  (Wilcoxon p = 0.020). It wins on 17 of 48 series.
+* **Where it wins, it is on shape datasets, where the compressor is
+  blind:**
 
-Per-series values: `bench/results/data/tsbad_dimension_tuning_partial.csv`.
+  | Dataset | DIM_dev | F_max_z |
+  |---|---:|---:|
+  | OPPORTUNITY (2) | 0.871 | 0.033 |
+  | UCR (6) | 0.072 | 0.026 |
+  | NAB (5) | 0.204 | 0.159 |
+  | NEK | 0.123 | 0.094 |
+  | Exathlon | 0.817 | 0.768 |
+
+* It loses badly on YAHOO (0.049 vs 0.484), SMAP, MSL and WSD.
+* Choosing the better of the two per series would score 0.335. That
+  is an oracle, not a method; it shows the channels are complementary,
+  not that a combination achieves it.
+
+**Implementation note: the measurement can be free.** The flight
+profile's transition model codes each value MSB-first, one binary
+decision per bit (`src/flight.rs`, `Transition::code`). The cost of the
+last two decisions is the cost of the two least significant bits, given
+the high bits and the past. That is the fine-scale increment of the
+ε-entropy, the same quantity the second model estimates, and it is
+already computed. Splitting the per-sample cost into its high-bit and
+low-bit parts needs one more accumulator, not a second model. It
+differs from the two-model slope (the high bits are coded in the 8-bit
+model's context), so it must be measured before it replaces it. The
+residual model codes a length prefix and a zigzag residual, so the split
+only applies when the transition model codes.
