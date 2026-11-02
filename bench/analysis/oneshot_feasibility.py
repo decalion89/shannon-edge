@@ -6,7 +6,8 @@ minimum distance. How do class_7 windows rank among all windows?
 Usage: oneshot_feasibility.py SCRATCH_DIR channel_14 channel_21 channel_29
 (SCRATCH_DIR/esa/raw/ESA-Mission1.zip). Needs stumpy."""
 import io, sys, zipfile, numpy as np, pandas as pd, stumpy
-sys.path.insert(0, "/home/user/shannon-edge/bench")
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from anomaly_esaadb import load
 SP = sys.argv.pop(1) if len(sys.argv) > 1 and not sys.argv[1].startswith("channel_") else "."  # dir holding esa/raw/ESA-Mission1.zip
 z = zipfile.ZipFile(f"{SP}/esa/raw/ESA-Mission1.zip"); r = "ESA-Mission1"
