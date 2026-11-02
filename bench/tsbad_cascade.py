@@ -10,7 +10,8 @@ Per series:
   (bench/tsbad_reference.py), computed per sample. Windows of L samples
   are ranked by their largest F, and the top fraction q is "downlinked";
 * on the ground: Sub-PCA, the best published method on TSB-AD-U (benchmark
-  code, run_Sub_PCA with its default periodicity). It scores the whole
+  code: the body of run_Sub_PCA with its default periodicity, i.e.
+  models.PCA with slidingWindow = find_length_rank(data, rank=1)). It scores the whole
   series as in the benchmark, but only downlinked windows keep their
   scores; the rest are set to the minimum (the ground saw nothing there);
 * control: the same fraction q of windows, chosen at random (seed 0).
@@ -63,7 +64,7 @@ def onboard_score(x: np.ndarray, train: int, L: int) -> np.ndarray:
 def one(name: str):
     sys.path.insert(0, CODE)
     from TSB_AD.evaluation.basic_metrics import generate_curve
-    from TSB_AD.model_wrapper import run_Unsupervise_AD
+    from TSB_AD.models.PCA import PCA as SubPCA  # run_Sub_PCA, without the wrapper's torch import
     from TSB_AD.utils.slidingWindows import find_length_rank
     z = zipfile.ZipFile(ZIP)
     root = next(n.split("/")[0] for n in z.namelist() if n.endswith(name))
@@ -75,7 +76,9 @@ def one(name: str):
     n = len(label)
     f = onboard_score(data[:, 0], train, L)
     with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-        g = np.asarray(run_Unsupervise_AD("Sub_PCA", data), dtype=float).ravel()
+        clf = SubPCA(slidingWindow=find_length_rank(data, rank=1), n_components=None)
+        clf.fit(data)
+        g = np.asarray(clf.decision_scores_, dtype=float).ravel()
     g = np.nan_to_num(g)
     g = (g - g.min()) / (g.max() - g.min()) if g.max() > g.min() else np.zeros(n)
 
