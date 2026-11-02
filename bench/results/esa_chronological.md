@@ -148,3 +148,44 @@ Estimated effect on Mission 1: about 18 more events of 196, which is
 not enough by itself to close the gap to 0.700. Several examples per
 class, and classes other than class_7, would be needed. Not pursued
 further yet.
+
+## Post hoc: corroboration across channels (`bench/analysis/corroboration.py`)
+
+**Not confirmatory.** This was designed after seeing where the
+pre-registered rule's false alarms come from.
+
+**What we saw.** The windowed rule's false alarms are almost all raised
+by a single channel: 55 of 57 on Mission 1, 162 of 192 on Mission 2, 1
+of 1 on Mission 3. True events are mostly found by detections spanning
+several channels; on Mission 2, 607 of 629. One channel, 75, alone
+raises 19 of Mission 1's 57 false alarms.
+
+**Rule.** Alarm when at least 2 channels reach
+t2 = ceil((log2 W_time + log2 C(n, 2)) / 2) in the same 6-h window,
+where W_time is the number of 6-h windows and n the number of channels.
+If channels were independent given the past, that gives at most one
+expected false pair-window. The formula fixes t2; nothing was tuned.
+"Union" means either rule, each at one extra bit.
+
+| Mission | t_w / t2 | Single (pre-registered) | **Pair** | Union | Pair: shifted median / max |
+|---|---:|---:|---:|---:|---:|
+| 1 | 21 / 13 | 0.432 | **0.569** (precision 0.884, recall 0.235) | 0.492 | 0.080 / 0.125 |
+| 2 | 18 / 12 | 0.724 | **0.871** (precision 0.852, recall 0.955) | 0.737 | 0.128 / 0.160 |
+| 3 | 18 / 11 | 0.492 | 0.333 | 0.492 | — |
+
+* **Mission 2.** The pair rule reaches 0.871, against 0.698 for
+  Alcarria et al. on the same protocol. It is close to the 0.882 cited
+  for PitIA, but that was under a static split, so the two are not
+  comparable.
+* **Mission 1.** It improves to 0.569, still below 0.700.
+* **Mission 3.** It loses: few events, mostly in one channel.
+* **The independence assumption is false.** The pair rule still raises
+  6 false detections on Mission 1 and 58 on Mission 2, where at most
+  one is expected under independence. Correlated channels, or
+  unlabelled events, break it. The pair rule therefore has **no**
+  guarantee, only a formula for its threshold. Cross-channel
+  corroboration is also standard practice in monitoring (e.g. a
+  multivariate SPRT patent for telemetry, US 9,152,530).
+
+**To make this a result, it must be tested on data not used here**: a
+new ESA release or another mission, with the pair rule fixed as above.
