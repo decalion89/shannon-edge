@@ -197,6 +197,21 @@ November 2026:
   the numbers are not comparable.
 * The Kaggle "ESA-ADB challenge" (e.g. arXiv:2605.06681) is supervised,
   with its own leaderboard metric.
+* **Goetze, Schlippe and Lakey, IEEE SCC 2025** (arXiv:2603.29375).
+  Mission 1 lightweight subset, the ESA-ADB test set and corrected
+  event-wise F0.5:
+  * a forecasting-and-threshold network (317k parameters), trained with
+    sample weights on anomalous sequences, scores **0.927**
+    (precision 0.998, recall 0.723);
+  * its edge-optimised version (29k parameters, 59 KB RAM, 166 KB ROM)
+    scores **0.888**.
+
+  This is above our trained rule (0.690), our training-free rules
+  (Kraft 0.705, cumulative Kraft 0.766) and ESA-ADB Table 2's 0.786. It
+  is also an **on-board** competitor: 59 KB of RAM, against the flight
+  profile's 0.2–3 MiB. What remains different is that ours needs no
+  training or labels and is a by-product of compression; theirs is a
+  dedicated, trained detector.
 
 The claims "1st" and "N x the best published" therefore hold against
 ESA-ADB Table 2 only.
