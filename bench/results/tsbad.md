@@ -382,3 +382,66 @@ differs from the two-model slope (the high bits are coded in the 8-bit
 model's context), so it must be measured before it replaces it. The
 residual model codes a length prefix and a zigzag residual, so the split
 only applies when the transition model codes.
+
+## Development: the free low-bit channel (`compress_scored_split`), saturation, and why there is no "anti-YAHOO" gate
+
+**1. The free channel carries the same information as the second
+model.** On 46 of the 48 tuning series (the two largest UCR series did
+not finish in the time slots; `bench/tsbad_lowbits.py`,
+`bench/results/data/tsbad_lowbits_tuning.csv`):
+* LB_dev, the deviation of the low-bit cost already computed by the
+  transition model, scores 0.168 mean VUS-PR.
+* DIM_dev, the two-model 8-vs-6-bit slope, scores 0.169.
+* Their per-series scores correlate at 0.974, and OPPORTUNITY scores
+  0.891 vs 0.871.
+
+The extra model is not needed.
+
+**2. A measured invariance (synthetic, 8-bit codes, 100k samples after
+warm-up).**
+
+| White noise σ (quanta) | Total cost (bits/sample) | Low-bit cost (bits/sample) |
+|---:|---:|---:|
+| 0.25 | 0.37 | 0.18 |
+| 1 | 2.16 | 1.24 |
+| 2 | 3.12 | 1.82 |
+| 4 | 4.11 | **1.97** |
+| 8 | 5.11 | **2.00** |
+| 16 | 6.11 | **2.01** |
+| 32 | 7.11 | **2.01** |
+
+* The total cost grows by one bit per doubling of σ: dimension 1, as
+  ε-entropy theory says for noise.
+* The low-bit cost **saturates at LOW_BITS = 2 bits** as soon as σ is
+  a few quanta. It is invariant to the noise amplitude.
+* So the low-bit cost does not measure "how much noise". It measures
+  **whether the fine scale is saturated by noise (≈ 2 bits) or has
+  structure (< 2 bits)**.
+
+On a smooth sine plus noise, it reads 0.94 bits at σ = 0.25 and 2.00 at
+σ = 4.
+
+**3. Physical reading of OPPORTUNITY and YAHOO.**
+* **OPPORTUNITY's anomalies make the fine scale structured.** The
+  median absolute step falls from 17 to 3 units (id 11) and from 19 to
+  5 (id 23), and repeated values rise from 2% to 7–11%. The low-bit
+  cost leaves saturation; the total cost barely moves.
+* **YAHOO's anomalies are amplitude spikes.** The low bits of a spike
+  are as saturated as those of the noise around it, so this channel is
+  blind to them **by construction**. No transformation of the low-bit
+  cost alone can fix that.
+
+**4. The combination.** The hybrid max(z(F), z(LB_dev)) already keeps
+YAHOO (0.476 vs F 0.484) and OPPORTUNITY (0.673 vs F 0.033).
+
+| Score | Mean VUS-PR (46 tuning series) |
+|---|---:|
+| F (compressor change + state) | 0.257 |
+| HYB_LB, max(z(F), z(LB_dev)) | 0.265 (p = 0.16 vs F) |
+| HYB_DIM, max(z(F), z(DIM_dev)) | 0.271 (p = 0.41) |
+| GATED_LB (variance gate) | 0.260 |
+
+The variance gate (g = Var(low)/Var(total) on the prefix) **destroys
+the OPPORTUNITY gain** (0.080) and is dropped. No combination is
+significantly better than F on the tuning set, so nothing is
+pre-registered from this.
