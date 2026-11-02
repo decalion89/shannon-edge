@@ -117,12 +117,13 @@ def main():
     ap.add_argument("split", choices=["tuning", "eval"])
     ap.add_argument("out")
     ap.add_argument("--jobs", type=int, default=os.cpu_count())
+    ap.add_argument("--skip", nargs="*", default=[], help="series to leave out (e.g. ones the VUS code cannot finish)")
     args = ap.parse_args()
     lst = "TSB-AD-U-" + {"tuning": "Tuning.csv", "eval": "Eva.csv"}[args.split]
     files = pd.read_csv(Path(args.checkout) / "Datasets/File_List" / lst)["file_name"].tolist()
     done = set(pd.read_csv(args.out)["file"]) if Path(args.out).exists() else set()
     zsz = {i.filename.split("/")[-1]: i.file_size for i in zipfile.ZipFile(args.zip).infolist()}
-    todo = sorted((f for f in files if f not in done), key=lambda f: -zsz.get(f, 0))
+    todo = sorted((f for f in files if f not in done and f not in args.skip), key=lambda f: -zsz.get(f, 0))
     with Pool(args.jobs, initializer=init, initargs=(args.zip, str(Path(args.checkout).resolve()))) as pool:
         for r in pool.imap_unordered(one, todo):
             pd.DataFrame([r]).to_csv(args.out, mode="a", header=not Path(args.out).exists(), index=False)

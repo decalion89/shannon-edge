@@ -238,3 +238,37 @@ control. Run on TSB-AD-U's 48 tuning series only.
 
 Per-series values: `bench/results/data/tsbad_cascade_tuning.csv`. The
 evaluation set was not used.
+
+## Stage 4 result: on-board triage cascade on TSB-AD-U-Eva (pre-registered, run once)
+
+* 348 of the 350 evaluation series: the same two Stock series (155, 165)
+  as in stage 3 do not finish in the benchmark's VUS-PR code and are
+  left out (`--skip`).
+* Our run of Sub-PCA reproduces the published table on these series:
+  0.414 vs 0.420.
+
+Per-series values: `bench/results/data/tsbad_cascade_eval.csv`.
+
+| Downlinked share q | Cascade VUS-PR | Share of full Sub-PCA (0.414) | Random windows | Cascade / random | Anomalous samples sent |
+|---:|---:|---:|---:|---:|---:|
+| 5% | 0.213 | 51% | 0.093 | 2.3x | 29% |
+| **10%** | **0.255** | **62%** | 0.103 | **2.5x** | 40% |
+| 20% | 0.295 | 71% | 0.135 | 2.2x | 53% |
+| 30% | 0.314 | 76% | 0.171 | 1.8x | 61% |
+| 50% | 0.336 | 81% | 0.234 | 1.4x | 73% |
+
+* **H6 (≥ 75% of Sub-PCA at q = 10%): refuted.** It keeps 62%. The 75%
+  level is reached only at about 30% of the downlink.
+* **H7 (≥ 2x random at q = 10%): holds.** 2.5x, Wilcoxon p = 7e-30.
+* **What it means.** The compressor's surprise is a much better on-board
+  filter than chance. With a tenth of the downlink it sends 40% of the
+  anomalous samples, and the ground keeps 62% of its detection, against
+  25% for random windows. It is not good enough for a tenth of the link
+  to preserve most of a strong ground detector. The gap is the same
+  shape blind spot: windows that hold abnormal shapes are not the ones
+  the compressor finds most surprising.
+* Prior art: prioritised downlink and cascaded detectors exist (e.g.
+  US patent 12634313, "Using cascaded detectors for prioritizing and
+  optimizing data exports"; on-board image prioritisation). This
+  measures it for a telemetry compressor's surprise on a public
+  benchmark against a random control. It is not a new idea.

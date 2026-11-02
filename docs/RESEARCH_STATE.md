@@ -29,6 +29,12 @@ says where things stand.
 * **Mission 1 to 0.700.** It stays at 0.432; recurring anomalies
   (class_7) are invisible to surprise.
 
+* **On-board triage (stage 4, TSB-AD-U-Eva, pre-registered).**
+  * At 10% of the downlink, the ground keeps 62% of Sub-PCA's VUS-PR,
+    so H6 (≥ 75%) is refuted.
+  * That is 2.5x the random-window control, so H7 holds (p = 7e-30).
+  * The 75% level is reached at about 30% of the downlink.
+
 ## Refuted (development only)
 
 * The general model's match model does not see noisy shapes (0.15 vs
@@ -63,10 +69,10 @@ do.
 
 ## Open, in order of expected value
 
-1. **Run the cascade on TSB-AD-U's evaluation set** with a pre-registered
-   q, and report the share of Sub-PCA kept at 5/10/20% of the downlink.
-   This is the one place where the compressor's niche (cheap, on board,
-   bounded false alarms) meets a practical need: choosing what to send.
+1. **Done:** the cascade, see above.
+   * Next: triage by *events* (contiguous windows) rather than single
+     windows.
+   * Next: a shape-aware on-board score; it must stay cheap.
 2. **Calibration of the reference model under drift:** a quarantined
    update, accepting a window into the reference only under a stricter
    threshold and after a delay. Gated updating is prior art, so measure
