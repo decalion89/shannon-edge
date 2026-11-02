@@ -119,3 +119,32 @@ lot.
 * **Comparability.** Same protocol as far as their paper describes it;
   not their code. The event sets differ slightly on Mission 2 (627 vs
   644).
+
+## Next: can one label recover the recurring anomaly? Feasibility (development years only)
+
+Mission 1's class_7 is invisible to surprise because it recurs. Could a
+single operator label recover it? First, an upper bound that uses no
+compressor at all (`bench/analysis/oneshot_feasibility.py`):
+* the first class_7 event (id_30, 2000-02-27) is the template;
+* its z-normalised distance (MASS) to every subsequence of 5-min medians
+  is computed;
+* the minimum is taken per 6-h window.
+
+Only 2000–2006 is used: 2007–2013 stays untouched for a later
+pre-registered test.
+
+| Channel | Other class_7 events found (of 21) | Nominal windows below the threshold (of 9,002) |
+|---|---:|---:|
+| 14 | 8 / 9 | 5 / 10 |
+| 21 | 8 / 9 | 5 / 10 |
+| 29 | 9 / 10 | 5 / 10 |
+
+One example finds about 40% of the other occurrences at about one false
+window a year. The rest have visibly different shapes: some drop first,
+others overshoot. A compressor with a match model could at best
+approach this.
+
+Estimated effect on Mission 1: about 18 more events of 196, which is
+not enough by itself to close the gap to 0.700. Several examples per
+class, and classes other than class_7, would be needed. Not pursued
+further yet.
