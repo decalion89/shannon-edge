@@ -144,3 +144,23 @@ fn sender_and_receiver_compute_the_same_surprise() {
         mean(6000..7000)
     );
 }
+
+#[test]
+fn split_scoring_leaves_the_frame_unchanged() {
+    use shannon_edge::flight::{FlightSession, LOW_BITS};
+    let samples: Vec<u16> = (0..3000u32)
+        .map(|i| ((i * 37 + (i * i) % 101) % 4096) as u16)
+        .collect();
+    let (mut a, mut b) = (FlightSession::new(12, 14), FlightSession::new(12, 14));
+    let (mut sa, mut sb, mut low) = (Vec::new(), Vec::new(), Vec::new());
+    for p in samples.chunks(256) {
+        let fa = a.compress_scored(p, &mut sa);
+        let fb = b.compress_scored_split(p, &mut sb, &mut low);
+        assert_eq!(fa, fb);
+    }
+    assert_eq!(sa, sb);
+    assert_eq!(low.len(), samples.len());
+    // The low bits can never cost more than the whole sample's transition coding of them;
+    // they are a part of a cost and are bounded by LOW_BITS bits at the worst probability.
+    assert!(low.iter().all(|&c| c <= LOW_BITS * 12 * 256));
+}

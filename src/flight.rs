@@ -154,10 +154,13 @@ impl Transition {
         }
     }
 
-    /// Code `value` (ignored when decoding); returns the value and its cost.
-    fn code(&mut self, value: u32, io: &mut Io) -> (u32, u32) {
+    /// Code `value` (ignored when decoding); returns the value, its cost, and
+    /// the cost of its `LOW_BITS` least significant bits (the last binary
+    /// decisions, coded given the high bits and the past).
+    fn code(&mut self, value: u32, io: &mut Io) -> (u32, u32, u32) {
         let mut node = 1u32;
         let mut total = 0;
+        let mut low = 0;
         for i in (0..self.bits).rev() {
             let ctx = [
                 node as u64,
@@ -179,7 +182,11 @@ impl Transition {
             let dot: i64 = (0..4).map(|k| x[k] as i64 * w[k] as i64).sum();
             let p = squash(((dot >> 16) as i32).clamp(-2047, 2047)).clamp(1, 4095) as u32;
             let bit = io.bit(p, (value >> i) & 1);
-            total += cost(p, bit);
+            let c = cost(p, bit);
+            total += c;
+            if i < LOW_BITS {
+                low += c;
+            }
             let err = ((bit as i32) << 12) - p as i32;
             for (wk, xk) in w.iter_mut().zip(x) {
                 *wk += (xk * err) >> 10;
@@ -192,9 +199,13 @@ impl Transition {
         let v = node & ((1 << self.bits) - 1);
         self.prev2 = self.prev;
         self.prev = v;
-        (v, total)
+        (v, total, low)
     }
 }
+
+/// Number of least significant bits whose cost [`FlightSession::compress_scored_split`]
+/// reports separately.
+pub const LOW_BITS: u32 = 2;
 
 /// Residual from the previous sample with adaptive contexts.
 #[derive(Clone)]
@@ -274,6 +285,7 @@ pub struct FlightSession {
     cost_t: u64,
     cost_r: u64,
     last_other: u32,
+    last_low: u32,
 }
 
 impl FlightSession {
@@ -296,6 +308,7 @@ impl FlightSession {
             cost_t: 0,
             cost_r: 0,
             last_other: 0,
+            last_low: 0,
         }
     }
 
@@ -308,19 +321,51 @@ impl FlightSession {
     /// 1/256 bits (the "surprise" of the chosen model).
     fn sample(&mut self, value: u32, io: &mut Io) -> (u32, u32) {
         let use_t = self.cost_t <= self.cost_r;
-        let (v, ct, cr) = if use_t {
-            let (v, ct) = self.transition.code(value, io);
+        let (v, ct, cr, low) = if use_t {
+            let (v, ct, low) = self.transition.code(value, io);
             let (_, cr) = self.residual.code(v, &mut Io::Dry);
-            (v, ct, cr)
+            (v, ct, cr, low)
         } else {
             let (v, cr) = self.residual.code(value, io);
-            let (_, ct) = self.transition.code(v, &mut Io::Dry);
-            (v, ct, cr)
+            let (_, ct, low) = self.transition.code(v, &mut Io::Dry);
+            (v, ct, cr, low)
         };
+        self.last_low = low;
         self.cost_t = self.cost_t - (self.cost_t >> 6) + ct as u64;
         self.cost_r = self.cost_r - (self.cost_r >> 6) + cr as u64;
         self.last_other = if use_t { cr } else { ct };
         (v, if use_t { ct } else { cr })
+    }
+
+    /// Like [`Self::compress_scored`], and also appends to `low` the cost the
+    /// transition model paid (or would have paid) for each sample's
+    /// [`LOW_BITS`] least significant bits, given its high bits and the past.
+    /// That is the fine-scale increment of the coded entropy, a free local
+    /// estimate of how many bits each extra bit of resolution costs. Same
+    /// frame as `compress`.
+    pub fn compress_scored_split(
+        &mut self,
+        samples: &[u16],
+        surprise: &mut Vec<u32>,
+        low: &mut Vec<u32>,
+    ) -> Vec<u8> {
+        let mut out = Vec::with_capacity(4 + samples.len());
+        put_varint(&mut out, samples.len() as u64);
+        let mut enc = Encoder::new(samples.len());
+        {
+            let mut io = Io::Enc(&mut enc);
+            for &s in samples {
+                assert!(
+                    (s as u32) >> self.bits == 0,
+                    "sample {s} does not fit in {} bits",
+                    self.bits
+                );
+                surprise.push(self.sample(s as u32, &mut io).1);
+                low.push(self.last_low);
+            }
+        }
+        out.extend_from_slice(&enc.finish_short());
+        out
     }
 
     /// Like [`Self::compress_scored`], and also appends to `other` the cost
