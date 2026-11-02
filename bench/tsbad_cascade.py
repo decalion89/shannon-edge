@@ -16,7 +16,13 @@ Per series:
   scores; the rest are set to the minimum (the ground saw nothing there);
 * control: the same fraction q of windows, chosen at random (seed 0).
 
-Pass/fail criterion, fixed before the run: at q = 20%, the cascade keeps
+Development additions (not part of the stage-4 pre-registration):
+* event_*: each chosen window sent with its neighbours;
+* shape_*: windows ranked by a ground-learned PCA reconstruction error
+  (basis fitted on the normal prefix, executed on board);
+* hybrid_*: windows ranked by max(z(compressor score), z(shape score)).
+
+Pass/fail criterion (stage-4 development run), fixed before the run: at q = 20%, the cascade keeps
 at least 90% of full Sub-PCA's mean VUS-PR, and beats the random control.
 
 Usage: tsbad_cascade.py TSB-AD-U.zip TSB-AD-checkout {tuning|eval} out.csv [--jobs 4]
@@ -61,6 +67,36 @@ def onboard_score(x: np.ndarray, train: int, L: int) -> np.ndarray:
     return np.maximum(zs(A), zs(D))
 
 
+def zs_(v):
+    v = np.nan_to_num(np.asarray(v, dtype=float), nan=0.0, posinf=1e6, neginf=-1e6)
+    sd = v.std()
+    return (v - v.mean()) / sd if sd > 0 else np.zeros_like(v)
+
+
+def shape_residual(x: np.ndarray, train: int, L: int, blocks: np.ndarray, nb: int) -> np.ndarray:
+    """Per triage block: squared reconstruction error of the block's window (length L) under a PCA
+    basis fitted on sliding windows of the normal prefix (95% of the variance), each window centred."""
+    from sklearn.decomposition import PCA as SkPCA
+    L = max(int(L), 2)
+    pre = x[: max(train, L + 1)]
+    stride = max(1, L // 4)
+    starts = np.arange(0, len(pre) - L + 1, stride)
+    if len(starts) < 3:
+        return np.zeros(nb)
+    W = np.stack([pre[s:s + L] for s in starts])
+    W = W - W.mean(axis=1, keepdims=True)
+    pca = SkPCA(n_components=0.95, svd_solver="full").fit(W)
+    out = np.zeros(nb)
+    for bi in range(nb):
+        seg = x[bi * L:(bi + 1) * L]
+        if len(seg) < L:
+            seg = np.r_[seg, np.full(L - len(seg), seg[-1] if len(seg) else 0.0)]
+        seg = seg - seg.mean()
+        r = seg - pca.inverse_transform(pca.transform(seg[None, :]))[0]
+        out[bi] = float(r @ r)
+    return out
+
+
 def one(name: str):
     sys.path.insert(0, CODE)
     from TSB_AD.evaluation.basic_metrics import generate_curve
@@ -87,6 +123,11 @@ def one(name: str):
     blocks = np.arange(n) // max(L, 1)
     nb = blocks.max() + 1
     bmax = pd.Series(f).groupby(blocks).max().to_numpy()
+    # Development: a ground-learned shape score executed on board. The ground fits a PCA basis
+    # (95% of the variance) on sliding windows of length L from the normal prefix; on board, each
+    # triage block's reconstruction error with that basis is a few multiply-adds per sample.
+    rb = shape_residual(data[:, 0], train, L, blocks, nb)
+    hyb = np.maximum(zs_(bmax), zs_(rb))
     rng = np.random.default_rng(0)
     rand_order = rng.permutation(nb)
     out = {"file": name, "L": L, "n": n, "subpca": vus(g)}
@@ -111,6 +152,12 @@ def one(name: str):
                 if 0 <= j < nb and keep_e.sum() < k:
                     keep_e[j] = True
         out[f"event_{int(q * 100)}"] = vus(np.where(keep_e[blocks], g, 0.0))
+        keep_h = np.zeros(nb, bool)
+        keep_h[np.argsort(-hyb)[:k]] = True
+        out[f"hybrid_{int(q * 100)}"] = vus(np.where(keep_h[blocks], g, 0.0))
+        keep_s = np.zeros(nb, bool)
+        keep_s[np.argsort(-rb)[:k]] = True
+        out[f"shape_{int(q * 100)}"] = vus(np.where(keep_s[blocks], g, 0.0))
     print(name + " " + " ".join(f"{k}={v:.3f}" for k, v in out.items() if k.startswith(("subpca", "cascade_20", "random_20"))),
           file=sys.stderr, flush=True)
     return out
