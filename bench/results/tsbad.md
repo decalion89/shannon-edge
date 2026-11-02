@@ -322,3 +322,53 @@ compressor alone. Ignoring amplitude throws away what these anomalies are
 made of. Dropped. The ground-learned PCA basis stays the shape channel to
 beat. Per-series values:
 `bench/results/data/tsbad_ordinal_tuning_partial.csv`.
+
+## Development: the compressor's local information dimension (partial)
+
+**Theory, which is not new.**
+* A lossless code's mean cost estimates the entropy rate of the
+  quantised signal (Shannon–McMillan–Breiman; Kraft makes the bits
+  honest).
+* At resolution ε that rate grows as d·log2(1/ε), with d Rényi's
+  information dimension. For deterministic chaos it tends to the
+  Kolmogorov–Sinai entropy, the sum of the positive Lyapunov exponents
+  (Pesin), and the slope goes to 0 (Gaspard and Wang's ε-entropy, 1993).
+* So the compressor's extra bits per extra bit of resolution are a
+  local, Kraft-calibrated estimate of the signal's dimension.
+* Measuring it needs a second, coarser model. It is not "zero extra
+  RAM".
+
+**Test** (`bench/tsbad_dimension.py`). Values are quantised at 8 and 6
+bits on the normal prefix's range, and each stream is coded by the
+adaptive flight profile. The per-sample slope is
+(cost_8 − cost_6)/2, averaged over L.
+* DIM_dev: |slope − its median on the normal prefix|.
+* DIM_mean: the slope itself.
+* COST_mean: the 8-bit cost alone.
+
+Run on the 29 smallest of the 48 tuning series (stopped at 10 min, with
+the CPU shared). Mean VUS-PR:
+
+| Score | Mean VUS-PR |
+|---|---:|
+| DIM_mean | 0.088 |
+| **DIM_dev** | 0.169 |
+| COST_mean (entropy rate alone) | 0.129 |
+| F_max_z (stage-3 change + state score) | 0.248 |
+
+* **Overall it is weaker** than the compressor's change+state score.
+  It beats it on 11 of 29 series.
+* **But on OPPORTUNITY it sees what nothing else in this project
+  did:**
+  * id 11: 0.977, vs 0.046 for F_max_z;
+  * id 23: 0.764, vs 0.020.
+  OPPORTUNITY is the shape dataset where the compressor's score was
+  0.05 on the evaluation set and Sub-PCA 0.91. A change of the signal's
+  *dimension* (how many bits each extra bit of resolution costs) is
+  invisible to the cost itself, but not to its slope.
+* Two series are an anecdote, not a result. If pursued, it must be as a
+  third channel of the hybrid (max of z-scores), chosen on the full
+  tuning set and pre-registered on data not yet used for triage, such as
+  TSB-AD-M.
+
+Per-series values: `bench/results/data/tsbad_dimension_tuning_partial.csv`.
