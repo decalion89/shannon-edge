@@ -291,24 +291,48 @@ impl LpCol {
     }
 }
 
+/// One predictor's state while a byte is coded.
+#[derive(Clone, Copy, Default)]
+struct Slot {
+    /// Histogram index and prediction.
+    hist: u32,
+    pred: u32,
+    /// The bin of "equal to the byte above" and its count (excluded).
+    excl_bin: u32,
+    excl_cnt: u32,
+    /// The residual window of the bits coded so far ([`Lp::inputs`]): first
+    /// bin, prefix sum before it, count (less the excluded bin if inside),
+    /// and the last split (lower half's count, prefix sum at its end).
+    a: u32,
+    lo: u32,
+    tot: u32,
+    n0: u32,
+    pm: u32,
+}
+
 /// Numeric-prediction state of a session.
 #[derive(Clone)]
 pub(crate) struct Lp {
     pub(crate) cfg: LpConfig,
-    /// Active predictor ids.
-    ids: Vec<usize>,
+    /// Predictor slots per column: every active predictor, or with
+    /// subsets ([`Lp::with_subsets`]) the longest subset.
+    npc: usize,
+    /// Per column: predictor ids by slot (`k * npc + j`), how many are used,
+    /// and their bit mask (the only ones whose state is updated).
+    col_ids: Vec<u8>,
+    col_np: Vec<u8>,
+    col_mask: Vec<u32>,
+    /// Slots used by the byte being coded.
+    np_cur: usize,
     cols: Vec<LpCol>,
-    hist: Vec<u16>,
+    /// Residual histograms, as prefix sums of 256 bins.
+    hist: Vec<[u16; HIST]>,
     /// Mixer weights.
     pub(crate) w: Vec<i32>,
     /// Inputs per weight set: 4 transition + bias + one per predictor.
     pub(crate) ni: usize,
-    /// Per byte being coded: histogram bases, predictions, and the bin of
-    /// "equal to the byte above" with its count (excluded).
-    base: [usize; NPMAX],
-    cur_pred: [u8; NPMAX],
-    excl_bin: [u32; NPMAX],
-    excl_cnt: [u32; NPMAX],
+    /// Per predictor slot of the byte being coded.
+    slots: [Slot; NPMAX],
     /// Most accurate predictor for the byte being coded: prediction, bucket.
     pub(crate) best_pred: u8,
     pub(crate) best_bucket: u8,
@@ -329,13 +353,40 @@ fn bucket(e: u32, n: u32) -> u8 {
 }
 
 impl Lp {
+    /// Every column uses every predictor of `cfg.preds`.
     pub(crate) fn new(cfg: LpConfig, len: usize) -> Self {
-        assert!((1..=16).contains(&cfg.buckets), "buckets in 1..=16");
         assert!(cfg.preds < 1 << NPMAX, "unknown predictor");
-        let ids: Vec<usize> = (0..NPMAX).filter(|i| cfg.preds >> i & 1 != 0).collect();
-        let np = ids.len().max(1);
+        let ids: Vec<u8> = (0..NPMAX as u8)
+            .filter(|&i| cfg.preds >> i & 1 != 0)
+            .collect();
+        Self::build(cfg, len, &vec![ids; len])
+    }
+
+    /// Column `k` uses only the predictors `subsets[k]` (ids, in slot
+    /// order; `cfg.preds` is ignored). The others cost nothing: no
+    /// histograms, no mixer inputs, no state updates.
+    pub(crate) fn with_subsets(cfg: LpConfig, subsets: &[Vec<u8>]) -> Self {
+        Self::build(cfg, subsets.len(), subsets)
+    }
+
+    fn build(cfg: LpConfig, len: usize, subsets: &[Vec<u8>]) -> Self {
+        assert!((1..=16).contains(&cfg.buckets), "buckets in 1..=16");
+        assert_eq!(subsets.len(), len, "one predictor subset per column");
+        let npc = subsets.iter().map(Vec::len).max().unwrap_or(0);
+        let mut col_ids = vec![0u8; len * npc];
+        let mut col_mask = vec![0u32; len];
+        for (k, sub) in subsets.iter().enumerate() {
+            for (j, &id) in sub.iter().enumerate() {
+                assert!((id as usize) < NPMAX, "unknown predictor");
+                assert!(col_mask[k] >> id & 1 == 0, "predictor listed twice");
+                col_mask[k] |= 1 << id;
+                col_ids[k * npc + j] = id;
+            }
+        }
+        let col_np = subsets.iter().map(|s| s.len() as u8).collect();
+        let np = npc.max(1);
         let groups = if cfg.per_column { len } else { 1 };
-        let ni = 5 + ids.len();
+        let ni = 5 + npc;
         let wsets = (if cfg.col_mixer { len * 8 } else { 8 }).max(8 * 16);
         let mut w = vec![0i32; wsets * ni];
         for set in w.chunks_mut(ni) {
@@ -359,20 +410,21 @@ impl Lp {
         Self {
             w: w.clone(),
             hist: vec![
-                0;
+                [0; HIST];
                 if cfg.pool_bits > 0 {
                     1 << cfg.pool_bits
                 } else {
-                    groups * ids.len() * cfg.buckets as usize
-                } * HIST
+                    groups * npc * cfg.buckets as usize
+                }
             ],
             cols: vec![col; len],
-            ids,
+            npc,
+            col_ids,
+            col_np,
+            col_mask,
+            np_cur: 0,
             ni,
-            base: [0; NPMAX],
-            cur_pred: [0; NPMAX],
-            excl_bin: [0; NPMAX],
-            excl_cnt: [0; NPMAX],
+            slots: [Slot::default(); NPMAX],
             best_pred: 0,
             best_bucket: 0,
             w2: if cfg.mix2 {
@@ -385,7 +437,9 @@ impl Lp {
     }
 
     pub(crate) fn memory_bytes(&self) -> usize {
-        self.hist.len() * 2 + self.w.len() * 4 + self.cols.len() * std::mem::size_of::<LpCol>()
+        self.hist.len() * HIST * 2
+            + self.w.len() * 4
+            + self.cols.len() * std::mem::size_of::<LpCol>()
     }
 
     /// Weight set offset for column `k` at bit depth `d`.
@@ -394,70 +448,111 @@ impl Lp {
         (if self.cfg.col_mixer { k * 8 + d } else { d }) * self.ni
     }
 
+    /// Mixer inputs used by the byte being coded (the others are zero).
+    #[inline]
+    pub(crate) fn ni_cur(&self) -> usize {
+        5 + self.np_cur
+    }
+
     /// Select column `k`'s histograms before coding its (changed) byte.
     pub(crate) fn begin(&mut self, k: usize, above: u8, left: u8) {
         let c = &self.cols[k];
         let g = if self.cfg.per_column { k } else { 0 };
         let nb = self.cfg.buckets as usize;
-        let np = self.ids.len();
+        let npc = self.npc;
+        let np = self.col_np[k] as usize;
+        self.np_cur = np;
+        if np == 0 {
+            self.best_pred = 0;
+            self.best_bucket = 0;
+        }
         let mut best = u32::MAX;
-        for (j, &id) in self.ids.iter().enumerate() {
+        for j in 0..np {
+            let id = self.col_ids[k * npc + j] as usize;
             let base = if self.cfg.pool_bits > 0 {
                 let h = crate::flight::h2(
                     crate::flight::h2(k as u64 + 1, id as u64 + 1),
                     c.bucket[id] as u64 + 1,
                 );
-                (h >> (64 - self.cfg.pool_bits)) as usize * HIST
+                (h >> (64 - self.cfg.pool_bits)) as usize
             } else {
-                ((g * np + j) * nb + c.bucket[id] as usize) * HIST
+                (g * npc + j) * nb + c.bucket[id] as usize
             };
             let pred = c.predict(id, left);
-            self.base[j] = base;
-            self.cur_pred[j] = pred;
             if c.ema[id] < best {
                 best = c.ema[id];
                 self.best_pred = pred;
                 self.best_bucket = c.bucket[id];
             }
             let ba = (192 + above as usize + 256 - pred as usize) & 255;
-            self.excl_bin[j] = ba as u32;
-            self.excl_cnt[j] = if self.cfg.exclude_above {
-                let s = &self.hist[base..base + HIST];
+            let excl_cnt = if self.cfg.exclude_above {
+                let s = &self.hist[base];
                 s[ba] as u32 - if ba == 0 { 0 } else { s[ba - 1] as u32 }
             } else {
                 0
+            };
+            self.slots[j] = Slot {
+                hist: base as u32,
+                pred: pred as u32,
+                excl_bin: ba as u32,
+                excl_cnt,
+                ..Slot::default()
             };
         }
     }
 
     /// Mixer inputs for the next bit, given the partial byte `node`
-    /// (leading 1, then the `depth` bits already coded).
-    #[inline]
-    pub(crate) fn inputs(&self, node: u32, depth: u32, out: &mut [i32]) {
-        let c1 = (node << (8 - depth)) & 0xff;
-        let range = 1u32 << (7 - depth);
-        for (j, o) in out.iter_mut().enumerate().take(self.ids.len()) {
-            let s = &self.hist[self.base[j]..self.base[j] + HIST];
-            let b0 = (192 + c1 + 256 - self.cur_pred[j] as u32) & 255;
-            let b1 = (b0 + range) & 255;
-            let mut n0 = window(s, b0, range);
-            let mut n1 = window(s, b1, range);
-            let ba = self.excl_bin[j];
-            if (ba.wrapping_sub(b0) & 255) < range {
-                n0 -= self.excl_cnt[j];
-            } else if (ba.wrapping_sub(b1) & 255) < range {
-                n1 -= self.excl_cnt[j];
+    /// (leading 1, then the `depth` bits already coded). Called for depths
+    /// 0, 1, ..., 7 in order: each bit's residual window is one half of the
+    /// previous one, so one prefix sum per predictor gives both halves.
+    /// `out` has one entry per slot of the byte being coded.
+    #[inline(always)]
+    pub(crate) fn inputs(&mut self, node: u32, depth: u32, out: &mut [i32]) {
+        debug_assert_eq!(out.len(), self.np_cur);
+        let r = 1u32 << (7 - depth);
+        let up = node & 1 != 0;
+        let n = out.len().min(NPMAX);
+        for (sl, o) in self.slots[..n].iter_mut().zip(out.iter_mut()) {
+            let s = &self.hist[sl.hist as usize];
+            if depth == 0 {
+                // The whole circle, starting at residual 0's bin offset.
+                sl.a = (192 + 256 - sl.pred) & 255;
+                sl.lo = if sl.a == 0 {
+                    0
+                } else {
+                    s[(sl.a - 1) as usize & 255] as u32
+                };
+                sl.tot = s[HIST - 1] as u32 - sl.excl_cnt;
+            } else if !up {
+                sl.tot = sl.n0;
+            } else {
+                sl.tot -= sl.n0;
+                sl.a = (sl.a + 2 * r) & 255;
+                sl.lo = if sl.a == 0 { 0 } else { sl.pm };
             }
-            *o = stretch(ratio(n0, n1) as i32);
+            // Lower half [a, a + r), mod 256.
+            let pm = s[(sl.a + r - 1) as usize & 255] as u32;
+            let mut n0 = if sl.a + r <= HIST as u32 {
+                pm - sl.lo
+            } else {
+                s[HIST - 1] as u32 - sl.lo + pm
+            };
+            if (sl.excl_bin.wrapping_sub(sl.a) & 255) < r {
+                n0 -= sl.excl_cnt;
+            }
+            sl.n0 = n0;
+            sl.pm = pm;
+            *o = stretch(ratio(n0, sl.tot - n0) as i32);
         }
     }
 
     /// Learn the coded byte `v` (after [`Lp::begin`]).
     pub(crate) fn learn_byte(&mut self, v: u8) {
         let limit = self.cfg.limit;
-        for j in 0..self.ids.len() {
-            let bin = (192 + v as usize + 256 - self.cur_pred[j] as usize) & 255;
-            let s = &mut self.hist[self.base[j]..self.base[j] + HIST];
+        let n = self.np_cur.min(NPMAX);
+        for sl in &self.slots[..n] {
+            let bin = (192 + v as usize + 256 - sl.pred as usize) & 255;
+            let s = &mut self.hist[sl.hist as usize];
             for x in &mut s[bin..] {
                 *x += 1;
             }
@@ -484,7 +579,10 @@ impl Lp {
     /// End of a key packet: column `k` took value `v`, its left neighbour
     /// in the packet `left`.
     pub(crate) fn end_column(&mut self, k: usize, v: u8, left: u8) {
-        let preds = self.cfg.preds | if self.cfg.flag { 1 << 3 } else { 0 };
+        let preds = self.col_mask[k] | if self.cfg.flag { 1 << 3 } else { 0 };
+        if preds == 0 {
+            return; // no predictor reads this column's state
+        }
         let every = self.cfg.solve_every.max(1);
         let nb = self.cfg.buckets;
         let c = &mut self.cols[k];
@@ -570,20 +668,12 @@ static RECIP: [u32; 1 << 13] = {
 #[inline]
 fn ratio(n0: u32, n1: u32) -> u32 {
     let sum = n0 + n1;
-    let sh = (32 - sum.leading_zeros()).saturating_sub(13);
-    let p = (((n1 >> sh) + 1) as u64 * RECIP[(sum >> sh) as usize] as u64) >> 16;
-    (p as u32).clamp(1, 4095)
-}
-
-/// Count of residual bins `[a, a + len)` (mod 256) in prefix sums `s`.
-#[inline]
-fn window(s: &[u16], a: u32, len: u32) -> u32 {
-    let a = a as usize;
-    let end = a + len as usize;
-    let lo = if a == 0 { 0 } else { s[a - 1] as u32 };
-    if end <= HIST {
-        s[end - 1] as u32 - lo
-    } else {
-        s[HIST - 1] as u32 - lo + s[end - HIST - 1] as u32
+    if sum < 1 << 13 {
+        // Always, unless `limit` > 8192: the general case with sh = 0.
+        let p = ((n1 + 1) as u64 * RECIP[sum as usize] as u64) >> 16;
+        return (p as u32).clamp(1, 4095);
     }
+    let sh = (32 - sum.leading_zeros()).saturating_sub(13);
+    let p = (((n1 >> sh) + 1) as u64 * RECIP[(sum >> sh) as usize & ((1 << 13) - 1)] as u64) >> 16;
+    (p as u32).clamp(1, 4095)
 }

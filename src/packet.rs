@@ -138,10 +138,12 @@ enum Io<'a, 'b> {
     Enc(&'a mut Encoder),
     Dec(&'a mut Decoder<'b>),
     Dry,
+    /// Like `Enc`, but only adds up the ideal cost (1/256 bit).
+    Count(u64),
 }
 
 impl Io<'_, '_> {
-    #[inline]
+    #[inline(always)]
     fn bit(&mut self, p1: u32, bit: u32) -> u32 {
         match self {
             Io::Enc(e) => {
@@ -152,6 +154,10 @@ impl Io<'_, '_> {
             }
             Io::Dec(d) => d.decode(p1),
             Io::Dry => bit,
+            Io::Count(c) => {
+                *c += cost(p1, bit) as u64;
+                bit
+            }
         }
     }
 }
@@ -248,6 +254,152 @@ impl PacketSession {
         }
         s.lp = Some(Box::new(Lp::new(cfg, packet_len)));
         s
+    }
+
+    /// [`PacketSession::v2_lp`] where column `k` uses only the predictors
+    /// `subsets[k]` (predictor ids as in [`LpConfig::preds`], most useful
+    /// first; typically from [`PacketSession::learn_lp_subsets`]). Unused
+    /// predictors cost nothing (no histograms, mixer inputs or state
+    /// updates), so with 2-3 per column this runs about twice as fast as
+    /// v2_lp. Both ends must use the same
+    /// subsets. A different stream from v2_lp.
+    ///
+    /// # Panics
+    /// As [`PacketSession::new`], or if `subsets` does not have one entry
+    /// per column, or lists an unknown or repeated predictor.
+    pub fn v2_lp_with_subsets(packet_len: usize, table_bits: u32, subsets: &[Vec<u8>]) -> Self {
+        Self::v2_lp_subsets_with(packet_len, table_bits, LpConfig::default(), subsets)
+    }
+
+    /// [`PacketSession::v2_lp_with_subsets`] with an explicit configuration
+    /// (whose `preds` is ignored).
+    pub fn v2_lp_subsets_with(
+        packet_len: usize,
+        table_bits: u32,
+        cfg: LpConfig,
+        subsets: &[Vec<u8>],
+    ) -> Self {
+        assert_eq!(subsets.len(), packet_len, "one predictor subset per column");
+        let mut s = Self::v2_lp_with(
+            packet_len,
+            table_bits,
+            LpConfig {
+                preds: 0,
+                ..cfg.clone()
+            },
+        );
+        s.lp = Some(Box::new(Lp::with_subsets(cfg, subsets)));
+        s
+    }
+
+    /// Ground side: choose for each column the (at most) `k` numeric
+    /// predictors that save the most, for
+    /// [`PacketSession::v2_lp_with_subsets`]. Greedy forward selection with
+    /// the codec itself: the session is primed on the first half of
+    /// `history` and each column's ideal cost is measured on the second
+    /// (held-out) half; each round tries every predictor not yet chosen, in
+    /// every column at once, and each column keeps the one that lowers its
+    /// cost most. A column stops early when no predictor lowers its cost
+    /// (fewer predictors, less work per bit). Costs up to `1 + 14 k` passes
+    /// over `history`, run on all available cores; the result does not
+    /// depend on the number of threads.
+    ///
+    /// # Panics
+    /// As [`PacketSession::new`], or if a packet has the wrong length.
+    pub fn learn_lp_subsets(
+        history: &[&[u8]],
+        packet_len: usize,
+        table_bits: u32,
+        k: usize,
+    ) -> Vec<Vec<u8>> {
+        Self::learn_lp_subsets_with(history, packet_len, table_bits, k, &LpConfig::default())
+    }
+
+    /// [`PacketSession::learn_lp_subsets`] for an explicit configuration.
+    pub fn learn_lp_subsets_with(
+        history: &[&[u8]],
+        packet_len: usize,
+        table_bits: u32,
+        k: usize,
+        cfg: &LpConfig,
+    ) -> Vec<Vec<u8>> {
+        let (prime, check) = history.split_at(history.len() / 2);
+        let eval = |subsets: &[Vec<u8>]| -> Vec<u64> {
+            let mut s = Self::v2_lp_subsets_with(packet_len, table_bits, cfg.clone(), subsets);
+            s.prime(prime.iter().copied());
+            let mut acc = vec![0u64; packet_len];
+            for p in check {
+                s.cost_packet(p, &mut acc);
+            }
+            acc
+        };
+        let n = crate::packet_lp::NPMAX as u8;
+        let mut chosen = vec![Vec::new(); packet_len];
+        let mut open = vec![true; packet_len];
+        let mut cost = eval(&chosen);
+        for _ in 0..k {
+            if !open.iter().any(|&o| o) {
+                break;
+            }
+            // One trial per candidate: every open column adds it (if new).
+            let trials: Vec<Vec<Vec<u8>>> = (0..n)
+                .map(|c| {
+                    chosen
+                        .iter()
+                        .zip(&open)
+                        .map(|(ch, &o)| {
+                            let mut t = ch.clone();
+                            if o && !t.contains(&c) {
+                                t.push(c);
+                            }
+                            t
+                        })
+                        .collect()
+                })
+                .collect();
+            let results = par_map(&trials, |t| eval(t));
+            for col in 0..packet_len {
+                if !open[col] {
+                    continue;
+                }
+                let mut best: Option<(u64, u8)> = None;
+                for c in 0..n {
+                    let v = results[c as usize][col];
+                    if !chosen[col].contains(&c) && best.map_or(true, |(b, _)| v < b) {
+                        best = Some((v, c));
+                    }
+                }
+                match best {
+                    Some((v, c)) if v < cost[col] => {
+                        chosen[col].push(c);
+                        cost[col] = v;
+                    }
+                    _ => open[col] = false,
+                }
+            }
+        }
+        chosen
+    }
+
+    /// Ideal cost of `packet` per column (added to `acc`, 1/256 bit),
+    /// updating the model exactly as [`PacketSession::compress`] does.
+    fn cost_packet(&mut self, packet: &[u8], acc: &mut [u64]) {
+        assert_eq!(packet.len(), self.len, "packet length");
+        self.maybe_restart();
+        self.learning = self.is_key(self.count);
+        self.count += 1;
+        self.left_changed = false;
+        self.nchanged = 0;
+        let mut left = 0u8;
+        for (k, &b) in packet.iter().enumerate() {
+            let mut io = Io::Count(0);
+            self.byte(k, left, b as u32, &mut io);
+            if let Io::Count(c) = io {
+                acc[k] += c;
+            }
+            left = b;
+        }
+        self.end_packet(packet);
     }
 
     /// v2: code "byte k equals the byte above" (1) or not (0).
@@ -462,14 +614,42 @@ impl PacketSession {
 
     /// Transition model mixed with the numeric predictors' histograms.
     fn transition_lp(&mut self, k: usize, left: u8, value: u32, io: &mut Io) -> (u32, u32) {
-        let mut lp = self.lp.take().expect("lp");
+        let lp = self.lp.take().expect("lp");
+        // Specialized on the number of mixer inputs (unrolled loops); the
+        // generic fallback (0) gives the same results.
+        match lp.ni_cur() {
+            5 => self.transition_lp_n::<5>(lp, k, left, value, io),
+            6 => self.transition_lp_n::<6>(lp, k, left, value, io),
+            7 => self.transition_lp_n::<7>(lp, k, left, value, io),
+            8 => self.transition_lp_n::<8>(lp, k, left, value, io),
+            9 => self.transition_lp_n::<9>(lp, k, left, value, io),
+            12 => self.transition_lp_n::<12>(lp, k, left, value, io),
+            _ => self.transition_lp_n::<0>(lp, k, left, value, io),
+        }
+    }
+
+    /// [`Self::transition_lp`] with `NI` mixer inputs (0: `lp.ni_cur()`).
+    #[inline(always)]
+    fn transition_lp_n<const NI: usize>(
+        &mut self,
+        mut lp: Box<Lp>,
+        k: usize,
+        left: u8,
+        value: u32,
+        io: &mut Io,
+    ) -> (u32, u32) {
         let above = self.above[k] as u64;
         let above2 = self.cols[k].above2 as u64;
         let col = k as u64 + 1;
         let ca = h2(col, above + 1);
         let ctx = [col, ca, h2(ca, above2 + 7), h2(ca, left as u64 + 3)];
         let ni = lp.ni;
+        let nic = if NI == 0 { lp.ni_cur() } else { NI };
+        debug_assert_eq!(nic, lp.ni_cur());
+        let mix2 = lp.cfg.mix2;
+        let sse = lp.cfg.sse;
         let mut x = [0i32; 5 + 2 * crate::packet_lp::NPMAX];
+        x[4] = 256;
         let mut node = 1u32;
         let mut total = 0;
         for i in (0..8).rev() {
@@ -484,21 +664,20 @@ impl PacketSession {
             for j in 0..4 {
                 x[j] = stretch(self.t[j].t[s[j]].p12() as i32);
             }
-            x[4] = 256;
-            lp.inputs(node, depth, &mut x[5..ni]);
+            lp.inputs(node, depth, &mut x[5..nic]);
+            let xs = &x[..nic];
             let ws = lp.wset(k, depth as usize);
-            let dot: i64 = x[..ni]
+            let ws2 = (depth as usize * 16 + lp.best_bucket as usize) * ni;
+            let dot: i64 = xs
                 .iter()
-                .zip(&lp.w[ws..ws + ni])
+                .zip(&lp.w[ws..ws + nic])
                 .map(|(&a, &b)| a as i64 * b as i64)
                 .sum();
             let st1 = ((dot >> 16) as i32).clamp(-2047, 2047);
-            let mix2 = lp.cfg.mix2;
-            let ws2 = (depth as usize * 16 + lp.best_bucket as usize) * ni;
             let st2 = if mix2 {
-                let dot2: i64 = x[..ni]
+                let dot2: i64 = xs
                     .iter()
-                    .zip(&lp.w2[ws2..ws2 + ni])
+                    .zip(&lp.w2[ws2..ws2 + nic])
                     .map(|(&a, &b)| a as i64 * b as i64)
                     .sum();
                 ((dot2 >> 16) as i32).clamp(-2047, 2047)
@@ -511,7 +690,7 @@ impl PacketSession {
             let pm = node as u64 == (1 << depth) | (above >> (i + 1));
             let cx = (k * 8 + depth as usize) * 2 + pm as usize;
             let a = self.apm.pp(p0, cx);
-            let p = if lp.cfg.sse {
+            let p = if sse {
                 let pb = node == (1 << depth) | (lp.best_pred as u32 >> (i + 1));
                 let cx2 = (cx * 2 + pb as usize) * 4 + (lp.best_bucket as usize / 3).min(3);
                 let a2 = self.apm_lp.pp(p0, cx2);
@@ -523,17 +702,16 @@ impl PacketSession {
             total += cost(p, bit);
             if self.learning {
                 self.apm.update(bit);
-                if lp.cfg.sse {
+                if sse {
                     self.apm_lp.update(bit);
                 }
                 let err = ((bit as i32) << 12) - p1 as i32;
-                let w = &mut lp.w[ws..ws + ni];
-                for (wk, &xk) in w.iter_mut().zip(&x[..ni]) {
+                for (wk, &xk) in lp.w[ws..ws + nic].iter_mut().zip(xs) {
                     *wk += (xk * err) >> 10;
                 }
                 if mix2 {
                     let err = ((bit as i32) << 12) - p2 as i32;
-                    for (wk, &xk) in lp.w2[ws2..ws2 + ni].iter_mut().zip(&x[..ni]) {
+                    for (wk, &xk) in lp.w2[ws2..ws2 + nic].iter_mut().zip(xs) {
                         *wk += (xk * err) >> 10;
                     }
                 }
@@ -785,4 +963,28 @@ impl PacketSession {
         self.end_packet(&out);
         Ok(out)
     }
+}
+
+/// `f` over `items` on up to the available cores, results in order.
+fn par_map<T: Sync, R: Send>(items: &[T], f: impl Fn(&T) -> R + Sync) -> Vec<R> {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Mutex;
+    let threads = std::thread::available_parallelism().map_or(1, |n| n.get());
+    let next = AtomicUsize::new(0);
+    let out: Mutex<Vec<Option<R>>> = Mutex::new((0..items.len()).map(|_| None).collect());
+    std::thread::scope(|sc| {
+        for _ in 0..threads.min(items.len()) {
+            sc.spawn(|| loop {
+                let i = next.fetch_add(1, Ordering::Relaxed);
+                let Some(item) = items.get(i) else { break };
+                let r = f(item);
+                out.lock().expect("worker")[i] = Some(r);
+            });
+        }
+    });
+    out.into_inner()
+        .expect("worker")
+        .into_iter()
+        .map(|r| r.expect("result"))
+        .collect()
 }

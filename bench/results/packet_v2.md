@@ -143,8 +143,74 @@ every round trip verified:
   changing histogram ageing all stay under 0.1%.
 
 **Still open.**
-* Speed: computing histograms only for the 2–3 best predictors of each
-  column.
+* ~~Speed: computing histograms only for the 2–3 best predictors of each
+  column.~~ Done, see below.
 * Choosing the pair predictors from a known field layout rather than
   trying both byte orders.
 * The C port.
+
+## v2_lp with ground-learned predictor subsets (`v2_lp_with_subsets`)
+
+`PacketSession::learn_lp_subsets(history, len, table_bits, k)` picks, per
+column, up to `k` of the 14 predictors by greedy forward selection with the
+codec itself. It primes on the first half of `history` and measures each
+column's ideal cost on the second, held-out half. Each round tries every
+predictor in every column at once (14 passes, run in parallel). A column
+keeps the predictor that lowers its cost most, and stops when none does.
+The k = 2 and k = 3 subsets are prefixes of the k = 4 ones.
+`PacketSession::v2_lp_with_subsets(len, table_bits, &subsets)` then
+computes histograms, mixer inputs, error tracking and OLS updates only
+for the chosen predictors. A column with none skips the LP state update
+entirely. This is its own stream, pinned at 1,713 bytes,
+0x1ecf_e8ef_f2a7_a617.
+
+Setup: subsets learned on the first 10% of the packets, then every packet
+compressed from a fresh session, every round trip verified
+(`examples/lp_subset_bench.rs`). "Kept" is the share of v2_lp's gain over
+v2 that remains. Bytes are on the whole file; the held-out last 90% gives
+the same percentages within ±2 points.
+
+| Dataset | v2 | v2_lp | k = 2 | k = 3 | **k = 4** | learn |
+|---|---:|---:|---:|---:|---:|---:|
+| Venus 2^16 | 3,127,144 | 2,986,557 | 3,019,072 (77%) | 3,002,062 (89%) | **2,996,042 (93%)** | 28 s |
+| Venus 2^18 | 2,999,548 | 2,874,663 | 2,897,365 (82%) | 2,882,590 (94%) | **2,879,055 (96%)** | 42 s |
+| ecg_incart | 40,064,022 | 38,295,682 | 38,965,057 (62%) | 38,668,952 (79%) | **38,503,765 (88%)** | 288 s |
+| power_uci | 6,416,625 | 6,304,260 | 6,325,855 (81%) | 6,312,943 (92%) | **6,305,579 (99%)** | 37 s |
+| ais_tracks | 12,177,958 | 11,493,156 | 11,787,489 (57%) | 11,710,967 (68%) | **11,542,542 (93%)** | 97 s |
+| metropt_codes | 5,184,963 | 4,874,806 | 5,038,308 (47%) | 4,981,325 (66%) | **4,935,014 (81%)** | 26 s |
+
+**Speed.** Callgrind instructions on 15,000 Venus packets (2^18, compress
+plus decompress): v2 3.38 G, v2_lp 12.27 G, k = 2 6.51 G, k = 3 6.90 G,
+k = 4 7.17 G. Compression speed in MB/s; the machine is shared, so take
+these within ±15%:
+
+| Dataset | v2 | v2_lp | k = 2 | k = 3 | k = 4 |
+|---|---:|---:|---:|---:|---:|
+| Venus 2^18 | 4.3 | 1.5 | 2.6 | 2.6 | 2.5 |
+| ecg_incart | 5.9 | 1.1 | 2.2 | 2.1 | 1.9 |
+| power_uci | 8.0 | 2.5 | 4.9 | 4.8 | 4.5 |
+| ais_tracks | 12.7 | 4.2 | 7.4 | 5.6 | 5.5 |
+| metropt_codes | 10.2 | 2.4 | 4.7 | 4.3 | 4.1 |
+
+**Memory** is unchanged (the histogram pool stays 2^11 × 512 B): 7.4 MB at
+2^18, 2.6–2.7 MB at 2^16. `pool=10` saves 512 KiB at about +0.1%.
+
+**v2_lp itself is 11% fewer instructions, with the same bytes** (the
+golden streams of v2 and v2_lp are unchanged, and the whole-file sizes
+above match the earlier table exactly):
+* Each bit's residual window is a half of the previous bit's, so one
+  prefix-sum lookup per predictor and bit replaces three.
+* Per-predictor state is packed into one array, without bounds checks.
+* The bit loop is specialised on the number of mixer inputs.
+* `ratio` skips the normalising shift, which is always 0 below 2^13
+  counts.
+* `Io::bit` is inlined again.
+
+What remains costs per bit whatever the predictors: two mixers, three
+squashes, and the APM. That is why k = 0 (the LP mixers with no predictor)
+is already 1.3x v2's instructions, and also 1% smaller than v2.
+
+**What did not help:** dropping `mix2` in subset mode (+0.3%, about 6% of
+the gain); a 0.2–1% minimum gain per added predictor (slightly larger,
+barely faster); 16-bit hints for the weight update (no change).
+
