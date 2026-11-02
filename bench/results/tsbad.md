@@ -295,3 +295,30 @@ Values are the share of full Sub-PCA's mean VUS-PR.
   (82% and 85%).
 
 Not taken to the evaluation set.
+
+## Development: ordinal patterns as a compressor-native shape channel (partial, negative)
+
+**Idea** (`bench/tsbad_ordinal.py`). Replace each sample by its ordinal
+pattern of order 4 (Bandt and Pompe 2002), one of 24 symbols. Code that
+stream with the same flight reference model, and use its excess cost as
+an amplitude-free, Kraft-valid "shape surprise".
+* It needs no ground-learned basis and only integer comparisons on board.
+* Ordinal-pattern change detection is prior art (e.g. arXiv:1210.4903,
+  arXiv:2502.03099). Coding the patterns with the compressor is the only
+  twist.
+
+**Result**, on the 18 smallest of the 48 tuning series (stopped at 10
+min, with the CPU shared with the stage-5 evaluation). Values are the
+share of Sub-PCA kept.
+
+| q | compressor | ordinal | compressor + ordinal | compressor + PCA basis |
+|---:|---:|---:|---:|---:|
+| 5% | 73% | 39% | 65% | **88%** |
+| 10% | 74% | 42% | 71% | **103%** |
+| 20% | 81% | 60% | 69% | **106%** |
+
+The ordinal channel is weak alone and makes the hybrid worse than the
+compressor alone. Ignoring amplitude throws away what these anomalies are
+made of. Dropped. The ground-learned PCA basis stays the shape channel to
+beat. Per-series values:
+`bench/results/data/tsbad_ordinal_tuning_partial.csv`.
