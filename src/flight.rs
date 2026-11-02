@@ -129,6 +129,7 @@ impl Io<'_, '_> {
 }
 
 /// Orders 0/1/2 over sample values, mixed.
+#[derive(Clone)]
 struct Transition {
     bits: u32,
     prev: u32,
@@ -196,6 +197,7 @@ impl Transition {
 }
 
 /// Residual from the previous sample with adaptive contexts.
+#[derive(Clone)]
 struct Residual {
     bits: u32,
     prev: u32,
@@ -260,6 +262,10 @@ impl Residual {
 /// One end of a telemetry link: compresses (or decompresses) packets of
 /// integer samples, learning from every packet. Both ends must be created
 /// with the same parameters and must process the same packets in order.
+///
+/// Cloning a session snapshots its learned state: a copy continues from
+/// there independently (both ends must clone at the same point).
+#[derive(Clone)]
 pub struct FlightSession {
     bits: u32,
     transition: Transition,
