@@ -199,3 +199,42 @@ The evaluation set was not touched.
 
 Not pursued to the evaluation set. Per-series values:
 `bench/results/data/tsbad_cm_tuning.csv`.
+
+## Development: on-board triage + ground Sub-PCA, a cascade (`bench/tsbad_cascade.py`)
+
+**Question.** If the downlink can carry only a fraction q of the data,
+how much of a shape-aware ground detector's accuracy survives when the
+on-board compressor chooses what to send?
+
+**Setup.**
+* On board, F_max_z ranks windows of L samples; the top q are sent.
+* On the ground, Sub-PCA (best on TSB-AD-U) keeps its scores only on the
+  sent windows.
+* Control: the same q, chosen at random.
+
+**Criterion, fixed before the run (commit 114b377 and earlier):** at
+q = 20%, keep ≥ 90% of full Sub-PCA's mean VUS-PR and beat the random
+control. Run on TSB-AD-U's 48 tuning series only.
+
+| Downlinked share q | Cascade VUS-PR | Share of full Sub-PCA (0.326) | Random windows | Share | Anomalous samples sent |
+|---:|---:|---:|---:|---:|---:|
+| 5% | 0.234 | 72% | 0.086 | 26% | 31% |
+| 10% | 0.266 | 82% | 0.091 | 28% | 41% |
+| **20%** | **0.277** | **85%** | 0.119 | 36% | 53% |
+| 30% | 0.256 | 78% | 0.135 | 41% | 61% |
+| 50% | 0.268 | 82% | 0.195 | 60% | 73% |
+
+* **The pre-set criterion fails:** 85% < 90% at q = 20%. The cascade is
+  not "almost free".
+* **On-board triage is still worth much more than chance.**
+  * With 10% of the windows, the ground keeps 82% of Sub-PCA's VUS-PR,
+    against 28% for random windows.
+  * With 5%, it keeps 72%, against 26%.
+  * The compressor sends 3–6x more anomalous samples than chance at
+    small q.
+* The non-monotone column (30% below 20%) comes from VUS-PR's
+  sensitivity to the score floor in unsent windows. It is a property of
+  the setup, not a gain to read into.
+
+Per-series values: `bench/results/data/tsbad_cascade_tuning.csv`. The
+evaluation set was not used.
