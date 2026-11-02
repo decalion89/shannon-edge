@@ -55,3 +55,37 @@ with the 6-hour window replaced by the benchmark's window.
   tests (S2 vs S1, S2 vs CNN) are reported, whatever they show.
 * Nothing above will be changed after the run.
 * Any later variant will be labelled post hoc.
+
+## Stage 2: reference-model score, chosen on the tuning set (committed before its evaluation run)
+
+**Why a stage 2.** The stage-1 run was well underway (98 of 180 series)
+and S1/S2 were far below the published methods. The diagnosis: the
+adaptive compressor habituates inside long anomalies.
+
+That motivated a **reference model** (`bench/tsbad_reference.py`,
+`examples/flight_reference_surprise`):
+* learn the series' normal prefix (the benchmark's `tr_N`);
+* code every later block of L samples with a fresh copy of that state.
+
+Five candidate scores were compared **only on the benchmark's 20 tuning
+series** (`TSB-AD-M-Tuning.csv`, none of them in the evaluation list).
+Mean VUS-PR (`bench/results/data/tsbad_reference_tuning.csv`):
+
+| Candidate | Mean VUS-PR (20 tuning series) | Mean rank |
+|---|---:|---:|
+| A_adapt_win (stage-1 S1) | 0.237 | 4.40 |
+| B_ref (per-sample reference excess, max over channels) | 0.194 | 4.50 |
+| C_ref_win (windowed e-process on reference costs) | 0.290 | 3.60 |
+| **D_ref_mean (moving mean of reference excess over L, max over channels)** | **0.313** | **3.55** |
+| E_ref_summean (sum over channels of the moving mean) | 0.298 | 3.95 |
+
+**Selected: D_ref_mean**, the best on both criteria. It will be evaluated
+once on the 180 evaluation series and reported against:
+* stage 1;
+* the paper's table (CNN 0.313, OmniAnomaly 0.312, PCA 0.310);
+* the leaderboard (xLSTMAD 0.392).
+
+**H3.** D_ref_mean > 0.313 on the evaluation set. Like the published
+methods, it uses the tuning set to choose its configuration and the
+series' normal prefix. Unlike them, it trains nothing beyond the
+compressor's own online learning, and it has no hyperparameter search.
