@@ -117,6 +117,14 @@ def one(name: str):
         g = np.asarray(clf.decision_scores_, dtype=float).ravel()
     g = np.nan_to_num(g)
     g = (g - g.min()) / (g.max() - g.min()) if g.max() > g.min() else np.zeros(n)
+    # Second ground judge, of a different family from the PCA shape score: IForest as the benchmark
+    # runs it (run_IForest body, Optimal_Uni_algo_HP_dict n_estimators=200, default window 100).
+    from TSB_AD.models.IForest import IForest
+    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+        clf2 = IForest(slidingWindow=100, n_estimators=200, max_features=1, n_jobs=1)
+        clf2.fit(data)
+        g2 = np.nan_to_num(np.asarray(clf2.decision_scores_, dtype=float).ravel())
+    g2 = (g2 - g2.min()) / (g2.max() - g2.min()) if g2.max() > g2.min() else np.zeros(n)
 
     def vus(v):
         return float(generate_curve(label, v, L, "opt", 250)[7])
@@ -130,7 +138,7 @@ def one(name: str):
     hyb = np.maximum(zs_(bmax), zs_(rb))
     rng = np.random.default_rng(0)
     rand_order = rng.permutation(nb)
-    out = {"file": name, "L": L, "n": n, "subpca": vus(g)}
+    out = {"file": name, "L": L, "n": n, "subpca": vus(g), "iforest": vus(g2)}
     for q in QS:
         k = max(1, int(round(q * nb)))
         keep = np.zeros(nb, bool)
@@ -158,6 +166,10 @@ def one(name: str):
         keep_s = np.zeros(nb, bool)
         keep_s[np.argsort(-rb)[:k]] = True
         out[f"shape_{int(q * 100)}"] = vus(np.where(keep_s[blocks], g, 0.0))
+        # The same downlinked windows, judged on the ground by IForest instead of Sub-PCA.
+        out[f"j2_cascade_{int(q * 100)}"] = vus(np.where(keep[blocks], g2, 0.0))
+        out[f"j2_hybrid_{int(q * 100)}"] = vus(np.where(keep_h[blocks], g2, 0.0))
+        out[f"j2_random_{int(q * 100)}"] = vus(np.where(keep_r[blocks], g2, 0.0))
     print(name + " " + " ".join(f"{k}={v:.3f}" for k, v in out.items() if k.startswith(("subpca", "cascade_20", "random_20"))),
           file=sys.stderr, flush=True)
     return out

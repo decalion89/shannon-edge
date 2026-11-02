@@ -146,3 +146,34 @@ q = 20%). The criterion below is new and is stated as such.
 It is refuted if either fails. The full Sub-PCA is computed by our run of
 the benchmark's model code and is also checked against the published
 `uni_mergedTable_VUS-PR.csv`.
+
+## Stage 5: hybrid on-board triage (compressor + ground-learned shape score), committed before its evaluation run
+
+**Development** (48 tuning series, `bench/results/data/tsbad_hybrid_tuning.csv`).
+Share of full Sub-PCA's mean VUS-PR kept:
+
+| q | compressor (stage 4) | shape (PCA basis from the normal prefix) | **hybrid max(z, z)** | random |
+|---:|---:|---:|---:|---:|
+| 5% | 72% | 82% | **85%** | 26% |
+| 10% | 82% | 88% | **99%** | 28% |
+| 20% | 85% | 84% | **100%** | 36% |
+
+* Hybrid vs compressor: Wilcoxon p = 0.002 (q = 10%), 0.034 (20%).
+* The shape score alone does not beat the compressor (p = 0.41); the
+  combination does.
+
+**Known risk.** The ground judge, Sub-PCA, is itself a PCA of
+subsequences, so a PCA shape score may agree with it for that reason
+alone. A second judge from a different family is therefore added:
+IForest as the benchmark runs it (n_estimators = 200, window 100;
+unseeded, so it carries a little run-to-run noise).
+
+**Hypotheses** (TSB-AD-U-Eva, the same 348 series as stage 4, q = 10%,
+mean VUS-PR):
+* **H8.** hybrid keeps ≥ 75% of full Sub-PCA.
+* **H9.** hybrid > compressor-only triage, Wilcoxon p < 0.05.
+* **H10** (judge independence). Judged by IForest, hybrid keeps ≥ 75% of
+  full IForest and ≥ 2x the random windows.
+
+All are reported whatever they show. `bench/tsbad_cascade.py` is not
+changed after this commit.
