@@ -255,3 +255,31 @@ H = C7, K = {x, x+1}.
   exactly **108**. So two independent constructions (ours from C7^5, theirs from C7^6) both
   land on the 2002 value 108 for α(C7^4), which suggests 108 is very stable and possibly
   optimal. Their 108-slices are now additional seeds for the exact LNS search for 109.
+
+## Round 14: layer-pattern rigidity of maximum sets (`structure108.py`): an empirical law
+
+We took six 108-sets of C7^4: three from our C7^5 slices plus exact LNS, and three from 2×2-block
+slices of the 2026 C7^6 set (Itty et al.). They are **pairwise inequivalent** under the full
+automorphism group (order 921,984), and each has a **trivial stabiliser**. Yet in **every one of
+the 4 coordinates of every set**, the 7 layer sizes form the same cyclic pattern:
+
+    (15, 15, 16, 15, 16, 15, 16)    consecutive pair sums (30, 31, 31, 31, 31, 31, 31)
+
+One level down, every maximum 33-set of C7³ found by the symmetry search (9 runs) has, in all 3
+coordinates, the pattern
+
+    (4, 4, 6, 4, 5, 4, 6)           consecutive pair sums (8, 10, 10, 9, 9, 10, 10)
+
+**Observation.** 108 = ⌊7·31/2⌋. Maximum sets of C7^4 behave as if the *effective* capacity
+of a pair of adjacent layers were 31, not α(C7³) = 33. This would explain why the layer bound
+115 = ⌊7·33/2⌋ is so far off.
+
+**Conjecture (empirical, unproved).** α(C7^4) = 108, and every maximum independent set of C7^4
+has layer pattern (15, 15, 16, 15, 16, 15, 16) along every coordinate.
+
+**Caveats.**
+- The 33-sets come from one search method and may share a bias.
+- The 108-sets come from two sources but only six samples.
+- Proving the C7³ rigidity is a finite computation: for each admissible deficit pattern,
+  a chain DP over the C7² independent sets of the given sizes. That would be the first step
+  towards a proof strategy for C7^4.
