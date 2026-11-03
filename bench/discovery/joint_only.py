@@ -106,7 +106,7 @@ def mission(zp, name, chans, val, rng):
                 score(frozen_cost(q[j], prev[j] * Q + q[i], Q * Q, fit) - local[j], pj)
     rows = []
     for eid, e in ev.iterrows():
-        base = dict(mission=name, ID=eid, length=int(e.i1 - e.i0 + 1), cls=e.cls, cat=e.cat, loc=e["loc"])
+        base = dict(mission=name, ID=eid, length=int(e.i1 - e.i0 + 1), cls=e["cls"], cat=e["cat"], loc=e["loc"])
         if eid not in nulls:
             rows.append(dict(base, verdict="untestable"))
             continue
