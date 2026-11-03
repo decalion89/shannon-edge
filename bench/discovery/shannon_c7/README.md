@@ -125,3 +125,26 @@ combinatorial: maximum sets of consecutive layer pairs cannot be chained around
 an odd cycle. The right tool is therefore a structural chaining analysis of the
 maximum independent sets one level down (10-sets of C7² for k = 3, 33-sets of
 C7³ for k = 4), not a stronger relaxation of this family.
+
+## Round 8: layer chaining (`chain_k3.py`): the structural reason for 35 → 33
+
+C7³ = C7² ⊠ C7, cut into 7 layers. I is independent iff each layer I_x is
+independent in C7² and each union I_x ∪ I_{x+1} is independent (and disjoint).
+The layer bound 35 = 7·10/2 would need every consecutive union to be a maximum
+10-set split 5/5. That is a closed walk of length 7 in the **split graph**:
+nodes are 5-sets, and two nodes are joined when their union is a maximum
+independent set of C7².
+
+- C7² has 1,796,859 independent sets, 980 of them maximum (size 10).
+- Split graph: 60,760 five-sets and 123,480 edges, not bipartite.
+- **Odd girth = 21**, measured from 3,002 start nodes; the exhaustive run is in
+  `chain_k3_full.py`. A closed walk of length 7 would need an odd cycle of
+  length ≤ 7, so 35 is impossible.
+- The same girth gives a prediction: a perfect cyclic chain needs at least 21
+  layers. If the exhaustive check confirms 21, then α(C7² ⊠ C_n) = 5n for odd n ≥ 21
+  and α(C7² ⊠ C_n) < 5n for odd n < 21.
+
+This is the analysis that θ-type relaxations cannot see (rounds 6–7). The plan for
+C7^4 is the same construction one level up: 33-sets of C7³ and their
+17/16 splits. If the 33-split structure also forbids the needed closed walk,
+α(C7^4) ≤ 114, which would be a new bound.
