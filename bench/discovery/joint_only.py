@@ -6,7 +6,10 @@ For each labelled event, decide whether it is visible to a per-channel (local) t
 cross-channel (joint) test, or to neither. Both tests use frozen KT context models trained on the
 unlabelled training part, and an empirical null of same-length unlabelled training windows.
 
-Usage: joint_only.py ESA-Mission1.zip ESA-Mission2.zip
+Usage: joint_only.py ESA-Mission1.zip ESA-Mission2.zip [--marginal]
+
+--marginal is a post-hoc diagnostic added after the pre-registered run: each channel gets a second
+local test, the frozen frequency cost of its levels, -log2 P(y_t) (Bonferroni over 2C local tests).
 """
 
 import io
@@ -25,6 +28,7 @@ DATA = Path(__file__).resolve().parent.parent / "results" / "data"
 Q = 32
 ALPHA = 0.01
 NNULL = 19999
+MARGINAL = "--marginal" in sys.argv  # post hoc (not pre-registered): local tests also check the level frequencies
 SPECS = [("ESA-Mission1", range(41, 47), "2006-10-01"), ("ESA-Mission2", range(18, 29), "2001-07-01")]
 
 
@@ -78,6 +82,7 @@ def mission(zp, name, chans, val, rng):
         q.append(np.clip(((v - lo) / (hi - lo + 1e-12) * Q).astype(np.int64), 0, Q - 1))
     prev = [np.r_[x[0], x[:-1]] for x in q]
     local = [frozen_cost(q[j], prev[j], Q, fit) for j in range(C)]
+    marg = [frozen_cost(q[j], np.zeros(n, np.int64), 1, fit) for j in range(C)] if MARGINAL else []
     okc = np.r_[0, np.cumsum(normal)]
     ev = lab.groupby("ID").agg(i0=("i0", "min"), i1=("i1", "max"), cls=("Class", "first"),
                                cat=("Category", "first"), loc=("Locality", "first"))
@@ -100,6 +105,8 @@ def mission(zp, name, chans, val, rng):
 
     for j in range(C):
         score(local[j], pl)
+    for j in range(len(marg)):
+        score(marg[j], pl)
     for i in range(C):
         for j in range(C):
             if i != j:
@@ -110,7 +117,7 @@ def mission(zp, name, chans, val, rng):
         if eid not in nulls:
             rows.append(dict(base, verdict="untestable"))
             continue
-        vis_l = min(pl[eid]) <= ALPHA / C
+        vis_l = min(pl[eid]) <= ALPHA / len(pl[eid])
         vis_j = min(pj[eid]) <= ALPHA / (C * (C - 1))
         verdict = "local" if vis_l else ("joint-only" if vis_j else "invisible")
         rows.append(dict(base, verdict=verdict, min_p_local=min(pl[eid]), min_p_joint=min(pj[eid])))
@@ -119,8 +126,8 @@ def mission(zp, name, chans, val, rng):
 
 def main():
     rng = np.random.default_rng(0)
-    d = pd.concat([mission(zp, name, ch, val, rng) for zp, (name, ch, val) in zip(sys.argv[1:3], SPECS)])
-    d.to_csv(DATA / "joint_only_esa.csv", index=False)
+    d = pd.concat([mission(zp, name, ch, val, rng) for zp, (name, ch, val) in zip(sys.argv[1:3], SPECS)]).reset_index(drop=True)
+    d.to_csv(DATA / ("joint_only_esa_marginal.csv" if MARGINAL else "joint_only_esa.csv"), index=False)
     ok = True
     for m, g in d.groupby("mission"):
         t = g[g.verdict != "untestable"]
