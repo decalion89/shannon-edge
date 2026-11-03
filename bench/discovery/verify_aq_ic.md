@@ -429,3 +429,24 @@ third label) therefore appears to need only second-order moments. This is
 a numerical observation, not a proof; a level-2 dual certificate would
 turn it into one. An ablation (1+AB plus only the A_x A_z block, or only
 the B_y B_w block) is running to identify which vectors close the gap.
+
+## A noise-robust version of the exact-zero witness (`npa_robust.py`)
+
+The witness Σₓ p(0,0|x,x) ≤ 1 (arXiv:2610.41448) needs exact zeros
+p(0,0|x,y) = 0 for x ≠ y, which no experiment can certify. For symmetric
+boxes with off-diagonal entries equal to ε, NPA level 2 gives an upper bound
+on the quantum value of S = Σₓ p(0,0|x,x). Results for N = 10:
+
+| ε | S ≤ (level 2, bounds quantum) | AQ maximum | AQ − level 2 |
+|---|---|---|---|
+| 0 | 1.00000 | 1.03734 | 0.0373 |
+| 0.0005 | 1.04314 | 1.06859 | 0.0255 |
+| 0.001 | 1.08310 | 1.09959 | 0.0165 |
+| 0.002 | 1.15574 | 1.16097 | 0.0052 |
+| 0.005 | 1.33666 | 1.33666 | 0 |
+| 0.01 | 1.57238 | 1.57238 | 0 |
+
+At N = 10 the post-quantum window is fragile. The quantum bound rises
+about 0.96·N(N−1) per unit ε near ε = 0, and the separation disappears
+for ε ≳ 0.005. An experimental test would need larger N, where the AQ
+value at ε = 0 grows like N/17. N = 20 is running.
