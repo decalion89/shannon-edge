@@ -149,3 +149,16 @@ This is the analysis that θ-type relaxations cannot see (rounds 6–7). The pla
 C7^4 is the same construction one level up: 33-sets of C7³ and their
 17/16 splits. If the 33-split structure also forbids the needed closed walk,
 α(C7^4) ≤ 114, which would be a new bound.
+
+**Prior art (checked after computing): this is a rediscovery.** Klavžar and Vesel,
+*Discrete Applied Mathematics* 129 (2003) 449–460 ("rotagraphs", Theorem 6), use
+exactly this method. They build the digraph of 5-splits of the 980 maximum
+10-sets of C7² and find its shortest odd cycle. Their result,
+α(C7 ⊠ C7 ⊠ C_{2k+1}) = 10k + 5 for k ≥ 10 and 10k + 4 for 4 ≤ k ≤ 9, agrees with
+our independently computed odd girth 21. Our computation is therefore an
+independent verification, not a new theorem.
+
+What remains open is the method one level up: maximum 33-sets of C7³ and their
+chains in C7^4 = C7³ ⊠ C7. As far as we found, it has not been carried out; it
+would need the 33-sets (and near-maximum 32-sets) of C7³, which is much larger
+than the 980 ten-sets of C7².
