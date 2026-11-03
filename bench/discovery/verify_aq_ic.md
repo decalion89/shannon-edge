@@ -151,3 +151,53 @@ s = 1/12.
 
 **Caveat.** This is numerical evidence for N ≤ 24 plus an
 extrapolation, not a proof for all N.
+
+## An exact formula for the almost-quantum certification rate (`aq_cert_sym.py`)
+
+**The reduction.** The level-1+AB moment matrix is invariant under
+relabelling the settings. As an S_N-module, its index space
+{1, A_x, B_y, A_x B_y} splits into:
+* 5 copies of the trivial representation;
+* 5 copies of the standard representation;
+* one copy each of S^(N−2,2) and S^(N−2,1,1).
+
+So positivity reduces to two 5×5 blocks and two scalars.
+* Their entries are linear in the 16 moment classes, with coefficients
+  polynomial in N.
+* The coefficients were obtained exactly by enumeration at N = 4–9 and
+  interpolation, then checked at N = 10, 11 with 0 failures.
+* The reduced SDP reproduces the full SDP at every N where both were
+  run.
+
+**Formula, conjectured from the exact rational values** (e.g.
+1/s = 721/81, 241/25, 97/9, 49/4, 329/25 and 124/9 at
+N = 9, 10, 12, 16, 20, 24):
+
+    s_AQ(N) = 1/N                         for N <= 8
+    s_AQ(N) = N^2 / (17 N^2 - 80 N + 64)  for N >= 8,   i.e. 1/s = 17 - 80/N + 64/N^2
+
+It matches the reduced SDP to ≤ 2·10⁻⁹ at N = 6, 7, 8, 9, 11, 13, 14,
+15, 17, 30, 50 and 100.
+
+**Structure:**
+* The two branches meet **tangentially** at N = 8:
+  N³ − 17N² + 80N − 64 = (N − 1)(N − 8)².
+  This double root is why the almost-quantum advantage over the quantum
+  bound 1/N appears exactly from **N = 9**.
+* The advantage grows as
+  N·s_AQ − 1 = (N − 1)(N − 8)² / (17N² − 80N + 64) ≈ N/17.
+* s_AQ(N) → **1/17** as N → ∞, from above:
+  s_AQ − 1/17 ≈ (80/289)/N.
+  This **explains the paper's 1/17**: it is the asymptotic
+  almost-quantum certification rate, and their box attains the limit
+  for every N.
+
+**Cheapest violation with this protocol.** Use the optimal certificate
+box at each N instead of the 1/17 box. With the exact mutual
+information, IC is violated from **N = 757,665** settings (k = 18). That
+compares with 757,692 for the 1/17 box (exact) and 757,693 in the
+paper (bound). The certificate route cannot be made materially cheaper.
+
+**Status.** A conjecture with exact rational agreement on 12 values of
+N up to 100. A proof would follow from exact dual certificates of the
+two reduced 5×5 blocks, which is not yet done.
