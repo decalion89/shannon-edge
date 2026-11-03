@@ -496,3 +496,40 @@ TSB-AD-M.
 
 What remains is the measured physical law (low-bit saturation at 2 bits,
 invariant to noise amplitude) and the free `compress_scored_split` API.
+
+## Post hoc: a discrete/continuous regime switch does not rescue the low-bit channel
+
+**Rule (post hoc; the same 45 tuning series that discarded the
+channel).**
+* A series is "discrete", a state or command channel, if its normal
+  prefix repeats the previous value in at least 50% of samples. The
+  threshold is a round number, set before this computation.
+* Discrete series get the compressor score F; continuous series get the
+  static hybrid max(z(F), z(LB_dev)).
+
+`bench/results/data/tsbad_regime_tuning.csv` holds the indicators and
+the selection.
+
+| | Mean VUS-PR | vs F |
+|---|---:|---:|
+| F | 0.258 | — |
+| Regime switch | 0.279 | p = 0.350; 13 wins, 26 losses |
+| Shape domain (14 series) | 0.079 → 0.179 | |
+| Amplitude domain (16 series) | 0.300 → 0.279 | |
+
+* **It catches the obvious discrete channels:**
+  * MSL with a 92% repeat rate keeps 0.508;
+  * SMAP with a 73% repeat rate keeps 0.669.
+* **It misses the borderline ones:**
+  * SMAP with 31% repeats: 0.011 → 0.027 (harmless);
+  * MSL with 8% repeats: 0.118 → 0.083.
+* The amplitude domain still loses, and the result is far from
+  significant.
+
+**The prefix repeat rate is a crude regime indicator.** Discreteness is
+not binary: TAO (33 distinct values, 15% repeats) and Exathlon (77
+distinct values) sit in between. Any finer threshold would be fitted to
+these same 45 series. The low-bit channel stays discarded. A regime
+classifier would need its own pre-registered test on data not used for
+triage, such as TSB-AD-M, and only if a later result gives a reason to
+reopen it.
