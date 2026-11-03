@@ -75,6 +75,16 @@ says where things stand.
   * Post hoc: source compression would be worth ~2.9 dB here, so the
     receiver recovers ~5% of it. Separation stands in practice.
 
+* **Noise-scale telemetry protocol vs CCSDS 121 (`bench/discovery/protocol_preregistration.md`).**
+  * Both pre-registered claims hold on ESA Missions 1 and 2, whole
+    missions.
+  * P1: values at <= 1 sigma, flight-coded, with exact on-board Kraft
+    alarms, take 39% and 27% of today's CCSDS 121 lossless bytes.
+  * P2: 24% and 37% below CCSDS 121 applied to the same noise-scale
+    indices.
+  * Float-jitter channels are documented. Without Mission 2 channels
+    25-28, the protocol is at 22% of the standard.
+
 ## Refuted (pre-registered)
 
 * **Error-bounded re-detection.** Detecting on the ground from 1σ

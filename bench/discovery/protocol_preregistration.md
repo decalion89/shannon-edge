@@ -91,3 +91,35 @@ otherwise.
   16 bits with 2-byte samples. It is unaffected. That costs CCSDS about
   1% against the best width, for example 146,027 vs 144,247 bytes on
   the first 512k samples of channel 41.
+
+## Result (run once after the amendment; `bench/results/data/protocol_esa.csv`)
+
+| | CCSDS 121 lossless (today) | CCSDS 121 at noise scale + alarms | **Protocol + alarms** | Protocol / today | Protocol / standard coder at noise scale |
+|---|---:|---:|---:|---:|---:|
+| Mission 1 (6 ch.) | 51,775,835 B | 26,658,545 B | **20,365,530 B** | **0.393** | **0.764** |
+| Mission 2 (11 ch.) | 109,994,398 B | 46,182,678 B | **29,165,234 B** | **0.265** | **0.632** |
+| Mission 2, channels 18–24 only | 57,912,485 B | 27,065,884 B | 12,467,625 B | 0.215 | 0.461 |
+
+* **P1 holds.** The protocol needs 39% (Mission 1) and 27% (Mission 2)
+  of today's standard.
+* **P2 holds.** On the same noise-scale data, the protocol is 24% and
+  37% smaller than the standard coder.
+* The error bound held on every bounded channel. The alarms are
+  computed on exact values: 111 B and 83 B in total.
+
+**Caveats:**
+* **Mission 2 channels 25–28** take values of order 10⁻¹⁰ with
+  floating-point jitter.
+  * 26–28 are bounded at σ ≈ 4·10⁻¹³, so their saving is on jitter, not
+    sensor noise.
+  * 25 does not fit 16-bit indices and goes lossless.
+  * The row for channels 18–24 removes them; the protocol is then at
+    22% of the standard.
+* **Channels 21–24** have σ = 0 and go lossless in every encoding.
+* **Lossless comparison.** On these lightweight channels, the flight
+  profile alone is 10.8% (Mission 1) and 24.0% (Mission 2) below
+  CCSDS 121. Most of the protocol's gain comes from the noise scale;
+  the coder adds the P2 margin.
+* **1σ is a design choice.** Whether it is acceptable is the user's
+  decision, and ground re-detection on reconstructed values is not
+  preserved (refuted earlier).
