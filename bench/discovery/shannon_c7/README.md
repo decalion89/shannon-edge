@@ -344,3 +344,27 @@ layer bound that is actually achieved:
 **Test.** The 367 record (R, extracted from the 2026 repository: the union of the layers over
 {r₀, q₀} of their C7^10 set, verified independent) has two-layer slices of at most **107**,
 like our 366-set. Exact LNS from three such slices is running.
+
+## Round 18: the defect law and a law-guided search (`lns_balanced.py`)
+
+**Defect law (empirical).** α(C7^m) = ⌊7/2 · (α(C7^{m−1}) − δ_m)⌋, where δ_m is the per-pair loss
+caused by not closing the odd 7-cycle of layers. From the known values:
+
+| m | δ_m |
+|---|---|
+| 2 | 0 |
+| 3 | ≈ 0.57 |
+| 4 | ≈ 2 |
+| 5 | ≤ 3 |
+
+δ_5 = 3 reproduces 367 exactly; a smoother δ_5 ≈ 2.1 would allow 370–371.
+
+**Supporting signal.**
+- The maximum sets we know (C7³, C7^4) are layer-rigid and balanced.
+- The 367 record (`c7_5_367_record.npy`, extracted from the 2026 repository and verified) is
+  *not*: per-coordinate layers range from 50 to 55, and adjacent-pair sums from 101 to 107.
+- Our heuristic reading: non-rigidity signals slack.
+
+**Law-guided search.** `lns_balanced.py` runs exact LNS that also accepts equal-size moves
+reducing layer imbalance. It navigates the plateau towards balanced configurations instead
+of stopping at the local optimum. Running from the 367 record and from our 366.
