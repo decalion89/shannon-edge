@@ -292,3 +292,27 @@ papers.
   N²/(19N² − 80N + 64) is known;
 * whether boxes with more outcomes, or settings that depend on the
   message, beat the binary-box optimum.
+
+## Step 1 on the open one-bit task: a single two-sided certificate box (`aq_twosided.py`)
+
+**Idea.** The open problem is the zero-error one-bit equality task.
+Instead of mixing a certificate of equality with a classical
+certificate of inequality, as the companion paper does (giving
+N²/(19N² − 80N + 64) → 1/19), let one binary box certify both:
+* Alice sends M = a;
+* Bob answers "equal" on (M, b) = (0, 0) and "different" on (0, 1),
+  and abstains on M = 1.
+
+Zero error needs p(0,0|x,y) = 0 for x ≠ y and p(0,1|x,x) = 0. The
+worst-case success is then p_A(0).
+
+**Result.** Maximised over the AQ set with the symmetry-reduced SDP, the
+value is **exactly 1/N** at every N tested (3, 4, 8, 10, 16, 30 and
+100), the same as shared randomness and quantum theory.
+* A single two-sided binary box gives **no post-quantum advantage at
+  all**.
+* It falls below the companion's mixed protocol for N ≥ 14.
+* So the almost-quantum advantage in the one-bit task needs the
+  certificates to come from different branches (mixing), or more
+  structure: more outcomes, or settings chosen after the message. The
+  latter is the companion paper's open question and the next step.
