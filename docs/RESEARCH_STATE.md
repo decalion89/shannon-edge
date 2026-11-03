@@ -93,6 +93,14 @@ says where things stand.
   * That is 2.5x the random-window control, so H7 holds (p = 7e-30).
   * The 75% level is reached at about 30% of the downlink.
 
+* **Hybrid on-board triage (stage 5, TSB-AD-U-Eva, 348 series, pre-registered).**
+  * H8 refuted: 70.6% of Sub-PCA at q = 10%, needs >= 75%.
+  * H9 holds: hybrid > compressor-only, p = 1e-6.
+  * H10 refuted: 74.1% under the IForest judge.
+  * The shape score alone (73%) is as good as the hybrid, so the
+    compressor adds nothing there.
+  * Next, pre-registered: e-value merge.
+
 ## Refuted (development only)
 
 * The general model's match model does not see noisy shapes (0.15 vs

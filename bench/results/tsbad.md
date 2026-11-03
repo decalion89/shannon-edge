@@ -533,3 +533,70 @@ these same 45 series. The low-bit channel stays discarded. A regime
 classifier would need its own pre-registered test on data not used for
 triage, such as TSB-AD-M, and only if a later result gives a reason to
 reopen it.
+
+## Stage 5: hybrid on-board triage, evaluation (pre-registered, run once)
+
+348 TSB-AD-U-Eva series; `bench/results/data/tsbad_hybrid_eval.csv`.
+The frozen `bench/analysis/stage5_verdict.py` was applied unchanged.
+Its full output:
+
+```
+348 series (expected 348)
+H8  hybrid_10 / subpca = 0.292 / 0.414 = 0.706 (>= 0.75): REFUTED
+H9  hybrid_10 0.292 vs cascade_10 0.255, one-sided Wilcoxon p = 9.697e-07: HOLDS
+H10 IForest judge: j2_hybrid_10 / iforest = 0.741 (>= 0.75), / j2_random_10 = 2.44 (>= 2): REFUTED
+
+All budgets (share of the ground judge's full score):
+  q= 5%  Sub-PCA judge: cascade 0.51  hybrid 0.62  shape 0.67  random 0.22   IForest judge: cascade 0.55  hybrid 0.66  random 0.27
+  q=10%  Sub-PCA judge: cascade 0.62  hybrid 0.71  shape 0.73  random 0.25   IForest judge: cascade 0.65  hybrid 0.74  random 0.30
+  q=20%  Sub-PCA judge: cascade 0.71  hybrid 0.79  shape 0.78  random 0.33   IForest judge: cascade 0.75  hybrid 0.82  random 0.39
+  q=30%  Sub-PCA judge: cascade 0.76  hybrid 0.82  shape 0.79  random 0.41   IForest judge: cascade 0.79  hybrid 0.84  random 0.47
+  q=50%  Sub-PCA judge: cascade 0.81  hybrid 0.86  shape 0.83  random 0.57   IForest judge: cascade 0.82  hybrid 0.88  random 0.60
+
+Per dataset (q = 10%):
+              n  subpca  cascade  hybrid  shape   gain    gap
+ds                                                           
+CATSv2        1   0.265    0.209   0.209  0.258  0.000  0.055
+Daphnet       1   0.422    0.313   0.384  0.455  0.070  0.109
+Exathlon     30   0.892    0.656   0.638  0.609 -0.018  0.236
+IOPS         15   0.248    0.213   0.233  0.172  0.019  0.034
+LTDB          8   0.556    0.265   0.274  0.276  0.009  0.291
+MGAB          8   0.005    0.004   0.004  0.004 -0.000  0.001
+MITDB         7   0.310    0.140   0.102  0.097 -0.038  0.171
+MSL           7   0.507    0.299   0.334  0.474  0.034  0.208
+NAB          23   0.395    0.213   0.275  0.339  0.062  0.182
+NEK           8   0.887    0.212   0.391  0.569  0.179  0.675
+OPPORTUNITY  27   0.914    0.098   0.134  0.134  0.036  0.816
+Power         1   0.076    0.090   0.089  0.089 -0.000 -0.014
+SED           2   0.031    0.116   0.082  0.077 -0.034 -0.085
+SMAP         17   0.499    0.450   0.497  0.473  0.047  0.048
+SMD          33   0.442    0.389   0.484  0.474  0.095  0.052
+SVDB         18   0.522    0.232   0.230  0.191 -0.002  0.290
+SWaT          1   0.393    0.119   0.119  0.119 -0.000  0.274
+Stock         6   0.701    0.507   0.495  0.485 -0.011  0.194
+TAO           2   0.930    0.908   0.909  0.909  0.001  0.022
+TODS         13   0.539    0.478   0.498  0.514  0.020  0.062
+UCR          70   0.124    0.103   0.143  0.153  0.039  0.020
+WSD          20   0.123    0.204   0.213  0.163  0.009 -0.081
+YAHOO        30   0.155    0.112   0.191  0.277  0.079  0.042
+
+H8 or H9 refuted: the analysis plan A is not applied. Next mutation (pre-registered): e-value merge.
+```
+
+**Verdict:**
+* **H8 is refuted:** the hybrid keeps 70.6% of Sub-PCA at a 10%
+  downlink, against the required ≥ 75%.
+* **H9 holds:** hybrid 0.292 vs compressor-only 0.255, Wilcoxon
+  p = 9.7·10⁻⁷.
+* **H10 is refuted:** under the IForest judge the hybrid keeps 74.1% of
+  IForest, against ≥ 75%. It does keep 2.44x the random control, which
+  passes that part.
+* As pre-registered, the analysis plan A is not applied, because H8
+  failed.
+
+**Descriptive, not tested:**
+* The ground-learned shape score alone keeps 73% at q = 10%, slightly
+  above the hybrid's 71%. The compressor adds nothing to the shape
+  score on the evaluation set, unlike on the tuning set (99% vs 88%).
+* Check A4 (shape ≤ hybrid) would have failed too.
+* The development gain did not transfer.
