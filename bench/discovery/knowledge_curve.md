@@ -39,3 +39,29 @@ not happen here.**
 The microscope's next target is therefore cross-channel structure. If
 that is also noise, these data hold no hidden law worth bits, and that
 is the answer.
+
+## First cross-channel look (`bench/discovery/cross_channel.py`; preliminary)
+
+**Setup.**
+* Channels 41, 42 and 43, one mid-mission week (21,056 samples),
+  quantised to 32 levels.
+* For each pair x → y and lag 0 or 1: the gap between coding y knowing
+  its own previous value and knowing also x, against 5 circular shifts
+  of x.
+
+**Result.**
+* **Every net gain is negative** (−200 to −600 mbit/sample). Knowing
+  the other channel never pays for its own learning cost in a week. The
+  richer model has 1,024 contexts × 32 symbols, too many to learn from
+  21k samples.
+* Some pairs beat their 5 shifts by 8–142 mbit/sample. But the shifts
+  themselves spread by about ±150 mbit/sample, so these excesses are
+  within the null's noise.
+* **No exploitable cross-channel law at this resolution and length.**
+
+A conclusive test needs:
+* fewer contexts (8 levels for x);
+* months, not a week;
+* many more shifts (e.g. 100) for a usable null.
+
+Inconclusive, leaning negative.
