@@ -95,3 +95,33 @@ separately.
    error-bounded test.
 
 The claim holds only if both missions pass.
+
+### Result of the rare-exact variant (Mission 1, run once; `bench/results/data/esa_nl_k1_rare.md`)
+
+| | Bits (flags included) | Saved | F0.5 trained (q = 1.0) | F0.5 Kraft auto |
+|---|---:|---:|---:|---:|
+| Lossless | 45.27 MB | — | 0.690 | 0.705 |
+| K = 1, rare values exact | 19.91 MB | 56.0% | **0.638** (2 FP) | **0.047** (1,017 FP) |
+
+**Refuted, and worse than the uniform bound.** The Mission 2
+confirmation is therefore not run: the claim needed both missions.
+
+**Why it collapses.** The rare samples kept exact fall off the
+quantisation lattice that every other sample sits on. To a detector run
+on the *reconstructed* data, each of them is a value that the lattice
+never produces, so it is maximally surprising. Kraft auto fires on
+almost all of them: 1,017 false detections. Keeping rare values exact
+makes the reconstructed stream *more* anomalous, not less.
+
+**The lesson, a design point and not a rescue.** Re-running anomaly
+detection on lossy reconstructed telemetry is the wrong architecture.
+The surprise is computed **on board, on the exact values**, before any
+quantisation. Its alarms are a tiny stream that can be sent
+losslessly. With that architecture, on-board detection is unchanged by
+construction.
+
+That is a different claim from the one tested here, with its own
+limit: ground methods that need exact values everywhere (e.g. a
+ground Sub-PCA) see only the error-bounded data. How much they keep is
+the triage question of `tsbad.md` (62% of Sub-PCA at a 10% link). It
+should not be presented as having passed this test.
