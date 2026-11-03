@@ -34,3 +34,8 @@ classes classical = level 2 = 1/4 and NS = 1.
   level 2 = 0.25. The other five sit at 0.2502–0.2503, which is SCS precision.
   As preregistered, the 0.2523 class must be re-solved with a second solver
   before it is listed as a post-quantum window.
+
+  **Second-solver check** for f = [[0,0,0,0],[0,0,1,1],[0,1,0,1],[1,1,1,0]]:
+  AQ = 0.25284 (CLARABEL) and 0.25217 (SCS, eps 1e-10); the exact classical LP
+  gives 0.25000. Both solvers put AQ above classical by about 0.002. The window
+  counts as confirmed only once level 2 is also re-solved with CLARABEL (running).
