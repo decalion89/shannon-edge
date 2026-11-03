@@ -151,3 +151,31 @@ So **90% of ESA's labelled test events (375/415) contain values that the
 rule sends exactly**, while keeping only about 0.1% of all values exact.
 "Contains an exact value" is not "is entirely exact": the rest of each
 event stays within the error bound.
+
+## How much of a lossless link is the finest scale? ESA-AD Mission 1 (whole mission)
+
+The flight profile's own split (`FlightSession::compress_scored_split`,
+`examples/flight_lowbits`) gives the cost of each sample's 2 least
+significant code bits, i.e. the 4 finest distinct levels, given the high
+bits and the past:
+
+| Channel | Samples | Bits/sample | Of which the 2 low bits | Share | Low-bit cost / 2-bit saturation |
+|---:|---:|---:|---:|---:|---:|
+| 41 | 15,381,169 | 3.388 | 1.773 | **52.3%** | 0.89 |
+| 42 | 15,381,169 | 4.537 | 1.968 | **43.4%** | 0.98 |
+| 14 | 5,272,893 | 1.169 | 0.733 | **62.7%** | 0.37 |
+| 58 | 14,639,410 | 1.250 | 0.724 | **58.0%** | 0.36 |
+| 12 | 14,258,506 | 1.103 | 0.642 | **58.2%** | 0.32 |
+| 21 | 5,272,893 | 1.210 | 0.697 | **57.6%** | 0.35 |
+
+* **43–63% of every lossless bit is spent on the four finest levels.**
+* On channels 41 and 42 those levels are almost saturated, i.e. close
+  to white noise by the saturation law in `tsbad.md`.
+* On the others they are a predictable flicker, but still more than
+  half the cost.
+
+This is the ESA counterpart of the Venus Express result above: an
+error-bounded mode of a few quanta, with rare values kept exact, would
+cut roughly half of the link. It has not been run on ESA yet. The test
+that matters is the anomaly-preservation check: ESA-ADB detection on
+reconstructed data vs original, pre-registered.
