@@ -39,3 +39,32 @@ The detector then runs on the reconstructed values (`--near-lossless K`).
 * |ΔF0.5| ≤ 0.01 for both rules.
 
 Anything else is reported as it is.
+
+## Result (run once per budget; the full outputs are in `bench/results/data/esa_nl_k{0,1,05}.md`)
+
+| Budget | Bits, 6 channels | Saved | F0.5 trained rule (q = 1.0) | F0.5 Kraft auto |
+|---|---:|---:|---:|---:|
+| Lossless | 45.27 MB | — | 0.690 (20 TP, 0 FP) | 0.705 (21 TP, 0 FP) |
+| **K = 1 (primary)** | **19.39 MB** | **57.2%** | 0.703 (26 TP, **4 FP**) | **0.674** (19 TP) |
+| K = 0.5 | 29.20 MB | 35.5% | 0.665 (23 TP, 4 FP) | 0.657 (18 TP) |
+
+**Verdict at K = 1: refuted.**
+* The bits condition holds: 57.2% saved, well above 40%.
+* The detection condition fails: the trained rule moves by +0.013 and
+  Kraft auto by −0.031, both outside ±0.01.
+
+**What changed.** The detector runs on reconstructed values, and the
+reconstruction changes the statistics it sees.
+* The trained rule now raises 4 false detections; it finds more events
+  but less cleanly.
+* Kraft auto loses two of its 21 events.
+
+At K = 0.5 both rules lose more, so the effect is not monotone in the
+error bound. Quantisation to a lattice reshapes the surprise rather
+than just removing noise.
+
+**What this means.** A uniform error bound halves the link, but it does
+**not** leave anomaly detection unchanged. The version designed for this
+keeps rare values exact (surprise-adaptive, `near_lossless.md`), and it
+is not what was tested here. Any test of it has to be pre-registered
+separately.
