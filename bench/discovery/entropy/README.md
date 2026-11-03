@@ -66,3 +66,30 @@ statement, equivalent to a copy), it reproduces exactly Zhang–Yeung.
 `memsearch.py` samples instances with 2–3 duplicates and up to 3 extra
 maximal sets. Most instances impose several independence statements at
 once, which is where MEM could exceed copies.
+
+### Result: power of single MEM instances (`mem_power.py 2 600 7`)
+
+The sample: 600 random MEM instances with two duplicates, each
+imposing at least two conditional independence statements at once.
+Results are in `mem_power_k2.json`.
+
+* They imply **137 distinct non-Shannon 4-variable inequalities**.
+* **All 137 follow from Zhang–Yeung alone**, i.e. from one copy step.
+* None reaches beyond two copy steps, and none implies any of the 214
+  DFZ inequalities.
+* The random explorers (`memsearch.py`, about 2,400 more instances with
+  2–3 duplicates) found no inequality outside the DFZ list either.
+
+**Reading.** Csirmaz asks whether MEM can beat the iterated Copy Lemma.
+In this regime the answer the data suggest is the opposite: imposing
+many independence statements at once on duplicate-extended polymatroids
+gives **no more than a single copy**.
+
+This does not settle the open problem:
+* other regimes are untested: auxiliary variables that are not
+  duplicates, larger families, and 5-variable consequences, where
+  Csirmaz's own MEM examples live;
+* the instances are a random sample, not an exhaustive enumeration.
+
+It is a measured data point on a question no one had explored
+numerically.
