@@ -35,3 +35,20 @@ slightly wrong period weakens the test. That makes it conservative.
   then watch the predicted windows.
 * **If it fails:** the apparent period was a coincidence of the
   training sample.
+
+## Result (run once)
+
+```
+training onsets 20, mean phase 0.561 cycles; test onsets 23
+test: resultant length R = 0.189; mean phase 0.970
+C1 V-test toward the training phase: u = -1.08, one-sided p = 0.86 (needs p < 0.01): REFUTED
+test phases (cycles): [0.04 0.12 0.12 0.19 0.2  0.22 0.23 0.32 0.35 0.37 0.54 0.63 0.66 0.7
+ 0.71 0.75 0.83 0.85 0.89 0.9  0.92 0.94 0.96]
+```
+
+**C1 is refuted** (p = 0.86).
+* The 23 test onsets are spread over the cycle (R = 0.19), and their
+  mean phase is 0.97, not 0.56.
+* The 34.85-day period found on the training onsets was a coincidence
+  of that sample, as the look-elsewhere p = 0.093 had warned.
+* class_7 is not explained by a fixed period either.
