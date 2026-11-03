@@ -283,3 +283,23 @@ has layer pattern (15, 15, 16, 15, 16, 15, 16) along every coordinate.
 - Proving the C7³ rigidity is a finite computation: for each admissible deficit pattern,
   a chain DP over the C7² independent sets of the given sizes. That would be the first step
   towards a proof strategy for C7^4.
+
+## Round 15: where would a 109-set have to live? (`boundary109.py`)
+
+If every pair of adjacent layers held ≤ 31 points, then 2|I| ≤ 7·31, so |I| ≤ 108. Hence any
+109-set has an adjacent layer pair whose union J is an independent set of C7³ with |J| ≥ 32.
+
+**Boundary-value test.** Take a maximum 33-set J of C7³ and split it between layers 0 and 1.
+Solve exactly the maximum number of points the other 5 layers can hold (MILP, 1,715 variables).
+With 5 minutes of local search over the split, the best is **67**, so the total is 100, far below
+109. A full 33-slab is very costly: it forces the other layers far below their average. This is
+consistent with the rigidity law (pairs ≤ 31 in maximum sets).
+
+The exact LNS from all three 107-slices also ended at 108 after about 2,200 iterations each, with
+no 109.
+
+**Proof strategy (exact, finite).** α(C7^4) ≤ 108 holds iff, for every independent set J of C7³
+with |J| ∈ {32, 33} (up to symmetry) and every split, the remaining 5 layers hold
+≤ 108 − |J| + ... more precisely, the extension of J is ≤ 108. That is one MILP per J if the split
+is left as a variable (layers 0 and 1 restricted to J). The open cost is enumerating the 32-sets
+and 33-sets of C7³ up to symmetry.
