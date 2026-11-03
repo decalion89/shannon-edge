@@ -162,3 +162,20 @@ What remains open is the method one level up: maximum 33-sets of C7³ and their
 chains in C7^4 = C7³ ⊠ C7. As far as we found, it has not been carried out; it
 would need the 33-sets (and near-maximum 32-sets) of C7³, which is much larger
 than the 980 ten-sets of C7².
+
+## Round 9: size-profile integer program for C7^4 (`profile_ip.py`): sizes alone allow 115
+
+What 115 would require: six of the seven consecutive layer pairs are 33-sets of C7³
+and one is a 32-set, which forces layer sizes exactly (16, 16, 17, 16, 17, 16, 17).
+
+We view C7^4 = C7² ⊠ C7² as a 7 × 7 grid of C7² layers with sizes c_xy, subject to:
+- every 2 × 2 block of layers sums to ≤ 10;
+- every row, column, pair of adjacent rows or columns, diagonal and
+  anti-diagonal sums to ≤ 33 (each of these is a copy of C7³, or of C7³ ⊠ K2).
+
+The exact integer optimum is still 115 (LP 115.5). Size information alone cannot
+lower the ceiling, so the obstruction, if there is one, lies in *which* sets can be
+chained, as in Klavžar–Vesel. This requires the structure of the 33-sets of C7³.
+Next: count and classify them with the deficit structure. 66 = Σ (consecutive pair
+sizes) = 70 − 4, so at most 4 units of deficit, and at least 3 of the 7 pairs are
+maximum 10-sets of C7².
