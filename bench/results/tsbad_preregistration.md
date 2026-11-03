@@ -177,3 +177,42 @@ mean VUS-PR):
 
 All are reported whatever they show. `bench/tsbad_cascade.py` is not
 changed after this commit.
+
+## Stage 5, analysis plan for after the run (committed while the run is in progress, before H8–H10 are computed)
+
+At commit time 40 of 348 series were done. H8–H10 have not been
+computed on them. The following is fixed now.
+
+**A. If H8 and H9 hold** (the hybrid works), four checks decide between
+"a real geometric effect" and "agreement with the judge, or luck":
+1. **Judge independence.** H10, already pre-registered: the gain must
+   survive with IForest as the ground judge.
+2. **Consistency across datasets, not just series.** Among datasets
+   with ≥ 3 series, the mean of (hybrid_10 − cascade_10) must be
+   positive in ≥ 60% of them (sign test over datasets). A gain carried
+   by one large dataset is not a law.
+3. **The predicted mechanism.** If the shape channel recovers what
+   the compressor misses, then across datasets the gain
+   (hybrid_10 − cascade_10) must correlate positively with the gap
+   (subpca − cascade_10): Spearman ρ > 0, one-sided p < 0.05. No
+   correlation would mean the gain does not come from shape.
+4. **Ablation.** shape_10 alone must not exceed hybrid_10 (the
+   combination, not the PCA alone, is the claim). If shape alone is as
+   good, the compressor adds nothing to triage.
+
+A fails if any of 1–4 fails, and the claim is then reported as not
+established.
+
+**B. If H8 or H9 fails, the next mutation (stated now).** Replace the
+max of z-scores, which needs a per-series standardisation, with an
+**e-value merge**.
+* Each channel's window score is turned into a conformal e-value
+  against the normal prefix's windows.
+* The channels are merged by their **arithmetic mean**, the essentially
+  unique symmetric e-merging function that stays valid under arbitrary
+  dependence (Vovk and Wang, "E-values: calibration, combination and
+  applications", Ann. Statist. 2021).
+
+It keeps the Kraft/Ville guarantee of the rest of the project and has no
+per-series tuning. It would be developed on the 48 tuning series and
+pre-registered on data not used for triage (TSB-AD-M evaluation series).
