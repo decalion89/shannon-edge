@@ -64,3 +64,45 @@ communication capacity.
 **If it fails:** the adaptive compressor already captures what the law
 says. That is also informative: statistical learning would then make
 explicit laws unnecessary for the link.
+
+## Result (run once; `bench/results/data/law_bits.csv`)
+
+```
+test samples 87,600; delta = 19.9 mm; tide model explains 98.9% of 2022 variance
+L lossless (mm codes):          69,332 B = 6.332 bit/sample
+A protocol alone:               17,017 B = 1.554 bit/sample
+B protocol + law (incl. 236 B of coefficients): 9,776 B = 0.893 bit/sample
+bits per sample the law is worth: 0.661  (42.6% of the protocol's bytes)
+T1 (law saves >= 20% of the protocol's bytes): HOLDS
+T2 (protocol + law <= 25% of lossless): HOLDS  (ratio 0.141)
+```
+
+**T1 and T2 hold.**
+
+| Encoding (2023, every sample within ±19.9 mm) | bit/sample | Share of lossless |
+|---|---:|---:|
+| Lossless millimetres | 6.332 | 100% |
+| Noise-scale protocol alone | 1.554 | 24.5% |
+| **Protocol + the law of the tides** | **0.893** | **14.1%** |
+
+* **The law is worth 0.66 bit per sample:** 42.6% of what the protocol
+  alone sends. The adaptive compressor learns a lot, but not what
+  celestial mechanics already knows.
+* **The law costs 236 bytes once** (59 float32 coefficients). It saves
+  7,241 bytes in the first year, about **30 times its own
+  description**, and keeps saving for as long as the law holds.
+* Lossless → noise scale → plus the law: 6.33 → 1.55 → 0.89 bit/sample,
+  a factor of 7 overall with a guarantee on every sample.
+
+**What it means:** on real telemetry, a shared law of nature is
+measurable link capacity, here 43% of the remaining bytes. This makes
+literal "compressing is explaining": the better both ends understand
+the world, the less they need to say.
+
+**Caveats:**
+* One station, one law that is known to be very strong (98.9% of the
+  variance).
+* δ here is the robust σ of 6-minute differences, which includes waves
+  and seiches.
+* Nodal corrections were omitted. Including them would only improve
+  the law's share.
