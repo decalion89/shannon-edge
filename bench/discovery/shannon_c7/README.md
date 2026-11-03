@@ -232,3 +232,9 @@ six different independent sets of size **107** in C7^4, each verified pairwise, 
 coordinates 0, 1, 2 and 3. That beats our symmetric 105 and sits one below the
 2002 record 108. The slices are now seeds for the exact large-neighbourhood search,
 aiming for 108 or 109.
+
+**Result.** From each of three 107-slices, the exact LNS reaches **108** within its first
+iterations. That equals the best known lower bound for α(C7^4) (Vesel–Žerovnik 2002). All three
+108-sets were verified pairwise; one is stored as `c7_4_108.npy`. The search keeps running for 109.
+A pipeline that matches the 24-year-old record in seconds: C7^5 over-pack/repair, then slice to
+C7^4, then exact LNS.
