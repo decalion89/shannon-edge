@@ -201,3 +201,61 @@ paper (bound). The certificate route cannot be made materially cheaper.
 **Status.** A conjecture with exact rational agreement on 12 values of
 N up to 100. A proof would follow from exact dual certificates of the
 two reduced 5×5 blocks, which is not yet done.
+
+### Achievability proved symbolically for every N ≥ 8 (`aq_cert_proof.py`)
+
+**The moments.** The numerical optimum has an exact closed form. Its one
+undetermined moment is pinned down because the feasible window
+collapses to a point. With d = 17N² − 80N + 64:
+
+    <A_x> = <B_y> = (3N^2 - 18N + 16)/d        (-> 3/17, the paper's marginal)
+    <A_x B_x> = s = N^2/d,  <A_x B_y> = 0 (x != y)
+    <A_x A_y> = <B_x B_y> = (3N^2 - 28N + 32)/(2d)
+    <A_x A_y B_x B_y> = N^2 (N - 8) / ((5N - 8) d)
+    all other moment classes = 0
+
+**The proof.**
+* Positivity is shown block by block. For each symmetric block, every
+  elementary symmetric function of its eigenvalues is computed in
+  closed form, as a rational function of N, by sympy.
+* Each is shown ≥ 0 for N ≥ 8: no real root of numerator or
+  denominator above 8, and the right sign at N = 9.
+* The factorised forms contain (N − 8) and (N − 1) factors, matching
+  the tangency at N = 8.
+
+**Output:**
+
+```
+trivial block:
+  T e_1 = (16*N**5 - 153*N**4 + 405*N**3 - 728*N**2 + 960*N - 512)/((5*N - 8)*(17*N**2 - 80*N + 64))   -> >= 0 for N >= 8
+  T e_2 = N**2*(N - 8)*(N - 1)*(57*N**5 - 457*N**4 + 1620*N**3 - 4800*N**2 + 7424*N - 4096)/(4*(5*N - 8)*(17*N**2 - 80*N + 64)**2)   -> >= 0 for N >= 8
+  T e_3 = 3*N**4*(N - 8)**2*(N - 1)**2*(3*N - 8)*(N**4 + 33*N**2 - 80*N + 64)/(4*(5*N - 8)*(17*N**2 - 80*N + 64)**3)   -> >= 0 for N >= 8
+  T e_4 = 0   -> >= 0 for N >= 8
+  T e_5 = 0   -> >= 0 for N >= 8
+standard block:
+  S e_1 = 2*N*(19*N**2 - 64*N + 64)/((5*N - 8)*(17*N**2 - 80*N + 64))   -> >= 0 for N >= 8
+  S e_2 = N**2*(N - 8)*(33*N**2 - 80*N + 64)/((5*N - 8)*(17*N**2 - 80*N + 64)**2)   -> >= 0 for N >= 8
+  S e_3 = 0   -> >= 0 for N >= 8
+  S e_4 = 0   -> >= 0 for N >= 8
+  S e_5 = 0   -> >= 0 for N >= 8
+(N-2,2) scalar = 0: >= 0;  (N-2,1,1) scalar = 0: >= 0
+ACHIEVABILITY PROVED for all N >= 8
+```
+
+**Result.** For every N ≥ 8 there is an almost-quantum certificate box
+with certification rate s = N²/(17N² − 80N + 64).
+* This is **strictly above 1/17 at every finite N**, so it improves on
+  the box of arXiv:2610.41444 for each fixed N.
+* It also exceeds the quantum bound 1/N for every N ≥ 9.
+
+Membership in the AQ set follows because NPA level 1+AB is the AQ set
+(Navascués et al. 2015).
+
+**Still open here:** the matching upper bound, i.e. that no AQ box does
+better. It holds numerically to ≤ 2·10⁻⁹ for N ≤ 100. A proof needs
+exact dual certificates for the reduced blocks.
+
+**Proof assumptions to note:**
+* The S_N block reduction, which reproduces the full SDP numerically.
+* The interpolated coefficient polynomials: exact by enumeration at
+  N = 4–9, checked at N = 10 and 11.
