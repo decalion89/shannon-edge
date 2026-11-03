@@ -197,3 +197,19 @@ construction as a special case. Local search moves one point of one map; every
 step gets an exact maximum-subset repair. We found no prior use of arbitrary
 (non-monotone) projections. It starts from the 365 arc-cut solution: 60 s gave
 no gain, and two 27-minute runs are in progress.
+
+## Round 11: is α(C7^4) ≥ 115 possible? (`alpha115_feasibility.py`)
+
+If |I| = 115, then along every coordinate the 7 layer sizes satisfy a_x + a_{x+1} ≤ 33 and
+sum to 115 = 7·33/2 − 1/2. So exactly one consecutive pair has deficit 1, and the sizes are
+forced to be (16, 16, 17, 16, 17, 16, 17) up to rotation and reflection. Rotations and
+reflections are automorphisms acting independently on each coordinate, so without loss
+of generality all four coordinates carry this exact pattern from x = 0, which gives 28
+equality constraints.
+
+Added on top: the 16-cliques and all block constraints ({x,x+1}^s blocks with
+capacities 33, 10 and 3). The question becomes an exact feasibility ILP (HiGHS,
+50-minute limit, running). If it is infeasible, then α(C7^4) ≤ 114, the first improvement
+of the upper bound 115. A solver's infeasibility verdict is not a certificate:
+before any claim it needs independent confirmation, by another solver, another
+formulation, or a checkable proof.
