@@ -104,3 +104,50 @@ distinguishes quantum correlations from their nearest known neighbour.
 If confirmed by the community, this strengthens IC as a candidate
 law of nature. That is the principle behind the robustness of our
 telemetry floor (`bench/discovery/limit/README.md`, section 5).
+
+## Follow-up: can the violation be made cheaper? (`aq_cert_max.py`)
+
+**Open question.** The authors list the "economy of the violation" as
+open: their box certifies with s = 1/17 and needs N ≥ 757,692
+settings. A larger almost-quantum certification rate s would need far
+fewer: about 370,000 settings at s = 1/16, and about 21,000 at
+s = 1/12.
+
+**Method.** Maximum s at NPA level 1+AB for certificate boxes:
+* p(0,0|x,y) = 0 for x ≠ y, and p(0,0|x,x) = s;
+* the SDP is symmetrised over relabellings of the settings;
+* solvers: CLARABEL for N ≤ 10, SCS for N > 10.
+
+| N | max s | N·s (quantum: ≤ 1) | max s − 1/17 |
+|---:|---:|---:|---:|
+| 2–8 | 1/N | 1.000 | |
+| 9 | 0.1123 | 1.011 | 0.0535 |
+| 10 | 0.1037 | 1.037 | 0.0449 |
+| 12 | 0.0928 | 1.113 | 0.0340 |
+| 14 | 0.0861 | 1.206 | 0.0273 |
+| 16 | 0.0816 | 1.306 | 0.0228 |
+| 20 | 0.0760 | 1.520 | 0.0172 |
+| 24 | 0.0726 | 1.742 | 0.0138 |
+
+**Findings:**
+* **The almost-quantum set first beats quantum certification at
+  N = 9.** For N ≤ 8 its maximum rate equals the quantum bound 1/N
+  exactly. These solves are "optimal_inaccurate"; a high-precision
+  re-check is running.
+* **The maximum rate decreases towards 1/17.** The excess over 1/17
+  behaves like ≈ 0.33/N, i.e. N·(s − 1/17) = 0.33 at N = 20–24. The
+  optimal marginals tend to 0.165–0.176, near the paper's 3/17.
+* Within the paper's own family of vector constructions (Appendix A,
+  generalised with free parameters), the optimum is exactly 1/17
+  (numerical search: 1/17.0015).
+* **Consequence.** At the hundreds of thousands of settings a violation
+  needs, the best certification rate is 1/17 to within ~10⁻⁶. The
+  paper's box is **asymptotically optimal** for this one-bit,
+  one-use certificate protocol.
+* A cheaper violation must therefore come from a **different
+  protocol**: several box uses, more bits, or non-certificate
+  behaviours, as the authors suggest. It cannot come from a better
+  certificate box.
+
+**Caveat.** This is numerical evidence for N ≤ 24 plus an
+extrapolation, not a proof for all N.
