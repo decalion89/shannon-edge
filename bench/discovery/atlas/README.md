@@ -39,3 +39,13 @@ classes classical = level 2 = 1/4 and NS = 1.
   AQ = 0.25284 (CLARABEL) and 0.25217 (SCS, eps 1e-10); the exact classical LP
   gives 0.25000. Both solvers put AQ above classical by about 0.002. The window
   counts as confirmed only once level 2 is also re-solved with CLARABEL (running).
+
+  **Level 2 re-solved** with an independent explicit-matrix formulation (SCS, eps 1e-9):
+  0.250000, status optimal. (CLARABEL cannot handle the 321 × 321 level-2 cone: it tries
+  to allocate 21 GB.)
+  **Verdict: A2 confirmed.** For this task, classical = quantum (level 2) = 1/4, while
+  almost-quantum reaches 0.2522–0.2528, depending on the solver. This is a second
+  post-quantum window, at only N = 4 inputs per side, for a function other than
+  equality; in equality certification the AQ advantage only appears from N = 9.
+  Next (`window_n4.py`): test whether the coincidence family (Σp)² ≤ Σp detects this
+  window.
