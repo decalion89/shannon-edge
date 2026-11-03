@@ -84,6 +84,12 @@ says where things stand.
     indices.
   * Float-jitter channels are documented. Without Mission 2 channels
     25-28, the protocol is at 22% of the standard.
+  * **Generality (`protocol_general_preregistration.md`, TSB-AD-M-Eva,
+    180 series, 17 domains):** G1-G3 hold.
+    * Pooled, 27.7% of CCSDS 121, and 32.5% below CCSDS 121 at the
+      same noise scale.
+    * In 12 of 17 domains the protocol needs at most half of the
+      standard.
 
 ## Refuted (pre-registered)
 
