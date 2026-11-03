@@ -151,6 +151,15 @@ def npa(F, level):
 
     w = cp.Variable()
     cons = [G >> 0, mv[0] == 0, g(()) == 1]
+    # nonnegativity of every joint probability (not implied at level 1)
+    for s in range(N):
+        for t in range(N):
+            for m in range(2):
+                As, B0, B1 = (("A", s, 0),), (("B", t, m, 0),), (("B", t, m, 1),)
+                for o_w in (B0, B1):
+                    cons += [g(As + o_w) >= 0, g(o_w) - g(As + o_w) >= 0]
+                cons += [g(As) - g(As + B0) - g(As + B1) >= 0,
+                         1 - g(As) - g(B0) - g(B1) + g(As + B0) + g(As + B1) >= 0]
     for s in range(N):
         for t in range(N):
             f = int(F[s, t])
