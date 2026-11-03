@@ -105,3 +105,41 @@ possible values. That costs more than the repeats save.
     the 0.19 bit/sample gain.
   * Recovering the tax is therefore a long-block coding problem, of the
     kind LDPC or polar codes solve for channels. It remains open here.
+
+## 5. Does physics beyond classical change the floor?
+
+**Short argument.**
+* Alice holds X^n and shares any resource with Bob: entanglement, or
+  any quantum state.
+* She sends a classical message M of nR bits, and Bob outputs Y^n.
+* By data processing, I(X^n;Y^n) ≤ I(X^n; M, B), where B is Bob's share.
+* I(X^n; M, B) = I(X^n; B) + I(X^n; M | B). The first term is 0,
+  because the shared resource is independent of X^n. The second is at
+  most H(M) ≤ nR, because M is classical.
+* Hence **R ≥ I(X;Y)/n ≥ R∞(δ)**.
+
+**The floor log2(√(2πe)·σ/2δ) therefore holds for any quantum
+protocol.**
+* Entanglement does not raise the classical capacity of a classical
+  channel either.
+* Breaking the floor would need correlations that let m classical bits
+  carry more than m bits of information. That is exactly what
+  **information causality** forbids (Pawłowski et al., Nature 2009).
+  * PR boxes violate it, and that is one reason physicists believe such
+    boxes do not exist in nature.
+* **The limit on sending a sensor with a guarantee is as robust as
+  information causality itself.**
+
+**Where non-classical resources do help.** One-shot, zero-error
+settings with confusability structure:
+* entanglement enlarges the zero-error one-shot capacity of some
+  channels (Cubitt, Leung, Matthews, Winter, PRL 104, 230503, 2010);
+* it can improve zero-error source codes without bound (Briët, Buhrman
+  et al.).
+
+A guarantee **per packet, with fixed-length packets** is a one-shot,
+zero-error requirement. Whether entanglement shrinks the
+worst-case packet size for guaranteed-error telemetry seems to be
+open. It could be formulated as a graph problem on the confusability of
+lattice cells and bounded with non-signalling linear programs, as in
+arXiv:1003.3195.
