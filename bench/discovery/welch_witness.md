@@ -142,3 +142,41 @@ The classical version is the Cauchy–Schwarz inequality for indicator functions
 A check over 3000 random quantum strategies (three-outcome measurements, random
 lists with K ≤ 8) gives max S² − T = 0. The diagonal inequality is the case
 K = N, k ↦ (0|k, 0|k).
+
+## k parties: S^k ≤ T_k, with an operator geometric-mean inequality (`welch_multi.py`)
+
+**Operator inequality.** Let A^(1), …, A^(k) be families of effects A^(j)_y
+(y = 1…N) acting on k mutually commuting subsystems, with A^(j) = Σ_y A^(j)_y. Then
+
+    X_k := Σ_y A^(1)_y A^(2)_y ⋯ A^(k)_y  ≤  (A^(1) A^(2) ⋯ A^(k))^{1/k}.
+
+*Proof by induction.* The case k = 2 is the geometric-mean argument above.
+For k > 2, apply the k = 2 case to the families A^(1)_y and
+E_y = Π_{j≥2} A^(j)_y. Use the induction hypothesis E := Σ_y E_y ≤ (Π_{j≥2} A^(j))^{1/(k−1)}
+and the operator monotonicity of t ↦ t^{1/2}. Because A^(1) commutes with
+both sides, this gives
+
+    X_k ≤ (A^(1))^{1/2} (Π_{j≥2} A^(j))^{1/(2(k−1))}  =: R_1.
+
+By symmetry X_k ≤ R_i for every i, where party i carries exponent 1/2 and the
+others 1/(2(k−1)). X_k ≥ 0, and the weighted operator geometric means are
+monotone in each argument with G(X, …, X) = X. So X_k ≤ Π_i R_i^{1/k}, because
+the R_i commute. Each party's exponent there is (1/k)(1/2) + ((k−1)/k)·1/(2(k−1)) = 1/k. ∎
+
+**Correlation inequality.** For a state ψ, Jensen's inequality for the concave
+map t ↦ t^{1/k} gives S = ⟨X_k⟩ ≤ ⟨(ΠA^(j))^{1/k}⟩ ≤ ⟨ΠA^(j)⟩^{1/k}, so
+
+    ( Σ_y p(0⋯0 | y⋯y) )^k  ≤  Σ_{y_1,…,y_k} p(0⋯0 | y_1⋯y_k).
+
+It holds for commuting-operator (hence quantum) correlations of any number of
+parties. Classically, a deterministic strategy has S = |∩_j Z_j| ≤ min_j |Z_j|,
+so S^k ≤ Π_j |Z_j| = T_k; mixtures follow by Jensen. Quantum and classical
+again coincide.
+
+**Numerical check** (random projectors and general effects, local dimensions 2–3,
+N = 2…5): minimum eigenvalue of (ΠA^(j))^{1/k} − X_k is −4·10⁻¹⁵ for k = 2, 3, 4,
+and S^k − T_k never exceeds 7·10⁻¹⁵.
+
+Status: we have not found this multi-party operator inequality in the
+literature yet. It is a Hölder/Cauchy–Schwarz-type inequality for sums of
+tensor products and could be known under another name; a search is pending.
