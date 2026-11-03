@@ -68,3 +68,30 @@ than just removing noise.
 keeps rare values exact (surprise-adaptive, `near_lossless.md`), and it
 is not what was tested here. Any test of it has to be pre-registered
 separately.
+
+## Second test, pre-registered before its run: error bound + rare values kept exact
+
+**Variant** (`--near-lossless K --rare-exact`).
+* A sample is **rare** when its lossless flight-profile cost reaches the
+  (1 − 2^−10) quantile of the costs on the training part, the rarity
+  rule of `near_lossless.md`.
+* Rare samples are sent exactly. All others use the same closed-loop
+  error bound as above.
+* The receiver needs one flag per sample. Its cost is counted with an
+  adaptive binary code (KT) and added to the bits.
+
+**Budget:** K = 1 only.
+
+**Criteria (unchanged):**
+* bits saved ≥ 40%, flags included;
+* |ΔF0.5| ≤ 0.01 for the trained rule (q = 1.0) and for Kraft auto,
+  official metric code.
+
+**Order:**
+1. Mission 1 lightweight (channels 41–46). It is not fresh data for the
+   uniform bound, but it is for this variant.
+2. **Confirmation on Mission 2 lightweight** (channels 18–28, split
+   2001-10-01, validation from 2001-07-01), never used in any
+   error-bounded test.
+
+The claim holds only if both missions pass.

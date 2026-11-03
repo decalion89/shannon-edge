@@ -71,6 +71,7 @@ def load(z: zipfile.ZipFile, member: str) -> pd.Series:
     return SafeUnpickler(io.BytesIO(inner.read(inner.namelist()[0]))).load().iloc[:, 0]
 
 
+RARE_INFO = []  # (rare samples kept exact, flag bits) per channel, with --rare-exact
 NL_BITS = []  # (lossless, near-lossless) total bits per channel, with --near-lossless
 MIN_COST = False  # --min-cost: score each sample by the cheaper of the two flight models
 
@@ -299,6 +300,9 @@ def main() -> None:
     ap.add_argument("--near-lossless", type=float, default=None, metavar="K",
                     help="reconstruct every channel with a closed-loop quantiser of error bound K x robust noise "
                          "sigma (sigma from the training part) before scoring; prints the bits saved")
+    ap.add_argument("--rare-exact", action="store_true",
+                    help="with --near-lossless: keep exact every sample whose lossless cost reaches the "
+                         "(1 - 2^-10) quantile of training costs; one flag per sample, its adaptive cost counted")
     ap.add_argument("--resample", default=None,
                     help="resample each channel to this grid with zero-order hold before scoring, as ESA-ADB's "
                          "preprocessing does (e.g. 30s); default: original samples")
@@ -378,15 +382,26 @@ def main() -> None:
             dv = np.diff(v[tr]) if tr.sum() > 2 else np.diff(v)
             sigma = 1.4826 * np.median(np.abs(dv - np.median(dv))) / np.sqrt(2)
             delta = args.near_lossless * sigma
-            bits_lossless = float(surprise(s).sum())
+            c0 = surprise(s)
+            bits_lossless = float(c0.sum())
             if delta > 0:
                 # Closed-loop quantiser on real values: every reconstruction stays on the lattice
                 # v[0] + k*step (step = 2*delta), so the loop reduces to rounding to that lattice.
                 step = 2 * delta
                 r = v[0] + step * np.round((v - v[0]) / step)
                 assert np.max(np.abs(r - v)) <= delta * (1 + 1e-9) + 1e-12
+                if args.rare_exact:
+                    thr_rare = np.quantile(c0[tr], 1 - 2.0 ** -10) if tr.any() else np.inf
+                    rare = c0 >= thr_rare
+                    r = np.where(rare, v, r)
+                    # Adaptive (KT) cost of the per-sample flag sequence.
+                    k = np.cumsum(rare) - rare
+                    nn = np.arange(len(rare))
+                    p1 = (k + 0.5) / (nn + 1.0)
+                    flag_bits = float(-np.sum(np.where(rare, np.log2(p1), np.log2(1 - p1))))
+                    RARE_INFO.append((int(rare.sum()), flag_bits))
                 s = pd.Series(r, index=s.index, name=s.name)
-            bits_nl = float(surprise(s).sum())
+            bits_nl = float(surprise(s).sum()) + (RARE_INFO[-1][1] if args.rare_exact and delta > 0 else 0.0)
             print(f"{ch}: near-lossless K={args.near_lossless:g}, sigma={sigma:.4g}, bits {bits_lossless/8e6:.3f} MB -> "
                   f"{bits_nl/8e6:.3f} MB ({100*(1-bits_nl/bits_lossless):.1f}% saved)", file=sys.stderr, flush=True)
             NL_BITS.append((bits_lossless, bits_nl))
