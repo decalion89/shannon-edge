@@ -4,7 +4,7 @@
 Task: f: [N]x[N] -> {0,1}. Alice (setting s, binary outcome = message M), Bob (setting (t, M), outcome
 0, 1 or abstain). Zero error, maximise the worst-case conclusive probability.
 Values: classical (LP), nonsignalling (LP), NPA level 1, 1+AB (almost quantum), level 2 (SDP).
-Usage: atlas.py N            -> one line per function class, JSON lines to stdout
+Usage: atlas.py N [prune]    -> one line per function class, JSON lines to stdout
        atlas.py N check      -> equality sanity check only
 """
 import itertools
@@ -170,12 +170,22 @@ def npa(F, level):
     return p.value
 
 
-def analyse(F):
+def analyse(F, prune=False):
+    """prune: skip SDPs that cannot produce an anomaly. If classical = 1 every theory gives 1; if
+    AQ <= classical then classical <= quantum <= L2 <= AQ forces L2 = classical."""
     r = {"f": F.tolist()}
     r["classical"] = classical(F)
+    if prune and r["classical"] > 1 - TOL:
+        r["skipped"] = "classical=1"
+        return r
     r["ns"] = nonsignalling(F)
-    for lv in ("1", "1+AB", "2"):
-        r["L" + lv] = npa(F, lv)
+    r["L1+AB"] = npa(F, "1+AB")
+    if prune and r["L1+AB"] <= r["classical"] + TOL:
+        r["skipped"] = "AQ=classical, so L2=classical"
+        return r
+    r["L2"] = npa(F, "2")
+    if not prune:
+        r["L1"] = npa(F, "1")
     return r
 
 
@@ -185,10 +195,11 @@ if __name__ == "__main__":
         r = analyse(np.eye(N, dtype=int))
         print(json.dumps(r), flush=True)
         sys.exit(0)
+    prune = "prune" in sys.argv[2:]
     classes = function_classes(N)
     print(f"# N={N}: {len(classes)} function classes", file=sys.stderr, flush=True)
     for F in classes:
         t0 = time.time()
-        r = analyse(F)
+        r = analyse(F, prune)
         r["sec"] = round(time.time() - t0, 2)
         print(json.dumps(r), flush=True)
