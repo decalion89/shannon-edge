@@ -21,7 +21,25 @@ says where things stand.
   * 18th of 33 on TSB-AD-U, level with the zero-shot foundation models
     Lag-Llama and Chronos.
 
+* **Edge link, ESA Mission 2 lightweight (pre-registered,
+  `esa_edge_link_preregistration.md`).**
+  * The design: exact on-board detection, alarms sent losslessly, values
+    sent with an error bound of δ = 1 robust σ.
+  * Result: **78.6%** fewer real bytes than the lossless stream, or 63.3%
+    without the float-jitter channels 25–28. Channels 18–20 alone: 80.5%.
+  * The error bound held on every sample. The 22 on-board alarms cost
+    83 bytes.
+  * Ground re-detection on the reconstructed values is **not** preserved;
+    see below.
+  * Both halves are prior art (CCSDS 123 near-lossless, on-board
+    detection). What is new is the measured combination with a Kraft
+    guarantee.
+
 ## Refuted (pre-registered)
+
+* **Error-bounded re-detection.** Detecting on the ground from 1σ
+  near-lossless values, uniform or with rare values kept exact, loses
+  detection quality (`esa_near_lossless_preregistration.md`).
 
 * **Cross-channel corroboration as a general rule.** ESA Mission 2
   improved post hoc (0.871), but TSB-AD-M did not (0.171 < 0.190).
