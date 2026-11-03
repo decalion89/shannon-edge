@@ -67,6 +67,14 @@ says where things stand.
     per-channel signal. The relationship-only blind spot is real but
     small on ESA telemetry.
 
+* **Receiver-only prior on an unchanged CCSDS convolutional link
+  (`bench/discovery/receiver_prior_preregistration.md`).**
+  * G1 refuted: a learned column prior in the Viterbi decoder gains
+    0.15 dB, not >= 1 dB, on uncompressed Venus Express packets.
+  * G3 holds: surprising packets are decoded worse with the prior.
+  * Post hoc: source compression would be worth ~2.9 dB here, so the
+    receiver recovers ~5% of it. Separation stands in practice.
+
 ## Refuted (pre-registered)
 
 * **Error-bounded re-detection.** Detecting on the ground from 1σ

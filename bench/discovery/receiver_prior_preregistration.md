@@ -93,3 +93,41 @@ then have to use the prior only together with a surprise check.
 * **Uncompressed telemetry is the right design.** Compression plus
   coding may still be better overall. The point is a gain for links
   that already fly as they are.
+
+## Result (run once; `bench/results/data/receiver_prior.csv`)
+
+| | Eb/N0 for a frame error rate of 10⁻² |
+|---|---:|
+| Plain Viterbi | 3.55 dB |
+| Viterbi with the learned prior | 3.39 dB |
+| **Gain** | **0.15 dB** |
+
+* **G1 is refuted:** 0.15 dB, against ≥ 1.0 dB.
+* **G2 is refuted, narrowly.** At 3.5 dB with the prior, the 5% most
+  surprising packets fail at 3.0% against 0.63% for the rest, 4.8x
+  against the required 5x. The top 5% are only 100 frames.
+* **G3 holds.** At 3.5 dB the surprising packets fail at 3.0% with the
+  prior and **0%** without it. The prior helps typical packets (1.21%
+  → 0.63%) and hurts surprising ones: it pays for the gain with exactly
+  the packets an operator cares about. The count is small (3 of 100
+  frames), so this is a direction, not a precise rate.
+
+**Post hoc: why the gain is so small.** The prior is not weak:
+* 49% of the bits get more than 0.99 probability on their true value;
+* the mean prior information is 0.60 bits per bit;
+* a packet carries only about **368 bits** of information out of 720
+  under this model.
+
+Compressing at the source to ~368 bits would halve the coded length, a
+gain of about 10·log10(720/368) ≈ **2.9 dB**. The receiver-only prior
+recovers 0.15 dB of it, **about 5%**.
+* A frame fails if any of its uncertain bits fails.
+* The 30% of bits with near-maximal uncertainty (the sensors' low,
+  noise-like bits) still need the full protection of the code.
+* The convolutional code cannot move protection away from the bits the
+  receiver already knows.
+
+**Conclusion.** For this standard code, Shannon's separation stands in
+practice. The redundancy must be removed **at the source**: there it
+is worth about 2.9 dB, while at the receiver it is worth 0.15 dB. A
+receiver-side prior also costs the surprising packets.
