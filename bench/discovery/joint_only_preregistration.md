@@ -112,3 +112,36 @@ designed: some rate must be spent on the joint.
   A richer local model could reclassify some joint-only events as
   local, so the share is an estimate within this model class.
 * **That the theorem's asymptotic i.i.d. setting holds exactly.**
+
+## Result (run once; `bench/results/data/joint_only_esa.csv`)
+
+| | Local | Joint-only | Invisible | Joint-only share (95% CI) |
+|---|---:|---:|---:|---:|
+| Mission 1 (114 events) | 61 | 33 | 20 | 0.289 (0.214–0.379) |
+| Mission 2 (621 testable) | 276 | 318 | 27 | 0.512 (0.473–0.551) |
+
+* **J1 holds.**
+* **J2 is refuted, in the opposite direction:** Local 31/79 (0.392) vs
+  Global 320/656 (0.488), p = 0.96.
+
+**Reading.** Global anomalies leave the normal range, so a sound
+per-channel test should see them. That so many came out "joint-only"
+points to a weak local test, not to joint structure. The first-order
+transition cost misses a channel parked at a rare level, and the
+zero-rate theorem's marginal check includes level frequencies.
+
+### Post-hoc diagnostic (`--marginal`; not a result)
+
+Adds a level-frequency local test per channel
+(`bench/results/data/joint_only_esa_marginal.csv`):
+
+| | Local | Joint-only | Invisible | Joint-only share (95% CI) |
+|---|---:|---:|---:|---:|
+| Mission 1 | 76 | 20 | 18 | 0.175 (0.117–0.256) |
+| Mission 2 | 507 | 98 | 16 | 0.158 (0.131–0.189) |
+
+* Local 19/79 (0.241) vs Global 99/656 (0.151), one-sided Fisher
+  p = 0.034, now in the predicted direction.
+* About a sixth of the events remain visible only between channels.
+* Being post hoc, this is confirmed or refuted on fresh events in
+  `joint_only_confirm_preregistration.md`.
