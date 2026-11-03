@@ -79,3 +79,13 @@ that is reported.
 The limits stated in the exploratory pre-registration still apply:
 * a spacecraft computes the joint on board;
 * the model class is first-order and quantised.
+
+## Amendment (before any result; the first launch stopped at the timestamp assertion)
+
+The assertion failed, so no test was computed:
+* channels 14, 21, 29, 30 and 38 share a 90 s grid;
+* channels 70–76 are sampled every ~30 s, each with its own offset.
+
+All channels are therefore aligned onto channel 14's timestamps. Each
+takes its last value at or before each timestamp, so there is no
+look-ahead. Nothing else changes.

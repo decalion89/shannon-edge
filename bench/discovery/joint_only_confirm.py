@@ -48,8 +48,10 @@ def main():
     for ch in CHANS:
         s = load(z, f"{name}/channels/channel_{ch}.zip")
         V.append(s[~s.index.duplicated(keep="last")].sort_index())
-    for s in V[1:]:
-        assert s.index.equals(V[0].index), "channels do not share timestamps"
+    # Amendment (before any result): the two groups are sampled at 90 s and ~30 s with different offsets.
+    # Every channel is aligned onto channel 14's 90 s timestamps by its last value at or before each one.
+    grid = V[0].index
+    V = [s.reindex(grid, method="ffill").bfill() for s in V]
     idx = V[0].index.tz_localize(None) if V[0].index.tz is not None else V[0].index
     n = len(idx)
     lab["i0"] = np.searchsorted(idx, lab.StartTime.to_numpy())
