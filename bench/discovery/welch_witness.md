@@ -203,7 +203,7 @@ We maximise S²/T over Lüders sequential strategies with rank-one projectors.
 |---|---|---|
 | 2 | 2–6 | 1.3078549… (independent of N) |
 | 3 | 2 | 1.3078549… |
-| 3 | 3–4 | 1.580247 = 128/81 (S = 16/9, T = 2) |
+| 3 | 3–6 | 1.580247 = 128/81 (S = 16/9, T = 2 at N = 3) |
 
 Qubit closed form. The optimum is symmetric, a_x = ±α and b_y = ±β on a great
 circle, with cos β = 2 cos α − 1. Here cos α is the root ≈ 0.52710 of
