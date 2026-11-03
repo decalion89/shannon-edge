@@ -316,3 +316,63 @@ value is **exactly 1/N** at every N tested (3, 4, 8, 10, 16, 30 and
   certificates to come from different branches (mixing), or more
   structure: more outcomes, or settings chosen after the message. The
   latter is the companion paper's open question and the next step.
+
+## Step 2 on the open one-bit task: message-dependent settings (`aq_adaptive.py`)
+
+**Protocol** (a single AQ box; Bob's setting depends on Alice's bit):
+* Bob has 2N settings (t, c).
+* Alice inputs s and sends M = a.
+* Bob inputs (t, M):
+  * if M = 0, he answers "equal" on b = 0;
+  * if M = 1, he answers "different" on b = 0.
+* Zero error requires p(0,0|x,(t,0)) = 0 for x ≠ t and
+  p(1,0|t,(t,1)) = 0.
+* The worst case is min(q, r), with q = p(0,0|s,(s,0)) and
+  r = p(1,0|s,(t,1)) for s ≠ t.
+
+This is the setting arXiv:2610.41448 lists as open: "Whether a single AQ
+box can certify both equality and inequality more efficiently than the
+mixture, and whether boxes with more outcomes or message-dependent
+settings improve on Theorem [optimal], is also open."
+
+**Numerical result** (NPA level 1+AB, symmetrised; CLARABEL for N ≤ 8,
+SCS at eps 1e-7 for N = 10, 12, 20):
+
+| N | worst case min(q, r) | N²/(17N² − 80N + 64) | published one-bit lower bound N²/(19N² − 80N + 64) | quantum 1/N |
+|---:|---:|---:|---:|---:|
+| 3, 5 | 1/N | — | — | 1/N |
+| 8 | 0.124999 | 0.125000 | 0.10000 | 0.12500 |
+| 10 | 0.1037344 | 0.1037344 | 0.08591 | 0.10000 |
+| 12 | 0.0927835 | 0.0927835 | 0.07826 | 0.08333 |
+| 16 | 0.081633 | 0.0816327 | 0.07018 | 0.06250 |
+| 20 | 0.0759878 | 0.0759878 | 0.06596 | 0.05000 |
+
+* The worst case equals the equality-certification optimum
+  **N²/(17N² − 80N + 64)** to the solver's precision, while the
+  inequality branch has slack (r ≥ q).
+* **The upper bound is rigorous.** The equality branch alone is a
+  binary-outcome AQ equality certificate, so min(q, r) ≤ q ≤ η^eq_AQ(N)
+  by the companion paper's theorem.
+* **Conjecture:** for this protocol class, the one-bit AQ optimum is
+  exactly N²/(17N² − 80N + 64), tending to 1/17. That beats the
+  published 1/19 mixture: a single box with message-dependent settings
+  certifies both answers more efficiently.
+
+**Rigour status: numerical, not yet a proof.**
+* An attempt to round an interior solution to exact rationals
+  (`aq_adaptive_cert.py`) failed to certify positivity.
+* The cause: the zero-error constraints force exactly null vectors in
+  the moment matrix:
+  * A_x B_{t,0} ψ = 0 for x ≠ t;
+  * (1 − A_t) B_{t,1} ψ = 0.
+* The smallest eigenvalue is therefore 0 by construction, and rounding
+  cannot certify it.
+* A rigorous certificate needs either a reduced formulation that
+  eliminates these null directions, or an explicit vector construction
+  like Appendix A of arXiv:2610.41444.
+* A first attempt at a construction (Bob's second family projecting
+  onto w_t) works only when ⟨w_x, w_y⟩ = 0 for x ≠ y, which the optimal
+  point does not satisfy.
+
+Next: an explicit construction, then a search for prior art before any
+claim.
