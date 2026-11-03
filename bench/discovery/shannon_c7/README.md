@@ -110,3 +110,18 @@ layer bound (35 → 33 at k = 3, and hopefully 115 → ≤ 114 at k = 4) must
 therefore **break translation symmetry**. One option is a Schrijver-type
 three-point bound (fix one point of I; matrices invariant only under its
 stabiliser of order 2^k·k!). That is the next upper-bound computation.
+
+## Round 7: breaking translation symmetry (`theta_pointed.py`): still the layer bound
+
+Pointed bound: α(G) = 1 + α(G − N[0]) for vertex-transitive G. On G − N[0] there
+is no translation symmetry left. We computed θ with nonnegativity plus every
+linear and quadratic block constraint (168 blocks, with capacities reduced by 1
+for blocks containing the fixed point). For C7³ it gives 1 + 34.0000 = 35, again
+exactly the layer bound and not the true 33.
+
+**Conclusion of rounds 6–7.** θ-type relaxations with block information
+reproduce the layer bound exactly but cannot see the loss 35 → 33. That loss is
+combinatorial: maximum sets of consecutive layer pairs cannot be chained around
+an odd cycle. The right tool is therefore a structural chaining analysis of the
+maximum independent sets one level down (10-sets of C7² for k = 3, 33-sets of
+C7³ for k = 4), not a stronger relaxation of this family.
