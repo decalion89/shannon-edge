@@ -49,3 +49,18 @@ classes classical = level 2 = 1/4 and NS = 1.
   equality; in equality certification the AQ advantage only appears from N = 9.
   Next (`window_n4.py`): test whether the coincidence family (Σp)² ≤ Σp detects this
   window.
+
+  **Does the coincidence family detect this window? (`window_n4.py`)** We searched
+  locally over pair lists (with repetition) on the optimal AQ strategy. The SCS
+  solution gave a "violation" of 4.4·10⁻⁵, from a list built only out of
+  zero-error-forbidden outcomes (p = 0) with weights 7, 10, 10, 16. Re-solved with
+  CLARABEL, those probabilities are 0 to 6 digits and S² − T = −6.6·10⁻⁴: the violation
+  was numerical noise. **No genuine violation was found**, so the window is not
+  explained by any family member that this search reached. Possible readings:
+  - the search missed the violating list;
+  - a different law separates quantum from almost-quantum here; this is the
+    interesting case and should be checked by solving for the most violated
+    weighted list exactly.
+
+  Also noted: the AQ optimum itself is solver-sensitive (CLARABEL 0.25284; SCS
+  0.25217 and 0.25256 across runs), always ≥ 0.002 above the quantum value 0.25.
