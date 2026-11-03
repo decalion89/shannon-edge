@@ -86,8 +86,10 @@ def main():
             recon = v[0] + step * k
             err = float(np.max(np.abs(recon - v)))
             idx = (k - k.min())
-            idx = np.minimum(idx, 65535).astype("<u2") if idx.max() < 65536 else to_codes(k.astype(float))
-            edge, _ = flight(idx)
+            if idx.max() < 65536:
+                edge, _ = flight(idx.astype("<u2"))
+            else:  # indices do not fit 16 bits: binning would break the bound, so send the channel lossless
+                err, edge = 0.0, lossless
         else:
             err, edge = 0.0, lossless
         rows.append((ch, len(v), lossless, edge, len(alarms), alarm_bytes, sigma, delta, err))
