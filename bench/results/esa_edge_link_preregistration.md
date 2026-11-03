@@ -40,7 +40,8 @@ Script: `bench/esa_edge_link.py`.
 | Channels | Lossless (B) | Edge link (B, alarms included) | Saved |
 |---|---:|---:|---:|
 | All 11 | 83,650,643 | 17,912,630 (alarms: 83 B, 22 alarms) | **78.6%** |
-| 18–24 only (excluding 25–28, see below) | 33,994,928 | 12,471,559 | **63.3%** |
+| 18–24 only (excluding 25–28, see below) | 33,993,928 | 12,467,625 | **63.3%** |
+| 18–20 only (the channels with σ > 0 at sensor scale) | 26,740,023 | 5,213,704 | **80.5%** |
 
 1. **Claim 1 (≥ 40% saved): holds,** 78.6% overall and 63.3% without
    channels 25–28.
