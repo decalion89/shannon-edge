@@ -88,8 +88,10 @@ nothing at any nonzero noise.
 - The face version S ≤ 1 is in arXiv:2610.41448 (Corollary "exact-zero
   witness"). For tensor products it follows from Claim 1 of Klauck–de Wolf (2013).
 - The Welch bound is classical in frame theory (Welch 1974).
+- The operator inequality behind the proof is Ando's joint concavity of the
+  geometric mean (see the k-party section below), so the proof technique is known.
 - We did not find the robust inequality S² ≤ T stated for correlations, nor
-  its geometric-mean proof, nor the Welch-bound interpretation. The searches
+  the Welch-bound interpretation. The searches
   covered almost-quantum and Welch-bound correlation inequalities, and ETF
   self-testing. The closest hits are ETF-based self-testing in the
   prepare-and-measure scenario (arXiv:2609.13075) and ETF Bell-state
@@ -177,6 +179,18 @@ again coincide.
 N = 2…5): minimum eigenvalue of (ΠA^(j))^{1/k} − X_k is −4·10⁻¹⁵ for k = 2, 3, 4,
 and S^k − T_k never exceeds 7·10⁻¹⁵.
 
-Status: we have not found this multi-party operator inequality in the
-literature yet. It is a Hölder/Cauchy–Schwarz-type inequality for sums of
-tensor products and could be known under another name; a search is pending.
+**Prior art (checked 2026-11-03, after deriving it): the operator inequality is
+known.** It is a direct consequence of the joint concavity of the operator
+geometric mean (Ando 1979): Σ_i A_i # B_i ≤ (Σ_i A_i) # (Σ_i B_i). This is the
+operator Cauchy–Schwarz/Hölder inequality; see e.g. arXiv:1805.10529. For
+commuting projectors, A_i # B_i = (A_i B_i)^{1/2} = A_i B_i, and for effects
+A_i B_i ≤ A_i # B_i. The k-party case follows likewise from the joint concavity of
+multivariate geometric means. So neither the k = 2 nor the k-party operator
+inequality is new; our induction just re-derives a known fact.
+
+What remains unaccounted for in our searches is the *application*: the
+correlation inequality S^k ≤ T_k as a noise-robust witness of post-quantumness
+(it closes the open point of arXiv:2610.41448), its exact match with NPA level 2,
+its Welch-bound reading, and the constant noise tolerance 1/289 of the
+almost-quantum violation. Given how short the argument is, this too may exist
+elsewhere; the novelty claim is provisional.
