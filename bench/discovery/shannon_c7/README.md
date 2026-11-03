@@ -372,3 +372,10 @@ of stopping at the local optimum. Running from the 367 record and from our 366.
 P_4(s) by generic MILP is not informative: s = 29 gave 99 found and bound 140 after 600 s. The
 computation was stopped. The slab curve in C7^4 needs structured methods, e.g. LNS with the
 slab size fixed, or the boundary-value formulation of round 15.
+
+**Universality check on C5** (exact values α(C5^m) = 2, 5, 10, 25 for m = 1…4). The same defect
+formula α_m = ⌊5/2·(α_{m−1} − δ_m)⌋ gives δ_2 = 0, δ_3 ∈ (0.6, 1], δ_4 = 0. The defect is not
+smooth: it vanishes in even powers, where the perfect lattice code {(x, 2x)} of C5² exists. We
+read the C7 efficiency jump at m = 5 the same way, as a "resonant" dimension whose near-perfect
+structure is the cyclic n = 382 lattice. A hypothesis to test: map lattice-packing densities
+across m to locate the resonant dimensions of C7.
