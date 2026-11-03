@@ -401,3 +401,31 @@ The whole gap between 1 and 1/N is allowed by relativity but absent from
 nature. Why nature sits at 1/N, rather than anywhere above it, is the
 open foundational question that principles such as information
 causality try to answer.
+
+## The next rung of the NPA ladder: level 2 already gives the quantum value (`npa_ladder.py`)
+
+The equality-certification rate (binary-outcome boxes with p(0,0|x,y) = 0 for
+x ≠ y, maximise s = p(0,0|x,x)) is known exactly at two rungs of the NPA
+hierarchy (arXiv:2610.41448): level 1 gives N/[8(N−2)] → 1/8, and level
+1+AB (almost-quantum) gives N²/(17N² − 80N + 64) → 1/17. The quantum value
+is 1/N. As far as we could find, level 2 (all words of length ≤ 2, adding
+the vectors A_x A_z ψ and B_y B_w ψ) had not been computed for this task.
+
+Symmetrised level-2 SDP (40 moment classes, SCS, eps 1e-7):
+
+| N | level 2 max s | N·s | AQ (1+AB) | quantum |
+|---|---|---|---|---|
+| 6 | 0.1666667 | 1.00000 | 0.1666667 | 1/6 |
+| 8 | 0.1250000 | 1.00000 | 0.1250000 | 1/8 |
+| 10 | 0.1000000 | 1.00000 | 0.1037344 | 1/10 |
+| 12 | 0.0833333 | 1.00000 | 0.0927835 | 1/12 |
+| 14 | 0.0714286 | 1.00000 | 0.0861160 | 1/14 |
+
+**Result (numerical, N = 6 … 14):** level 2 equals the quantum value 1/N
+to solver precision. The whole post-quantum certification gap closes at
+the second rung: 1/8 (level 1) → 1/17 (level 1+AB) → 1/N (level 2 =
+quantum). The paper's quantum proof (packing lemma, sum rule using a
+third label) therefore appears to need only second-order moments. This is
+a numerical observation, not a proof; a level-2 dual certificate would
+turn it into one. An ablation (1+AB plus only the A_x A_z block, or only
+the B_y B_w block) is running to identify which vectors close the gap.

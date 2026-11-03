@@ -3,7 +3,7 @@
 (all words of length <= 2: 1, A_x, B_y, A_x A_z, B_y B_w, A_x B_y), symmetrised over relabelling the
 settings, for binary-outcome certificate boxes (p(0,0|x,y) = 0 for x != y, p(0,0|x,x) = s).
 Level 1 -> 1/8 and level 1+AB -> 1/17 are known (arXiv:2610.41448); quantum is 1/N.
-Usage: npa_ladder.py N [N ...]
+Usage: npa_ladder.py [--blocks AA,BB] N [N ...]   (--blocks AA: level 1+AB+AA only, etc.)
 """
 import sys
 import time
@@ -16,12 +16,14 @@ sys.path.insert(0, __file__.rsplit("/", 1)[0])
 from aq_cert_max import canon  # noqa: E402
 
 
-def solve(N):
+def solve(N, blocks=("AA", "BB")):
     A = [(("A", x),) for x in range(N)]
     B = [(("B", y),) for y in range(N)]
     ops = [()] + A + B
-    ops += [(("A", x), ("A", z)) for x in range(N) for z in range(N) if x != z]
-    ops += [(("B", y), ("B", w)) for y in range(N) for w in range(N) if y != w]
+    if "AA" in blocks:
+        ops += [(("A", x), ("A", z)) for x in range(N) for z in range(N) if x != z]
+    if "BB" in blocks:
+        ops += [(("B", y), ("B", w)) for y in range(N) for w in range(N) if y != w]
     ops += [(("A", x), ("B", y)) for x in range(N) for y in range(N)]
     n = len(ops)
     keys, dr, dc = {}, [], []
@@ -44,9 +46,12 @@ def solve(N):
 
 
 if __name__ == "__main__":
-    for N in [int(x) for x in sys.argv[1:]]:
+    args, blocks = sys.argv[1:], ("AA", "BB")
+    if args and args[0] == "--blocks":
+        blocks, args = tuple(b for b in args[1].split(",") if b), args[2:]
+    for N in [int(x) for x in args]:
         t = time.time()
-        s, st, K, n = solve(N)
+        s, st, K, n = solve(N, blocks)
         aq = N * N / (17 * N * N - 80 * N + 64) if N >= 8 else 1 / N
-        print(f"N={N}: level-2 max s = {s:.7f} (1/s = {1 / s:.4f}); N*s = {N * s:.5f}; AQ (1+AB) {aq:.7f}; "
+        print(f"N={N} [1+AB+{'+'.join(blocks) or 'none'}]: max s = {s:.7f} (1/s = {1 / s:.4f}); N*s = {N * s:.5f}; AQ (1+AB) {aq:.7f}; "
               f"quantum {1 / N:.5f}; {st}; {K} classes, {n}x{n}; {time.time() - t:.0f}s", flush=True)
