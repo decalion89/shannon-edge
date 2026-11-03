@@ -368,3 +368,7 @@ caused by not closing the odd 7-cycle of layers. From the known values:
 **Law-guided search.** `lns_balanced.py` runs exact LNS that also accepts equal-size moves
 reducing layer imbalance. It navigates the plateau towards balanced configurations instead
 of stopping at the local optimum. Running from the 367 record and from our 366.
+
+P_4(s) by generic MILP is not informative: s = 29 gave 99 found and bound 140 after 600 s. The
+computation was stopped. The slab curve in C7^4 needs structured methods, e.g. LNS with the
+slab size fixed, or the boundary-value formulation of round 15.
