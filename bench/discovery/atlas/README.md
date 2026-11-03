@@ -22,3 +22,15 @@ and NS = 1, and the ordering classical ≤ L2 ≤ AQ ≤ L1 ≤ NS holds for eve
 - Level 1 is strictly looser: 9/17 for equality and 0.61922 for the 1/2 class.
 
 N = 4 (173 classes) is running with pruning.
+
+## N = 4 (partial: 68 of 173 classes, `atlas_N4_partial.jsonl`)
+
+The run hit the 2-hour background limit and was not restarted. With pruning,
+62 classes were skipped (classical = 1, or AQ = classical). In the 6 remaining
+classes classical = level 2 = 1/4 and NS = 1.
+
+- **A1 (quantum candidate): none.**
+- **A2 candidate, not confirmed:** one class has AQ = 0.2523, while classical =
+  level 2 = 0.25. The other five sit at 0.2502–0.2503, which is SCS precision.
+  As preregistered, the 0.2523 class must be re-solved with a second solver
+  before it is listed as a post-quantum window.
