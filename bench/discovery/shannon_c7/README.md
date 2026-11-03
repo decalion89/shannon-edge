@@ -238,3 +238,20 @@ iterations. That equals the best known lower bound for α(C7^4) (Vesel–Žerovn
 108-sets were verified pairwise; one is stored as `c7_4_108.npy`. The search keeps running for 109.
 A pipeline that matches the 24-year-old record in seconds: C7^5 over-pack/repair, then slice to
 C7^4, then exact LNS.
+
+## Round 13: clique slicing as a general tool, and the 2026 sets
+
+**Generalisation.** If I is independent in G ⊠ H and K is a clique of H, then the union of
+I's layers over K is independent in G. Taking two adjacent layers is the case
+H = C7, K = {x, x+1}.
+
+- **2026 record set in C7^10 (Itty et al.):**
+  I = B×B ∪ {(h_j(x), x)} ∪ {(x, v_j(x))}, with B = R minus 8 points and X a
+  transformed copy of R. By analysis of the construction (no computation needed),
+  no clique slice to C7^5 exceeds 367. Layers are B plus at most 8 points, or pieces of
+  X, and the independence of R stops a clique from merging them.
+- **Their C7^6 set of size 1120** (repository `nathanielitty/lower-bounds-for-shannon-capacity`,
+  re-verified here). Two-layer slices to C7^5 reach only 325. 2 × 2-block slices to C7^4 reach
+  exactly **108**. So two independent constructions (ours from C7^5, theirs from C7^6) both
+  land on the 2002 value 108 for α(C7^4), which suggests 108 is very stable and possibly
+  optimal. Their 108-slices are now additional seeds for the exact LNS search for 109.
