@@ -71,6 +71,7 @@ def load(z: zipfile.ZipFile, member: str) -> pd.Series:
     return SafeUnpickler(io.BytesIO(inner.read(inner.namelist()[0]))).load().iloc[:, 0]
 
 
+NL_BITS = []  # (lossless, near-lossless) total bits per channel, with --near-lossless
 MIN_COST = False  # --min-cost: score each sample by the cheaper of the two flight models
 
 
@@ -295,6 +296,9 @@ def main() -> None:
                          "nominal training data (an operational false-alarm budget)")
     ap.add_argument("--factors", nargs="+", type=float, default=[1.0],
                     help="threshold multipliers to try (chosen on validation)")
+    ap.add_argument("--near-lossless", type=float, default=None, metavar="K",
+                    help="reconstruct every channel with a closed-loop quantiser of error bound K x robust noise "
+                         "sigma (sigma from the training part) before scoring; prints the bits saved")
     ap.add_argument("--resample", default=None,
                     help="resample each channel to this grid with zero-order hold before scoring, as ESA-ADB's "
                          "preprocessing does (e.g. 30s); default: original samples")
@@ -368,6 +372,26 @@ def main() -> None:
             first = s.iloc[0]
             s = s[~s.index.duplicated(keep="last")].reindex(grid, method="ffill")
             s.iloc[0] = first
+        if args.near_lossless is not None:
+            v = s.to_numpy(dtype=np.float64)
+            tr = s.index < VALIDATION
+            dv = np.diff(v[tr]) if tr.sum() > 2 else np.diff(v)
+            sigma = 1.4826 * np.median(np.abs(dv - np.median(dv))) / np.sqrt(2)
+            delta = args.near_lossless * sigma
+            bits_lossless = float(surprise(s).sum())
+            if delta > 0:
+                step = 2 * delta + 1e-300
+                r = np.empty_like(v)
+                prev = v[0]
+                for i in range(len(v)):  # closed loop: the error never accumulates
+                    prev = prev + step * np.round((v[i] - prev) / step) if i else v[0]
+                    r[i] = prev
+                assert np.max(np.abs(r - v)) <= delta * (1 + 1e-9) + 1e-12
+                s = pd.Series(r, index=s.index, name=s.name)
+            bits_nl = float(surprise(s).sum())
+            print(f"{ch}: near-lossless K={args.near_lossless:g}, sigma={sigma:.4g}, bits {bits_lossless/8e6:.3f} MB -> "
+                  f"{bits_nl/8e6:.3f} MB ({100*(1-bits_nl/bits_lossless):.1f}% saved)", file=sys.stderr, flush=True)
+            NL_BITS.append((bits_lossless, bits_nl))
         b = surprise(s)
         code_bits = max(1, (min(len(np.unique(s.to_numpy().astype(np.float32))), 65536) - 1).bit_length())
         if args.persist:
