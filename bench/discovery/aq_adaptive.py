@@ -77,7 +77,7 @@ def solve(N):
     w = cp.Variable()
     cons = [G >> 0, one == 1, zero_eq == 0, b1 - ab1_same == 0, w <= q, w <= b1 - ab1_diff]
     prob = cp.Problem(cp.Maximize(w), cons)
-    prob.solve(solver="SCS", eps=1e-8, max_iters=200000)
+    prob.solve(solver="CLARABEL") if N <= 12 else prob.solve(solver="SCS", eps=1e-6, max_iters=100000)
     return prob.value, prob.status, q.value, (b1 - ab1_diff).value, K, n
 
 
