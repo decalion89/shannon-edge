@@ -129,3 +129,16 @@ while almost-quantum correlations are not. This is the robust form of the
   and an invasive classical model (B remembering x) reaches S² − T = N² − N, so
   the violation by itself certifies nothing beyond macrorealism. Whether the
   quantum temporal maximum has a closed form is open.
+
+## General form: any list of pairs (`welch_family.py`)
+
+For any list of K (Alice outcome, setting; Bob outcome, setting) pairs, with
+repetition allowed and any number of outcomes:
+
+    ( Σ_k p(a_k b_k | x_k y_k) )²  ≤  Σ_{k,l} p(a_k b_l | x_k y_l).
+
+The proof is the same: A_k, B_k are the corresponding effects and A_k² ≤ A_k.
+The classical version is the Cauchy–Schwarz inequality for indicator functions.
+A check over 3000 random quantum strategies (three-outcome measurements, random
+lists with K ≤ 8) gives max S² − T = 0. The diagonal inequality is the case
+K = N, k ↦ (0|k, 0|k).
