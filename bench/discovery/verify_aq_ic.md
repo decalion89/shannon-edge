@@ -376,3 +376,28 @@ SCS at eps 1e-7 for N = 10, 12, 20):
 
 Next: an explicit construction, then a search for prior art before any
 claim.
+
+## The outermost limit: relativity alone (`ns_onebit.py`)
+
+The same one-bit zero-error equality task, over **all nonsignalling
+boxes** (only "no faster-than-light signalling" assumed), solved as a
+linear program.
+
+**Result: the optimum is 1.000** for N = 2, 3, 4, 6, 10 and 16. With
+relativity alone, one bit decides equality of arbitrarily large labels
+perfectly. This is consistent with van Dam's result that nonsignalling
+(PR-type) boxes make communication complexity trivial.
+
+**The map for this task:**
+
+| Theory | Worst-case success with one bit, zero error |
+|---|---|
+| Nonsignalling (relativity only) | 1 (perfect) |
+| NPA level 1 / macroscopic locality | ≥ certificates → 1/8 (arXiv:2610.41448) |
+| Almost-quantum | ≥ N²/(17N² − 80N + 64) → 1/17 (adaptive, numerical; general optimum being computed) |
+| Quantum and classical | 1/N → 0 (arXiv:2610.41448) |
+
+The whole gap between 1 and 1/N is allowed by relativity but absent from
+nature. Why nature sits at 1/N, rather than anywhere above it, is the
+open foundational question that principles such as information
+causality try to answer.
