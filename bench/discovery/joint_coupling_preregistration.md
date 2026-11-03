@@ -94,3 +94,43 @@ statistic of one sensor's own values can see it.
 
 **If R1 fails:** no coupling signal beyond drift is shown on these
 data, and that is reported.
+
+## Result (run once; `bench/results/data/joint_coupling.csv`)
+
+A first launch ran out of memory on Mission 2 before writing anything.
+It cached the valid null starts for every event length; the cache was
+removed and nothing else changed.
+
+| Set | Events broken | Controls broken |
+|---|---:|---:|
+| M1-light | 3/65 | 0/65 |
+| M1-groups | 5/43 | 2/43 |
+| M2-light | 30/603 | 2/603 |
+| **Pooled** | **38/711 = 5.3%** (95% CI 3.9–7.3%) | **4/711 = 0.6%** |
+
+**R1: REFUTED.** The difference is 4.8 percentage points, below the
+pre-set 5, although one-sided Fisher p = 1.9·10⁻⁸.
+
+**What the data do say:**
+* The coupling between sensors breaks during real anomalies about
+  **9 times as often** as in control windows from the same period.
+  That effect is unmistakable.
+* But it affects only about **1 event in 20**, just under the size
+  threshold set in advance.
+
+**Post hoc, not results:**
+* The rate differs by class:
+  * Mission 2 class_30: 20/83 broken;
+  * Mission 1 class_7, the recurring class that surprise misses: 5/42;
+  * Mission 2 class_19, the commonest class: 6/343.
+* Of the 38 broken events, 32 were also visible to per-channel tests in
+  the level-frequency diagnostic, and 6 were not. So most coupling
+  breaks come with a marginal change a per-sensor alarm could see.
+  The events that only a joint test can see are, on these data,
+  **about 6 in 711 (under 1%)**.
+
+**Conclusion for the zero-rate question.** On ESA's spacecraft
+telemetry, anomalies that exist only between sensors are rare: about
+1% of events. The 15–67% figures of the earlier, confounded tests were
+artefacts. Per-sensor alarms lose little here. The theorem's blind spot
+is real but small on these data.

@@ -59,8 +59,13 @@ says where things stand.
   * **Not established.** The joint statistic, a cost difference with a
     tight null, is more powerful at any change, including marginal
     changes of the other channel. It does not isolate the relationship.
-  * Next: a within-window aligned-vs-shifted statistic that holds the
-    marginals fixed.
+  * **Marginal-free coupling test with drift controls
+    (`joint_coupling_preregistration.md`):** R1 refuted on effect size.
+    5.3% of 711 events break the coupling, against 0.6% of controls
+    (p = 2e-8, difference 4.8 points < 5).
+  * Post hoc, about 6 of 711 events (< 1%) are coupling breaks with no
+    per-channel signal. The relationship-only blind spot is real but
+    small on ESA telemetry.
 
 ## Refuted (pre-registered)
 
