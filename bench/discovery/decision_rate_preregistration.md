@@ -47,3 +47,30 @@ on the tuning series only.
 
 If either fails, the conjecture is refuted for these data, and that is
 reported.
+
+## Result (run once, `bench/discovery/decision_rate.py`)
+
+The tuning fit uses 32 series with subpca ≥ 0.05:
+AUR = 0.953 + 0.030·f1 − 0.139·f2 + 0.215·f3 − 0.027·f4.
+
+On the evaluation set (236 series with subpca ≥ 0.05):
+
+| | Spearman ρ with the actual AUR |
+|---|---:|
+| **Pre-registered model** | **0.129** (one-sided p = 0.024) |
+| Baseline: log2(length) | 0.075 |
+
+**Refuted.** ρ = 0.129 is below the pre-set 0.30, and p = 0.024 is above
+0.01. It does beat the trivial baseline, but too weakly to count.
+
+**Post hoc, not a result.** The entropy rate of the normal prefix (f1)
+alone correlates **negatively** with AUR: ρ = −0.205 on the evaluation
+set, while on tuning it was −0.075.
+* Noisier normal signals leave less room for the compressor's triage:
+  their own surprise dilutes the anomaly's.
+* The fitted model gave f1 the wrong sign, because 32 tuning series are
+  too few.
+* This is a hypothesis for a new pre-registration on other data, not a
+  finding.
+
+Per-series values: `bench/results/data/decision_rate_{tuning,eval}.csv`.
