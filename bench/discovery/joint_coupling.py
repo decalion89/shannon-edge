@@ -150,7 +150,6 @@ def main():
         X, normal, later, ev = load_set(zips[mission], mission, chans, val, excl)
         pairs = top_pairs(X, normal, rng)
         print(f"{name}: {len(ev)} events; pairs {[(chans[i], chans[j]) for i, j in pairs]}", flush=True)
-        cache = {}
         for eid, e in ev.iterrows():
             a, ell = int(e.i0), int(e.i1 - e.i0 + 1)
             base = dict(set=name, ID=eid, length=ell, loc=e["loc"], cls=e["cls"])
@@ -158,10 +157,7 @@ def main():
                 rows.append(dict(base, kind="event", verdict="untestable"))
                 continue
             m = min(ell, MAXLEN)
-            if ell not in cache:
-                vs, vl = valid_starts(normal, ell), valid_starts(later, ell)
-                cache[ell] = (vs, vl)
-            vs, vl = cache[ell]
+            vs, vl = valid_starts(normal, ell), valid_starts(later, ell)  # not cached: OOM on Mission 2
             if len(vs) < 200:
                 rows.append(dict(base, kind="event", verdict="untestable"))
                 continue
