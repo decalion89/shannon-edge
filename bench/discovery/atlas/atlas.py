@@ -4,7 +4,7 @@
 Task: f: [N]x[N] -> {0,1}. Alice (setting s, binary outcome = message M), Bob (setting (t, M), outcome
 0, 1 or abstain). Zero error, maximise the worst-case conclusive probability.
 Values: classical (LP), nonsignalling (LP), NPA level 1, 1+AB (almost quantum), level 2 (SDP).
-Usage: atlas.py N [prune]    -> one line per function class, JSON lines to stdout
+Usage: atlas.py N [prune] [start=K]  -> one line per function class, JSON lines to stdout
        atlas.py N check      -> equality sanity check only
 """
 import itertools
@@ -196,9 +196,10 @@ if __name__ == "__main__":
         print(json.dumps(r), flush=True)
         sys.exit(0)
     prune = "prune" in sys.argv[2:]
+    start = next((int(a[6:]) for a in sys.argv[2:] if a.startswith("start=")), 0)
     classes = function_classes(N)
     print(f"# N={N}: {len(classes)} function classes", file=sys.stderr, flush=True)
-    for F in classes:
+    for F in classes[start:]:
         t0 = time.time()
         r = analyse(F, prune)
         r["sec"] = round(time.time() - t0, 2)
