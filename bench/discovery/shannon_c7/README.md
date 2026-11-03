@@ -137,12 +137,13 @@ independent set of C7².
 
 - C7² has 1,796,859 independent sets, 980 of them maximum (size 10).
 - Split graph: 60,760 five-sets and 123,480 edges, not bipartite.
-- **Odd girth = 21**, measured from 3,002 start nodes; the exhaustive run is in
-  `chain_k3_full.py`. A closed walk of length 7 would need an odd cycle of
+- **Odd girth = 21, exact** (BFS on the bipartite double cover from all 60,760
+  start nodes, `chain_k3_full.py`). A closed walk of length 7 would need an odd cycle of
   length ≤ 7, so 35 is impossible.
-- The same girth gives a prediction: a perfect cyclic chain needs at least 21
-  layers. If the exhaustive check confirms 21, then α(C7² ⊠ C_n) = 5n for odd n ≥ 21
-  and α(C7² ⊠ C_n) < 5n for odd n < 21.
+- Consequence (exact, given the girth): a perfect cyclic chain needs at least 21
+  layers. For odd n, α(C7² ⊠ C_n) ≤ 5n − 1 when n < 21, and α(C7² ⊠ C_n) = 5n when
+  n ≥ 21 (the 21-cycle, padded by back-and-forth steps, is a perfect chain).
+  Prior art for this family has not been checked yet.
 
 This is the analysis that θ-type relaxations cannot see (rounds 6–7). The plan for
 C7^4 is the same construction one level up: 33-sets of C7³ and their
