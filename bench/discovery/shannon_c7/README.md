@@ -213,3 +213,11 @@ capacities 33, 10 and 3). The question becomes an exact feasibility ILP (HiGHS,
 of the upper bound 115. A solver's infeasibility verdict is not a certificate:
 before any claim it needs independent confirmation, by another solver, another
 formulation, or a checkable proof.
+
+The ILP (`alpha115_feasibility.py`) reached its 50-minute limit with no verdict
+(0.37% of the tree explored). Switched to the tool that settled Keller's
+conjecture: a SAT solver. `alpha115_sat.py` encodes the same question for
+CaDiCaL 1.9.5 via PySAT: independence as edge clauses, the forced layer pattern
+as exact cardinalities (sequential counters), and 2- and 3-block cardinality
+constraints. 45-minute limit, running. An UNSAT answer would still need
+independent confirmation (DRAT proof, or a second solver).
