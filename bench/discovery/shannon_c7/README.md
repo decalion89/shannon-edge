@@ -23,3 +23,24 @@ Verdict: this lossless power-generator family is clearly weaker than the
 known constructions, which use circular graphs with n/k slightly above 7/2 plus
 a computer repair step. Beating the record needs those more general
 constructions; an AI-assisted team is already working on them.
+
+## Round 2: rethinking instead of giving up
+
+Reformulation: a cyclic set {t·g mod n} is a lattice Z^m + Z·g/n in the torus. Lossless independence
+means no nonzero lattice point in the cube (−2/7, 2/7)^m, so this is lattice packing of
+cubes of side 2/7 in a torus. Θ(C7) < 3.5 because 3.5 is not an integer, so the cubes cannot tile.
+
+| Approach | Size in C7^5 |
+|---|---|
+| Lossless, power generators (round 1) | 299 |
+| Lossless, all cyclic lattices, annealing (`lattice_anneal.py`) | 315 (n = 7·45); n = 322, 329 stop at 1 violation |
+| Subgroups of Z_7^5 = F7-linear codes avoiding {−1,0,1}^5 (`subgroup_anneal.py`) | 343 = 7³ |
+| **Over-pack + exact repair** (`overpack_repair.py`, `repair_search.py`) | **365** |
+| Published record (Polak–Schrijver 2018) | 367 |
+
+Over-pack and repair is the record's mechanism. Take n = 382 points, more than
+fit losslessly. Project each coordinate onto C7 by cutting the circle into 7 arcs,
+then keep a maximum independent subset, solved exactly as a MILP and verified
+pairwise. With uniform cuts this gives 355. Optimising the 7 cut points per
+coordinate (unequal arcs) reached 365 in 6 minutes. Running now: a scan of all
+(n, a) for n = 365…440 with g = (1, a, …, a⁴).
