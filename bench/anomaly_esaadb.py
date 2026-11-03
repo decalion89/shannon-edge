@@ -380,12 +380,10 @@ def main() -> None:
             delta = args.near_lossless * sigma
             bits_lossless = float(surprise(s).sum())
             if delta > 0:
-                step = 2 * delta + 1e-300
-                r = np.empty_like(v)
-                prev = v[0]
-                for i in range(len(v)):  # closed loop: the error never accumulates
-                    prev = prev + step * np.round((v[i] - prev) / step) if i else v[0]
-                    r[i] = prev
+                # Closed-loop quantiser on real values: every reconstruction stays on the lattice
+                # v[0] + k*step (step = 2*delta), so the loop reduces to rounding to that lattice.
+                step = 2 * delta
+                r = v[0] + step * np.round((v - v[0]) / step)
                 assert np.max(np.abs(r - v)) <= delta * (1 + 1e-9) + 1e-12
                 s = pd.Series(r, index=s.index, name=s.name)
             bits_nl = float(surprise(s).sum())

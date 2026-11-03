@@ -14,8 +14,9 @@ as in `esa_adb.md`.
 
 **Reconstruction.** For each channel, a closed-loop quantiser on the
 values (as in `bench/analysis/near_lossless.py`):
-* r_t = r_{t−1} + (2δ+1)·round((v_t − r_{t−1})/(2δ+1)), so |v_t − r_t| ≤ δ
-  holds for every sample;
+* r_t = r_{t−1} + 2δ·round((v_t − r_{t−1})/(2δ)), so |v_t − r_t| ≤ δ
+  holds for every sample (real-valued channels, hence 2δ rather than
+  the integer 2δ+1);
 * δ = K × robust noise σ, where σ = 1.4826·MAD(first differences)/√2 is
   estimated on the training part only (before the validation start).
 
