@@ -179,3 +179,21 @@ chained, as in Klavžar–Vesel. This requires the structure of the 33-sets of C
 Next: count and classify them with the deficit structure. 66 = Σ (consecutive pair
 sizes) = 70 − 4, so at most 4 units of deficit, and at least 3 of the 7 pairs are
 maximum 10-sets of C7².
+
+## Round 10: arbitrary projections (`map_search.py`) and the 2026 context
+
+**Context update (searched 2026-11-03).** Lower bounds on Θ(C7) moved in 2026 through
+recursive constructions in high powers:
+- Itty et al. (arXiv:2607.21517): 134753 in C7^10.
+- Gao (arXiv:2607.27869): a recursive reformulation with product gadgets.
+- arXiv:2608.30273: heterogeneous refinement, Θ(C7) ≥ 3.25883262 from the 500th power.
+
+All of these start from the 367-set in C7^5. A larger base set in C7^5 would
+therefore improve α(C7^5) and also feed every one of those recursions.
+
+**New idea.** Replace the arc-cut projection Z_n → Z_7 with an arbitrary map
+φ_i: Z_n → Z_7 per coordinate. This space contains every circular-graph
+construction as a special case. Local search moves one point of one map; every
+step gets an exact maximum-subset repair. We found no prior use of arbitrary
+(non-monotone) projections. It starts from the 365 arc-cut solution: 60 s gave
+no gain, and two 27-minute runs are in progress.
