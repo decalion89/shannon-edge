@@ -71,3 +71,37 @@ and Posner, Rodemich and Rumsey (1967, 1971). The Shannon lower bound
 for difference distortions is textbook. What is assembled here is its
 use as a universal floor for noise-scale telemetry, the numerical
 tightness at δ = σ, and the size of the lattice tax.
+
+## 4. First attempt to remove the lattice tax: "hold" quantisers (`free_quant.py`)
+
+**Idea.** The guarantee leaves freedom: any reproduction within ±δ is
+valid. The "hold" quantiser keeps the previous value while it stays
+admissible, and otherwise moves minimally on a grid of step 2δ/m.
+
+| Source (δ = σ, flight profile real bytes) | Lattice | hold m=2 | m=4 | m=8 | m=16 |
+|---|---:|---:|---:|---:|---:|
+| white Gaussian noise | **1.374** | 1.712 | 2.059 | 2.435 | 2.832 |
+| random walk + noise | **1.721** | 2.052 | 2.369 | 2.746 | 3.152 |
+
+**Refuted: holding is worse,** and worse the finer the grid. Repeats
+become cheap, but every move is an unpredictable jump among many
+possible values. That costs more than the repeats save.
+
+**What the numbers do show:**
+* On white noise, the flight coder spends **1.374** bit/sample on lattice
+  indices whose entropy is **1.241**.
+  * That is a **coder overhead of 0.13 bit/sample (10%)**: adaptive
+    learning and binary decomposition.
+  * It is recoverable with a better-matched model, independent of the
+    lattice.
+* The lattice tax itself (1.241 against the limit 1.047) can only be
+  removed by block schemes.
+  * The optimal backward channel is X = Y + uniform noise. Reaching it
+    needs randomised choices shared with the receiver (channel
+    simulation, e.g. the Poisson functional representation of Li and El
+    Gamal, 2018).
+  * Their overhead is about log2(nI + 1) + 4 bits per block.
+  * At feasible block lengths (n·I of 10–20 bits), that overhead exceeds
+    the 0.19 bit/sample gain.
+  * Recovering the tax is therefore a long-block coding problem, of the
+    kind LDPC or polar codes solve for channels. It remains open here.
