@@ -62,3 +62,14 @@ send 11 zero-error messages with two uses of C7? Classically α(C7²) = 10, and 
   in C7² (11 projective measurements on C^d labelled by the 49 vertices, with
   orthogonality between confusable labels). Calibration: d = 1 finds the
   classical 10. Running for d = 2, 3, 4.
+
+## Round 4: C7^4, where α is still open (108 ≤ α(C7^4) ≤ 115)
+
+- The upper bound 115 appears to be the layer bound 2|I| ≤ 7·α(C7³) = 7·33,
+  i.e. ⌊33·3.5⌋. This is our deduction; the original source is unverified.
+- `alpha_c7_4_ilp.py`: exact ILP (HiGHS) with every block constraint implied by
+  α(C7) = 3, α(C7²) = 10 and α(C7³) = 33, plus the 16-cliques and symmetry
+  breaking. Running; the goal is a proven bound ≤ 114 or a set of size 109.
+- `scan_m4.py`: over-pack and repair with uniform cuts reaches only 97 in C7^4.
+- `linear_f7.py 13 8`: the best [13,8] F7 code found still contains 6 ± pairs of
+  ternary codewords, so it gives no independent set of size 7^8.
