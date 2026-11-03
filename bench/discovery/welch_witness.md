@@ -96,3 +96,36 @@ nothing at any nonzero noise.
   measurements (arXiv:2405.03872). The inequality is short enough that it
   could exist elsewhere under another name; a deeper search is still needed
   before calling it new.
+
+## Classical = quantum in the (S, T) plane
+
+S² ≤ T also holds classically, and it is not a Bell inequality. A deterministic
+local strategy has S = |Z_A ∩ Z_B| and T = |Z_A||Z_B| ≥ S², where Z_A, Z_B are the
+settings with output 0. Mixtures satisfy E[s]² ≤ E[s²] ≤ E[t]. So in these
+coordinates quantum correlations are exactly as constrained as classical ones,
+while almost-quantum correlations are not. This is the robust form of the
+"no quantum advantage, unbounded AQ advantage" statement of arXiv:2610.41448.
+
+## Where the proof breaks (exploration)
+
+- **Three parties** (`welch_tripartite.py`): S³ ≤ T₃ with S = Σ p(000|xxx) and
+  T₃ = Σ p(000|xyz) holds classically. Gradient search over three-qubit states
+  and rank-one projectors found no quantum violation for N = 2, 3 (max S³ − T₃ ≈ −2·10⁻¹¹).
+  N = 4 ran out of time. No proof yet.
+- **Time instead of space** (`welch_temporal.py`): one system, Lüders
+  measurement A_x, then B_y. Here [A_x, B_y] ≠ 0 and the proof fails.
+  Macrorealist (non-invasive) models obey S² ≤ T, but quantum mechanics violates
+  it strongly:
+
+  | N | d | max S² − T found | S | T |
+  |---|---|---|---|---|
+  | 2 | 2 | 0.537 | 1.585 | 1.975 |
+  | 3 | 2 | 1.209 | 2.377 | 4.443 |
+  | 3 | 3 | 1.483 | 2.224 | 3.465 |
+  | 4 | 2 | 2.149 | 3.170 | 7.899 |
+  | 4 | 3 | 2.636 | 2.966 | 6.160 |
+
+  This is a Leggett–Garg-type violation of macrorealism. That genre is known,
+  and an invasive classical model (B remembering x) reaches S² − T = N² − N, so
+  the violation by itself certifies nothing beyond macrorealism. Whether the
+  quantum temporal maximum has a closed form is open.
