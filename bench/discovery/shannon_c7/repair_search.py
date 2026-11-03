@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Over-pack and repair, with the projection optimised: per coordinate, the circle Z_n is cut into 7 arcs
 by 7 cut points (arc lengths free, not necessarily equal; uniform cuts with offset as start). Coordinate
-descent on the cut points, exact MIS repair at every step. Usage: repair_search.py n a seconds seed [m]
+descent on the cut points, exact MIS repair at every step. Usage: repair_search.py n a seconds seed [m] [save.npy]
 """
 import sys
 import time
@@ -23,10 +23,15 @@ def project(cuts):  # cuts[i]: sorted 7 cut points in [0,n); symbol = index of a
     return img
 
 
-def score(cuts):
+SAVE = sys.argv[6] if len(sys.argv) > 6 else None
+
+
+def score(cuts, save=False):
     img = project(cuts)
     E = conflict_edges(img)
-    s, _ = mis(n, E, time_limit=30)
+    s, x = mis(n, E, time_limit=30)
+    if save and SAVE:
+        np.save(SAVE, img[x])
     return s
 
 
@@ -43,6 +48,7 @@ while time.time() - t0 < secs:
     s = score(trial)
     if s >= best:
         if s > best:
+            score(trial, save=True)
             print(f"  improved: {s} at {time.time() - t0:.0f}s", flush=True)
         best, cuts = s, trial
 print(f"m={m} n={n} a={a} seed={seed}: best repaired size {best}; cuts={[sorted(c.tolist()) for c in cuts]}", flush=True)
