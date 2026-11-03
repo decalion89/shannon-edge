@@ -67,3 +67,28 @@ Script: `bench/esa_edge_link.py`.
   ESA-ADB F0.5 on Mission 2 lightweight is 0.200 (`esa_adb.md`). A ground
   method run on the reconstructed values is not covered: that is the
   refuted test above.
+
+## Correction (found by the bit-layers run, `bench/discovery/bit_layers_preregistration.md`)
+
+**The error bound was checked before a final binning step.**
+`esa_edge_link.py` checked the error on the lattice indices k. When the
+indices span more than 65,536 values, it then merged them into 65,536
+bins (`to_codes`) before coding, and that step was never checked. This
+happens only on **channel 25** of Mission 2, whose indices span about
+9.8·10¹¹ values: an outlier far outside its 10⁻¹⁰ scale.
+* What was coded for channel 25 therefore did **not** satisfy |error| ≤ δ.
+  Claim 2 as reported was wrong for that channel.
+* Channels 18–24 and 26–28 are unaffected. Their indices span at most
+  15,767 values, and the bit-layers run reproduces their edge bytes
+  exactly.
+
+**Corrected result.** Channel 25 is sent lossless, which is the
+conservative rule of the bit-layers pre-registration:
+
+| | Lossless (B) | Edge link (B, alarms included) | Saved |
+|---|---:|---:|---:|
+| All 11 channels, corrected | 83,650,643 | 29,165,234 | **65.1%** |
+
+* Claim 1 (≥ 40%) still holds.
+* Claim 2 holds on every channel actually sent with a bound.
+* The 78.6% figure above is withdrawn.

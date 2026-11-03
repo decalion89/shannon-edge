@@ -25,8 +25,10 @@ says where things stand.
   `esa_edge_link_preregistration.md`).**
   * The design: exact on-board detection, alarms sent losslessly, values
     sent with an error bound of δ = 1 robust σ.
-  * Result: **78.6%** fewer real bytes than the lossless stream, or 63.3%
-    without the float-jitter channels 25–28. Channels 18–20 alone: 80.5%.
+  * Result: **65.1%** fewer real bytes than the lossless stream, after a
+    correction. The first report said 78.6%, but channel 25's indices
+    were binned after the error check, so it is now sent lossless.
+    Channels 18–20 alone save 80.5%.
   * The error bound held on every sample. The 22 on-board alarms cost
     83 bytes.
   * Ground re-detection on the reconstructed values is **not** preserved;
@@ -34,6 +36,18 @@ says where things stand.
   * Both halves are prior art (CCSDS 123 near-lossless, on-board
     detection). What is new is the measured combination with a Kraft
     guarantee.
+
+* **The three layers of a link (`bench/discovery/bit_layers_preregistration.md`).**
+  * L1, noise census: the median share of the lossless stream below 1
+    robust σ is 0.720 on TSB-AD-U-Eva (holds) and 0.499 on TSB-AD-M-Eva
+    (refuted by 0.001). Pooled over bytes, about 67% on both.
+  * L2 holds: at their own noise scale, series from 25 domains cost
+    1.88 bits/sample (median), with an IQR of 0.45 bits against 4.33
+    raw. Part of this is by construction.
+  * L3 is refuted: ESA's labelled decisions are 1/8,800 and 1/3,400 of
+    the lossless stream, not < 10⁻⁴.
+  * The on-board alarms carry 50–300x fewer bits than the labelled
+    decisions.
 
 ## Refuted (pre-registered)
 

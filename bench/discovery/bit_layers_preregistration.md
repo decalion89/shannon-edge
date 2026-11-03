@@ -105,3 +105,59 @@ decisions and noise scale, not by samples.
 * that ground analyses other than the on-board detector are preserved.
   The re-detection test on reconstructed data was refuted
   (`bench/results/esa_near_lossless_preregistration.md`).
+
+## Result (run once; per-series values in `bench/results/data/bit_layers_{tsbad,esa}.csv`)
+
+**Note on the count.** The evaluation list `TSB-AD-U-Eva.csv` has
+**350** series, all used here. The "348" above was copied from stage 5,
+which skips two Stock series whose VUS-PR computation hangs.
+
+| Hypothesis | Measured | Verdict |
+|---|---|---|
+| L1, TSB-AD-U-Eva | median noise share **0.720** (IQR 0.49–0.82; 350 series) | **HOLDS** |
+| L1, TSB-AD-M-Eva | median noise share **0.499** (IQR 0.35–0.66; 180 series) | **REFUTED** (by 0.001; no rounding) |
+| L2, TSB-AD-U (297 series with σ > 0 and the bound held) | IQR of bits/sample: structure **0.45** vs lossless **4.33** | **HOLDS** |
+| L3, ESA Mission 1 | D / lossless bits = 1.14·10⁻⁴ | **REFUTED** |
+| L3, ESA Mission 2 | D / lossless bits = 2.95·10⁻⁴ | **REFUTED** |
+
+**Noise census.**
+* Pooled over all bytes, **67.6%** (TSB-AD-U) and **67.3%** (TSB-AD-M)
+  of the lossless stream encodes detail below 1 robust σ.
+* 15% of series save nothing: σ = 0 (discrete or mostly flat signals,
+  e.g. SMAP, MSL, Exathlon univariate), or float-jitter σ where the
+  bound cannot be kept in 16-bit indices.
+* The highest median shares are on MGAB (0.90), CreditCard (0.90),
+  CATSv2 (0.88), Stock (0.83) and TODS (0.82). The rest are in
+  the per-dataset table of the run log.
+
+**L2: what it does and does not show.**
+* Medians are 8.45 lossless bits/sample against **1.88** structure
+  bits/sample.
+* At their own noise scale, signals from 25 domains cost about the same,
+  within an IQR of half a bit.
+* Part of this holds **by construction**:
+  * dividing by a σ estimated from the first differences normalises
+    the scale of the differences the coder sees;
+  * a noise-dominated series then costs a near-constant ~1–2 bits/sample.
+* What remains is that the arbitrary part of the raw cost (the ADC's
+  resolution relative to the noise, which spans 4.3 bits of IQR) is
+  removed by one measurable number per channel.
+
+**The three layers on ESA (whole missions, lightweight channels):**
+
+| | Lossless | Noise (< 1σ) | Structure | Decision (labels) | On-board alarms |
+|---|---:|---:|---:|---:|---:|
+| Mission 1 (6 ch.) | 46,184,674 B | 25,819,255 B (55.9%) | 20,365,419 B | 5,274 B (1,248 events) | 111 B |
+| Mission 2 (11 ch.) | 83,650,643 B | 54,485,492 B (65.1%) | 29,165,151 B | 24,689 B (4,862 events) | 83 B |
+
+* The decision layer is about 1/8,800 (Mission 1) and 1/3,400
+  (Mission 2) of the lossless stream. That is two orders of magnitude
+  below the structure layer, but not the < 10⁻⁴ predicted: L3 fails.
+  ESA's missions are dense in labelled events (hundreds per channel).
+* **The on-board detector sends 50–300x less than the decision
+  contains** (111 B vs 5,274 B; 83 B vs 24,689 B). In bits, this is the
+  measured gap between what the detector knows and what the decision
+  needs. It agrees with the detector's low event-wise F0.5.
+* Channel 25 of Mission 2 counts as structure = lossless here: its
+  lattice indices span about 10¹² values. See the correction in
+  `bench/results/esa_edge_link_preregistration.md`.
