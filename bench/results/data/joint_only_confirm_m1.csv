@@ -1,0 +1,77 @@
+ID,length,cls,cat,loc,verdict,min_p_local,min_p_joint
+id_105,203,class_7,Anomaly,Local,joint-only,0.0505,5e-05
+id_108,294,class_7,Anomaly,Local,invisible,0.02975,0.0017
+id_111,213,class_7,Anomaly,Local,joint-only,0.0033,5e-05
+id_113,163,class_7,Anomaly,Local,joint-only,0.02815,5e-05
+id_115,284,class_7,Anomaly,Local,joint-only,0.01165,5e-05
+id_119,270,class_7,Anomaly,Global,joint-only,0.01005,5e-05
+id_120,308,class_7,Anomaly,Local,joint-only,0.1505,5e-05
+id_126,234,class_7,Anomaly,Local,joint-only,0.03905,5e-05
+id_127,43,class_7,Anomaly,Local,joint-only,0.0113,5e-05
+id_131,244,class_7,Anomaly,Local,joint-only,0.0827,5e-05
+id_135,731,class_7,Anomaly,Local,joint-only,0.08195,5e-05
+id_137,111,class_7,Anomaly,Local,joint-only,0.0752,5e-05
+id_143,5802,class_7,Anomaly,Local,joint-only,0.0213,5e-05
+id_144,6,class_22,Anomaly,Local,joint-only,0.0007,5e-05
+id_146,624,class_7,Anomaly,Global,local,5e-05,5e-05
+id_148,112,class_7,Anomaly,Local,local,5e-05,5e-05
+id_152,613,class_7,Anomaly,Local,local,5e-05,5e-05
+id_156,92,class_7,Anomaly,Local,local,5e-05,5e-05
+id_158,4,class_22,Anomaly,Global,joint-only,0.0129,5e-05
+id_161,222,class_7,Anomaly,Local,local,5e-05,5e-05
+id_162,93,class_7,Anomaly,Local,local,5e-05,5e-05
+id_163,4,class_22,Anomaly,Global,joint-only,0.0123,5e-05
+id_168,3,class_22,Rare Event,Global,joint-only,0.16355,5e-05
+id_170,3,class_22,Rare Event,Global,joint-only,0.0174,5e-05
+id_171,1712,class_7,Anomaly,Local,local,5e-05,5e-05
+id_173,4,class_22,Rare Event,Global,joint-only,0.00095,5e-05
+id_178,237,class_7,Anomaly,Local,local,5e-05,5e-05
+id_179,224,class_7,Anomaly,Global,local,5e-05,5e-05
+id_181,2225,class_7,Anomaly,Local,local,5e-05,5e-05
+id_188,179,class_7,Anomaly,Local,local,5e-05,5e-05
+id_189,1529,class_7,Anomaly,Local,local,5e-05,5e-05
+id_190,6,class_22,Rare Event,Local,joint-only,0.01165,5e-05
+id_191,7,class_22,Anomaly,Local,joint-only,0.0211,5e-05
+id_192,6,class_22,Anomaly,Global,joint-only,0.0007,5e-05
+id_194,1,class_22,Anomaly,Local,invisible,0.13235,0.00365
+id_195,6,class_22,Anomaly,Global,joint-only,0.00935,5e-05
+id_196,5,class_22,Rare Event,Global,joint-only,0.0325,5e-05
+id_197,5,class_22,Rare Event,Global,joint-only,0.0058,5e-05
+id_198,5,class_22,Rare Event,Global,joint-only,0.0007,5e-05
+id_199,6,class_22,Anomaly,Local,local,0.0001,5e-05
+id_2,118,class_7,Anomaly,Local,invisible,0.0532,0.0018
+id_20,5409,class_18,Anomaly,Local,joint-only,0.01045,5e-05
+id_3,271,class_7,Anomaly,Global,invisible,0.0201,0.00045
+id_30,227,class_7,Anomaly,Local,joint-only,0.05985,5e-05
+id_36,220,class_7,Anomaly,Local,joint-only,0.02495,5e-05
+id_4,227,class_7,Anomaly,Local,invisible,0.1207,0.027
+id_45,1201,class_7,Anomaly,Global,joint-only,0.0126,5e-05
+id_46,3334,class_7,Anomaly,Local,local,5e-05,5e-05
+id_5,294,class_7,Anomaly,Local,joint-only,0.08115,5e-05
+id_56,1733,class_7,Anomaly,Local,invisible,0.14925,0.00075
+id_58,295,class_7,Anomaly,Local,joint-only,0.03995,5e-05
+id_6,141,class_7,Anomaly,Local,invisible,0.08,0.00015
+id_60,6,class_22,Rare Event,Local,joint-only,0.02715,5e-05
+id_61,6,class_22,Anomaly,Global,joint-only,0.01235,5e-05
+id_62,5,class_22,Anomaly,Global,joint-only,0.05975,5e-05
+id_63,5,class_22,Anomaly,Global,joint-only,0.00095,5e-05
+id_64,6,class_22,Anomaly,Global,joint-only,0.00145,5e-05
+id_65,6,class_22,Anomaly,Global,joint-only,0.0682,5e-05
+id_66,5,class_22,Anomaly,Global,joint-only,0.00055,5e-05
+id_67,6,class_22,Anomaly,Global,joint-only,0.00045,5e-05
+id_68,5,class_22,Anomaly,Global,joint-only,0.01285,5e-05
+id_69,5,class_22,Rare Event,Local,joint-only,0.0018,5e-05
+id_7,128,class_7,Anomaly,Local,invisible,0.15625,0.0676
+id_70,3,class_22,Rare Event,Global,joint-only,0.00645,5e-05
+id_71,3,class_22,Rare Event,Global,joint-only,0.001,5e-05
+id_72,3,class_22,Rare Event,Global,joint-only,0.00535,5e-05
+id_74,6,class_22,Rare Event,Global,joint-only,0.0085,5e-05
+id_75,6,class_22,Rare Event,Global,joint-only,0.01115,5e-05
+id_76,6,class_22,Rare Event,Global,joint-only,0.0004,5e-05
+id_8,220,class_7,Anomaly,Local,joint-only,0.0717,5e-05
+id_82,237,class_7,Anomaly,Local,joint-only,0.06005,5e-05
+id_9,45,class_7,Anomaly,Local,joint-only,0.01005,5e-05
+id_92,356,class_7,Anomaly,Global,invisible,0.0073,0.00095
+id_94,111,class_7,Anomaly,Local,invisible,0.06055,0.0028
+id_97,290,class_7,Anomaly,Global,joint-only,0.03265,5e-05
+id_99,145,class_7,Anomaly,Local,invisible,0.1072,0.01275

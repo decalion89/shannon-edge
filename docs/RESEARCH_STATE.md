@@ -49,6 +49,19 @@ says where things stand.
   * The on-board alarms carry 50–300x fewer bits than the labelled
     decisions.
 
+* **Anomalies that exist only between sensors (`bench/discovery/joint_only*`).**
+  The question comes from the zero-rate testing theorem (Shalaby and
+  Papamarcou 1992): per-sensor alarms can exploit only marginal
+  statistics.
+  * Exploratory run: J1 holds, J2 refuted. Confirmation on 76 fresh
+    Mission 1 events: K1 holds (67% "joint-only"), K2 refuted again
+    (27/31 Global events "joint-only").
+  * **Not established.** The joint statistic, a cost difference with a
+    tight null, is more powerful at any change, including marginal
+    changes of the other channel. It does not isolate the relationship.
+  * Next: a within-window aligned-vs-shifted statistic that holds the
+    marginals fixed.
+
 ## Refuted (pre-registered)
 
 * **Error-bounded re-detection.** Detecting on the ground from 1σ

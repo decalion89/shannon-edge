@@ -89,3 +89,38 @@ The assertion failed, so no test was computed:
 All channels are therefore aligned onto channel 14's timestamps. Each
 takes its last value at or before each timestamp, so there is no
 look-ahead. Nothing else changes.
+
+## Result (run once; `bench/results/data/joint_only_confirm_m1.csv`)
+
+76 fresh events, all testable: local 14, **joint-only 51**, invisible 11.
+
+* **K1 holds:** the joint-only share is 0.671 (95% CI 0.559–0.766).
+* **K2 is refuted, again in the opposite direction.** Joint-only covers
+  24/45 Local events and **27/31 Global** ones (p = 0.9997).
+* Only 12 of the 51 joint-only events have every local p > 0.05.
+
+**Verdict: the finding is not established.** K1 holds as worded. But
+its meaning does not, because the pattern shows the joint test measures
+something other than the relationship between sensors.
+
+**Why the measurement is confounded.** 87% of the Global events, which
+leave the normal range, come out "joint-only" even with three local
+tests per channel.
+* The joint statistic is a **difference** of two costs on the same
+  samples, so its null spread is small.
+* When channel x itself is in a rare state, the context (y_{t−1}, x_t)
+  is rare too, and the difference jumps.
+* So the joint test is simply **more powerful at detecting change**,
+  including a marginal change of x. It does not isolate a change in the
+  relationship.
+* The local tests are absolute costs with a wide null spread, because
+  slow drifts make normal windows vary.
+
+The 15–17% of the post-hoc diagnostic, and its J2 pass, are therefore
+not evidence of relationship-only anomalies either.
+
+**What a valid test needs.** A statistic that holds both marginals fixed
+inside the event window. For example, the joint cost with x aligned,
+minus the joint cost with x circularly shifted inside the same window:
+the same values of x and y, only their pairing broken. That is a new
+pre-registration, not a fix to this one.
