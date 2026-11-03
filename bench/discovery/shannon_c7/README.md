@@ -323,3 +323,24 @@ In C7³ the curve is almost flat. Each extra slab point costs about one point el
 by contrast, a full 33-slab extended to only 100 in the boundary test (round 15), against
 the 108 reached with slab 31. The cost per slab point appears to grow with the
 dimension. Next: P_4(s) for s near the peak.
+
+## Round 17: an efficiency "flow" and a tension with the rigidity law
+
+Define the per-step efficiency η_m = 2·α(C7^m) / (7·α(C7^{m−1})), the fraction of the
+layer bound that is actually achieved:
+
+| m | α(C7^m) | η_m |
+|---|---|---|
+| 2 | 10 | 0.952 |
+| 3 | 33 | 0.943 |
+| 4 | 108 (record) | 0.935 |
+| 5 | ≥ 367 (record) | ≥ 0.971 |
+
+η decreases smoothly up to m = 4 and then jumps at m = 5. Two readings:
+- α(C7^4) > 108. A smooth η ≈ 0.95 would predict about 110, which contradicts the rigidity
+  conjecture of round 14.
+- C7^5 is arithmetically special: the cyclic n = 382 construction "resonates".
+
+**Test.** The 367 record (R, extracted from the 2026 repository: the union of the layers over
+{r₀, q₀} of their C7^10 set, verified independent) has two-layer slices of at most **107**,
+like our 366-set. Exact LNS from three such slices is running.
