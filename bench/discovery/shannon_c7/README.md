@@ -303,3 +303,23 @@ with |J| ∈ {32, 33} (up to symmetry) and every split, the remaining 5 layers h
 ≤ 108 − |J| + ... more precisely, the extension of J is ≤ 108. That is one MILP per J if the split
 is left as a variable (layers 0 and 1 restricted to J). The open cost is enumerating the 32-sets
 and 33-sets of C7³ up to symmetry.
+
+## Round 16: the slab–capacity curve P_m(s) (`slab_curve.py`)
+
+P_m(s) is the largest independent set of C7^m whose two adjacent layers 0 and 1 hold exactly
+s points, so α(C7^m) = max_s P_m(s). The classical layer bound ignores the trade-off this
+curve encodes. Values are exact MILP results, or best values found within 240 s, with the
+dual bound in brackets.
+
+| s | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+|---|---|---|---|---|---|---|---|---|
+| P_3(s) | 32 | 32 | 32 [≤33] | 33 | 33 [≤34] | 33 [≤34] | 33 [≤35] | infeasible |
+| rest = P − s | 28 | 27 | 26 | 26 | 25 | 24 | 23 | – |
+
+For C7² the curve is P_2 = 9, 9, 10, 10 at s = 0…3, and 4 is infeasible.
+
+In C7³ the curve is almost flat. Each extra slab point costs about one point elsewhere
+(the rest falls by about 1 per unit of s), so a full slab of 10 still allows 33. In C7^4,
+by contrast, a full 33-slab extended to only 100 in the boundary test (round 15), against
+the 108 reached with slab 31. The cost per slab point appears to grow with the
+dimension. Next: P_4(s) for s near the peak.
