@@ -194,3 +194,30 @@ correlation inequality S^k ≤ T_k as a noise-robust witness of post-quantumness
 its Welch-bound reading, and the constant noise tolerance 1/289 of the
 almost-quantum violation. Given how short the argument is, this too may exist
 elsewhere; the novelty claim is provisional.
+
+### Temporal ratio S²/T (`welch_temporal_ratio.py`, `welch_temporal_qubit.py`)
+
+We maximise S²/T over Lüders sequential strategies with rank-one projectors.
+
+| d | N | max S²/T |
+|---|---|---|
+| 2 | 2–6 | 1.3078549… (independent of N) |
+| 3 | 2 | 1.3078549… |
+| 3 | 3–4 | 1.580247 = 128/81 (S = 16/9, T = 2) |
+
+Qubit closed form. The optimum is symmetric, a_x = ±α and b_y = ±β on a great
+circle, with cos β = 2 cos α − 1. Here cos α is the root ≈ 0.52710 of
+x⁴ + x³ − x² + 2x − 1 = 0, and R = max S²/T is the root ≈ 1.3078549 of
+64R⁴ + 528R³ + 2008R² − 3281R − 512 = 0. Both were identified with mpmath
+findpoly at 60 digits.
+
+**Comparison with classical memory (the decisive check).** For a classical
+system with d states and invasive measurements, S²/T is maximised at
+deterministic strategies, because (Σλs)² ≤ (Σλ s²/t)(Σλ t). Let Bob's window be
+Z_y = {g(y)}, let Alice's measurement x put the system in state f_x = g(x), and
+let m_s settings share state s. Then S²/T = (Σ m_s)²/Σ m_s² ≤ d, with equality
+for balanced m_s. A classical bit therefore reaches 2, which exceeds the qubit's
+1.3078. **Verdict:** in time, the inequality separates quantum mechanics only
+from non-invasive macrorealism (bound 1), as Leggett–Garg tests do. It gives no
+quantum advantage over a classical memory of the same size, so it is not a
+dimension witness and opens no technological route here.
