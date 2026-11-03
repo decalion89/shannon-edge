@@ -259,3 +259,36 @@ exact dual certificates for the reduced blocks.
 * The S_N block reduction, which reproduces the full SDP numerically.
 * The interpolated coefficient polynomials: exact by enumeration at
   N = 4–9, checked at N = 10 and 11.
+
+## Prior art: the formula is already published (checked after deriving it)
+
+The companion paper, Gazi et al., "An Unbounded Separation of
+Almost-Quantum and Commuting-Operator Correlations in Zero-Error
+Communication", arXiv:2610.41448 (30 Oct 2026), **already contains the
+result above**. Its Theorem "Optimal AQ equality certification" states
+η^eq_AQ(N) = N²/(17N² − 80N + 64) for N ≥ 8 (and 1/N for N ≤ 8). It
+includes:
+* the (N − 1)(N − 8)² gap;
+* the same optimal primal point, including
+  ω = N²(N − 8)/((5N − 8)Δ_N);
+* a symmetry reduction;
+* an explicit dual certificate, i.e. the upper bound that was still
+  missing here.
+
+The paper was not read before the derivation above. The formula, the
+primal point and the achievability proof here are therefore an
+**independent rediscovery**: an independent check of their theorem, not
+a new result.
+
+**Possibly not in either paper.** The cheapest IC violation obtainable
+with the protocol of arXiv:2610.41444 when using, at each N, the optimal
+certificate box of arXiv:2610.41448 is N = 757,665 settings (k = 18,
+exact mutual information). That is a direct combination of the two
+papers.
+
+**Open problems the companion paper lists, and natural next targets:**
+* the almost-quantum optimum of the full one-bit task, which certifies
+  equality and inequality and abstains otherwise; only the lower bound
+  N²/(19N² − 80N + 64) is known;
+* whether boxes with more outcomes, or settings that depend on the
+  message, beat the binary-box optimum.
