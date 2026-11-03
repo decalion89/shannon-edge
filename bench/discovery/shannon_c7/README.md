@@ -90,3 +90,23 @@ under CPU contention. The method that works is to:
 
 Calibration: it finds α(C7³) = 33 in about 1 s (|H| = 6). Running: C7^4, aiming
 for 109 (record 108, Vesel–Žerovnik 2002).
+
+## Round 6: fusing θ with block constraints (`theta_blocks.py`): a null result that locates the barrier
+
+For an independent set I and X = 1_I 1_Iᵀ/|I|, every block B with α(G[B]) ≤ c gives
+the valid linear constraint Σ_{i,j∈B} X_ij ≤ c Σ_{i∈B} X_ii, because |B∩I|² ≤ c|B∩I|.
+We added all product blocks {x,x+1}^s × C7^{k−s} to θ (exact LP over
+translation-invariant X):
+
+| k | θ + blocks | layer bound | true α |
+|---|---|---|---|
+| 2 | 10.5 | 10.5 | 10 |
+| 3 | 35.0 | 35.0 | 33 |
+
+The fusion gives exactly the layer bound, never better. Reason: for a
+translation-invariant X, the quadratic block constraint averages to a constraint
+on Σ_d f(d) alone, and the θ part then only caps it. Any bound that beats the
+layer bound (35 → 33 at k = 3, and hopefully 115 → ≤ 114 at k = 4) must
+therefore **break translation symmetry**. One option is a Schrijver-type
+three-point bound (fix one point of I; matrices invariant only under its
+stabiliser of order 2^k·k!). That is the next upper-bound computation.
