@@ -221,3 +221,14 @@ CaDiCaL 1.9.5 via PySAT: independence as edge clauses, the forced layer pattern
 as exact cardinalities (sequential counters), and 2- and 3-block cardinality
 constraints. 45-minute limit, running. An UNSAT answer would still need
 independent confirmation (DRAT proof, or a second solver).
+
+## Round 12: slicing C7^5 sets into C7^4 sets
+
+Any independent set of C7^5, cut along a coordinate into 7 layers, gives independent
+sets of C7^4 as unions of two consecutive layers. By averaging, a 367-set yields at
+least ⌈2·367/7⌉ = 105, the value where our symmetry search stalled. But a single
+pair can be much larger than the average. Slicing our verified 366-set gives
+six different independent sets of size **107** in C7^4, each verified pairwise, along
+coordinates 0, 1, 2 and 3. That beats our symmetric 105 and sits one below the
+2002 record 108. The slices are now seeds for the exact large-neighbourhood search,
+aiming for 108 or 109.
