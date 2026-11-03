@@ -44,3 +44,21 @@ then keep a maximum independent subset, solved exactly as a MILP and verified
 pairwise. With uniform cuts this gives 355. Optimising the 7 cut points per
 coordinate (unequal arcs) reached 365 in 6 minutes. Running now: a scan of all
 (n, a) for n = 365…440 with g = (1, a, …, a⁴).
+
+## Round 3: the upper-bound side (where new mathematics is needed)
+
+Idea derived from our coincidence-inequality work: θ is a Cauchy–Schwarz bound
+and also bounds the *entanglement-assisted* zero-error capacity (Beigi 2010). If
+entanglement can reach θ(C7), no bound that also holds with entanglement can
+beat θ. A better upper bound on Θ(C7) would then have to
+be classical-only (rank-type, like Haemers). Concrete test: can entanglement
+send 11 zero-error messages with two uses of C7? Classically α(C7²) = 10, and θ² = 11.007.
+
+- `theta_cayley.py`: θ and Schrijver θ' of C7^k as Cayley-graph LPs (Fourier
+  reduction plus symmetry orbits). For k = 1…4, θ' = θ = θ(C7)^k exactly
+  (3.317667, 11.006916, 36.517283, 121.152193). So the θ' bound on the
+  entanglement-assisted independence number (Briët et al.) does not rule out 11.
+- `quantum_indep.py`: numerical search for a quantum independent set of size 11
+  in C7² (11 projective measurements on C^d labelled by the 49 vertices, with
+  orthogonality between confusable labels). Calibration: d = 1 finds the
+  classical 10. Running for d = 2, 3, 4.
