@@ -45,3 +45,24 @@ strategies.
 * A survivor is only a **candidate**: it must still be checked against
   later literature (Matúš's families, Xu–Wang–Sun, Csirmaz) before any
   claim.
+
+## Beyond the Copy Lemma: the Maximum Entropy Method
+
+Csirmaz (arXiv:2509.12439, 2025) lists as open problems:
+* whether the Maximum Entropy Method (MEM) can prove an inequality that
+  the iterated Copy Lemma cannot;
+* the fact that there has been no systematic numerical exploration of
+  it.
+
+`mem.py` casts MEM as a projection problem:
+* f on A, B, C, D is extended by exact duplicates, which is still
+  entropic;
+* g agrees with f on a down-closed family F and satisfies **every**
+  conditional independence that separates F.
+
+**Check:** with one duplicate and F = {ABCD, A'CD} (a single separating
+statement, equivalent to a copy), it reproduces exactly Zhang–Yeung.
+
+`memsearch.py` samples instances with 2–3 duplicates and up to 3 extra
+maximal sets. Most instances impose several independence statements at
+once, which is where MEM could exceed copies.
