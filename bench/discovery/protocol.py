@@ -25,15 +25,35 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from anomaly_esaadb import load  # noqa: E402
 from bit_layers import robust_sigma  # noqa: E402
 from esa_edge_link import flight, to_codes, varint_len  # noqa: E402
-from mission import ccsds_size  # noqa: E402
+import imagecodecs  # noqa: E402
 
 DATA = Path(__file__).resolve().parent.parent / "results" / "data"
 SPECS = [("ESA-Mission1", range(41, 47), "2006-10-01", "2007-01-01"),
          ("ESA-Mission2", range(18, 29), "2001-07-01", "2001-10-01")]
 
 
+PACKET = 256
+
+
 def bits(x):
     return max(1, int(x.max()).bit_length())
+
+
+def ccsds_size(codes, b):
+    """CCSDS 121 (libaec) in 256-sample packets with the right sample width: 1 byte for b <= 8, else 2.
+    (A first version passed 2-byte samples with b <= 8, which libaec reads as twice as many 1-byte
+    samples and inflates the size; found from implausible per-channel output before the verdict.)"""
+    arr = codes.astype("<u1") if b <= 8 else codes.astype("<u2")
+    w = arr.itemsize
+    flags = imagecodecs.AEC.FLAG.DATA_PREPROCESS
+    total, n = 0, len(arr) // PACKET * PACKET
+    for i in range(0, n, PACKET):
+        p = arr[i:i + PACKET].tobytes()
+        c = imagecodecs.aec_encode(p, bitspersample=b, flags=flags, blocksize=16, rsi=128)
+        back = imagecodecs.aec_decode(c, bitspersample=b, flags=flags, blocksize=16, rsi=128, out=PACKET * w)
+        assert bytes(back) == p, "CCSDS round trip"
+        total += len(c)
+    return total + (len(arr) - n) * w
 
 
 def main():

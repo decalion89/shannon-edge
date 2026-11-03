@@ -72,3 +72,22 @@ the coder rather than the quantisation alone.
 * that 1σ error is acceptable for every user;
 * that ground analyses other than the on-board detector are preserved.
   Ground re-detection on reconstructed data was refuted.
+
+## Amendment (before the verdict)
+
+The first run printed per-channel sizes for Mission 1 only. Channels
+42, 44 and 46 showed the CCSDS 121 noise-scale size (B2) **larger than
+raw**, which is impossible for a working coder. The cause was our call,
+not the standard.
+* The lattice indices of those channels fit in 8 bits.
+* For bits ≤ 8, libaec reads 1-byte samples, but it was given 2-byte
+  samples, so it saw twice as many samples, half of them zeros.
+
+The fix codes 1-byte samples when bits ≤ 8 and 2-byte samples
+otherwise.
+* It makes the standard **smaller**, so it can only make P2 harder.
+* Nothing else changes.
+* `bench/mission.py`, whose CCSDS 121 result is published, always passes
+  16 bits with 2-byte samples. It is unaffected. That costs CCSDS about
+  1% against the best width, for example 146,027 vs 144,247 bytes on
+  the first 512k samples of channel 41.
