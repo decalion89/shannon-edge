@@ -379,3 +379,22 @@ smooth: it vanishes in even powers, where the perfect lattice code {(x, 2x)} of 
 read the C7 efficiency jump at m = 5 the same way, as a "resonant" dimension whose near-perfect
 structure is the cyclic n = 382 lattice. A hypothesis to test: map lattice-packing densities
 across m to locate the resonant dimensions of C7.
+
+**Atlas of lossless cyclic lattices** (annealing over all g, n a multiple of 7 where possible):
+
+| m | best lossless size | ratio to m − 1 |
+|---|---|---|
+| 2 | 10 | – |
+| 3 | 31 | 3.10 |
+| 4 | 105 (n = 105, g = (1, 30, 95, 3)) | 3.39 |
+| 5 | 315 | 3.00 |
+| 6 | 980 | 3.11 |
+
+The m = 5 entry is a 315-set; the 1-violation stalls happened at n = 322 and 329. The m = 6 entry
+is a 980-set; n = 1022, 1057 and 1092 stall at 1 violation.
+
+**This refutes the simple resonance hypothesis.** Among lossless lattices, the jump is at m = 4,
+and m = 5 is the weakest step. The advantage of C7^5 (367) comes from over-packing plus repair,
+not from a better lattice. Corrected hypothesis: the relevant per-dimension quantity is
+*repair efficiency* (points kept after projecting an over-dense cyclic set and repairing it
+exactly), not lattice density.
