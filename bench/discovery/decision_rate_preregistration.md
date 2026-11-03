@@ -64,13 +64,14 @@ On the evaluation set (236 series with subpca ≥ 0.05):
 0.01. It does beat the trivial baseline, but too weakly to count.
 
 **Post hoc, not a result.** The entropy rate of the normal prefix (f1)
-alone correlates **negatively** with AUR: ρ = −0.205 on the evaluation
-set, while on tuning it was −0.075.
-* Noisier normal signals leave less room for the compressor's triage:
-  their own surprise dilutes the anomaly's.
-* The fitted model gave f1 the wrong sign, because 32 tuning series are
-  too few.
-* This is a hypothesis for a new pre-registration on other data, not a
+alone correlates **negatively** with AUR on the evaluation set:
+ρ = −0.205, p = 0.002. On the 32 tuning series it was **+0.20**
+(p = 0.27), the opposite sign.
+* One reading: noisier normal signals leave less room for the
+  compressor's triage, because their own surprise dilutes the anomaly's.
+* But the sign flip between the two sets means this is not even a
+  stable trend yet.
+* It is a hypothesis for a new pre-registration on other data, not a
   finding.
 
 Per-series values: `bench/results/data/decision_rate_{tuning,eval}.csv`.
