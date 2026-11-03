@@ -28,6 +28,14 @@ of general networks (network coding).
     Section "Inequalities Using Four Copy Variables with at most Three
     Copy Steps".
 
+* **Exhaustive two-auxiliary search** (`search.py 2`):
+  * 91 copy strategies up to symmetry give 7 irredundant inequalities
+    (`two_copy_irredundant.json`).
+  * They are **exactly equivalent** to Zhang–Yeung plus DFZ's six
+    two-copy inequalities of 2006: each set implies the other.
+  * This reproduces DFZ's exhaustive two-copy result independently, in
+    about a minute.
+
 **Frontier.** DFZ searched exhaustively up to four auxiliary variables
 with at most three copy steps, which took 50–100 CPU-years. Four steps
 was estimated at 70x that. `frontier.py` samples random four-step
