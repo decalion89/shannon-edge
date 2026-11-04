@@ -526,3 +526,14 @@ scans plus exact repair:
 Verdict: not universal. Negacyclic structure gives the best-repairing *cyclic* constructions
 at m = 2 and m = 5 (and repairs far better than +1 moduli at m = 6), but the optima at
 m = 3 and 4 are not cyclic, and products dominate at m = 6.
+
+## Round 24: spectral fingerprint of the 108-sets (`spectral.py`): no spectral law of zeros
+
+|1̂_A(u)| over all u ∈ Z_7^4, grouped by frequency class, for the six inequivalent 108-sets:
+- No class is identically zero across the sets. There is no "design-like" spectral law
+  that could be added to θ-type bounds.
+- Single-coordinate frequencies take identical values in every set (0.555, 0.802, 2.247).
+  This is just the Fourier transform of the rigid layer pattern (15,15,16,15,16,15,16), i.e.
+  the rigidity law seen in Fourier space, not a new law.
+- Individual sets show large peaks, up to 76.6 of 108: they are close to lattice cosets, a trace
+  of their cyclic origin. The peaks are not shared across sets.
