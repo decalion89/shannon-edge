@@ -742,3 +742,8 @@ The (1,1,3) slab therefore turns a 3-dimensional frustrated problem into a chain
 cycles with the sparsest possible inter-plane coupling. This is a concrete mechanism behind the direction law,
 and a possible route to proving the slab principle: in C7^m, a direction with one ±3 breaks planes into
 lower-dimensional pieces with minimal coupling.
+
+**Exhaustive and exact.** The two time-limited classes, re-solved with a 25-minute limit (`slab_scan3c.py`), give
+(1,2,3) → 32 (exact) and (1,3,3) → 31 (exact). So, verified over all 19 direction classes with exact MILP
+optima: **the slab {⟨u,x⟩ ∈ {0,1,2,3}} of C7³ contains a maximum independent set (33) if and only if
+|u| = (1,1,3) up to coordinate permutation and signs.**
