@@ -682,3 +682,9 @@ and the other entries ±1 or 0:
 
 Note 3 ≡ −2⁻¹ (mod 7), where 2 is the minimal distinguishable step of C7. The coordinate axes, where
 classical layer arguments look, are the worst slab direction.
+
+**C7^4 slab MILP results (28 min each).** u = (3,0,1,1) gives best 108 with a **proven bound of 109**. u = (4,1,1,0),
+the same direction class |u| = (0,1,1,3), gives best 106 with proven bound 109. Hence the maximum
+independent set inside a (0,1,1,3)-slab of C7^4, the slab family that contains every known 108-set, is
+**108 or 109** (exact MILP bound, versus the global ceiling 115). A 90-minute rerun for u = (3,0,1,1) is trying
+to close the last unit.
