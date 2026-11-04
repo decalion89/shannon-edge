@@ -436,3 +436,14 @@ the per-coordinate cuts break it. New idea (`symmetric_cuts.py`): use the same c
 coordinate, symmetric under x ↦ −x. The projected set then keeps the rotate-and-negate symmetry,
 and the cut has only 3 free parameters. Exhaustive scans around the uniform cut are running for
 (m, n) = (5, 382) and (6, 905).
+
+**Results.**
+- Negacyclic scan, m = 6, n = 1100…1500: best **828**, at n = 1417 = 13·109 with
+  a ∈ {226, 395, 1022, 1191} and 1734 conflicts. Next are n = 1385 (622) and n = 1205 (520).
+  Every other n fails. All of these are far below the 2026 C7^6 record of 1120, which is
+  product-type: 367·3 = 1101 plus improvements. The negacyclic family explains C7^5 but does not
+  compete in C7^6, where product constructions dominate.
+- Symmetric cuts, C7^5, n = 382: best so far **356**, versus 355 uniform and 366 with free
+  per-coordinate cuts. Keeping the negacyclic symmetry costs about 10 points: the record needs to
+  break it.
+- Symmetric cuts, C7^6, n = 905: best so far 749, versus 818 with uniform cuts. Same conclusion.
