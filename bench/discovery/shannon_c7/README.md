@@ -621,3 +621,6 @@ coordinate profiles. Consequences:
   suspect**. All six come from slices of cyclic-type constructions (ours from C7^5, Itty et al.'s
   from C7^6) plus small LNS changes, so they may inherit their parents' structure. An unbiased
   sample of 108-sets would be needed to test it. Random starts plus LNS have not reached 108 so far.
+
+The domain-wall ILP (368 with the one-wall pattern in all five coordinates) reached its 30-minute limit
+at the root node with no verdict. Its premise, rigidity, is now suspect anyway.
