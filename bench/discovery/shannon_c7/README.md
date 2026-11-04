@@ -467,3 +467,18 @@ breaking rule; the 9-parameter paired family is being searched exhaustively-loca
 
 The SAT run for α(C7^4) ≥ 115 ignored its interrupt and was stopped after about 70 minutes with
 no verdict. It needs a hard external time limit if rerun.
+
+**Control experiment for the pairing rule (refuted).** Same budget (400 s), same seed,
+alternative pairings of the 5 coordinates into 3 cut groups:
+
+| pairing | best |
+|---|---|
+| {0,3},{2,4},{1} (seen in both free antipodal runs) | 363 (32 s) |
+| {0,2},{1,3},{4} | **363** (106 s) |
+| {0,1},{2,3},{4} | 359 |
+| {0,4},{1,2},{3} | 359 |
+
+Another pairing reaches the same 363, so the specific pairing {0,3},{2,4},{1} is *not* a law;
+the convergence of the two free runs was a search coincidence. What survives: the antipodal
+partial breaking (≈ 363) sits between full symmetry (356) and no symmetry (366/367), and any
+reasonable 3-group cut structure captures most of the gain.
