@@ -505,3 +505,24 @@ record. Mixtures of fragments can escape single-set local optima.
 First run: record + our 366 + 2 images of each, 2092 points. After 300 s the incumbent is 367
 (the warm start) and the bound is 387, unresolved. Longer runs (28 min) are in progress: one
 with all our good sets including the antipodal 363s, one with 6 images of the record only.
+
+## Round 23: a proposed "negacyclic resonance law", tested and refuted as universal
+
+Observation: the famous perfect code of C5² is {t(1,2) mod 5} with 2² ≡ −1 (mod 5). Our best
+lossless C7² set (10, exact) has n = 10, a = 3, with 3² ≡ −1 (mod 10). The C7^5 record has
+7⁵ ≡ −1 (mod 382).
+
+Proposed law: the best cyclic constructions have aᵐ ≡ −1 (mod n). Tested with negacyclic
+scans plus exact repair:
+
+| m | best negacyclic | known optimum or record | verdict |
+|---|---|---|---|
+| 2 (C5, C7) | 5, 10 | 5, 10 | holds |
+| 3 | 28 (n = 28, lossless) | 33 (a plain cyclic set gives 31) | fails |
+| 4 | 96 (n = 113, a ∈ {18, 44, 69, 95}) | 108 | fails |
+| 5 | 355 → 367 | 367 | holds |
+| 6 | 828 (n = 1417) | 1120 (product type) | fails |
+
+Verdict: not universal. Negacyclic structure gives the best-repairing *cyclic* constructions
+at m = 2 and m = 5 (and repairs far better than +1 moduli at m = 6), but the optima at
+m = 3 and 4 are not cyclic, and products dominate at m = 6.
