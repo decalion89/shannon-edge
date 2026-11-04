@@ -722,3 +722,23 @@ were not covered: (2,2,2), (0,3,3), (2,3,3), (0,0,3), (0,2,3), (2,2,3), (3,3,3),
 † time-limited. These two are re-solved with a 25-minute limit (`slab_scan3c.py`) to make the scan fully exact.
 
 Pending those two, **(1,1,3) is the unique direction class whose slab contains a maximum independent set of C7³.**
+
+## Round 29: why the direction (1,1,3)? An algebraic de-frustration mechanism (`slab_planes.py`)
+
+In C7³ the plane ⟨u,x⟩ = c for u = (1,1,3) is parametrised by (x1, x2), with x3 = 3⁻¹(c − x1 − x2) = 5(c − x1 − x2). For
+two points of the same plane, Δx3 = −5(Δx1+Δx2) = 2(Δx1+Δx2) (mod 7). With |Δx1|, |Δx2| ≤ 1 the only way to keep
+|Δx3| ≤ 1 is Δx1 + Δx2 = 0. So inside a plane only the moves ±(1,−1,0) conflict, and every plane splits into
+**7 disjoint 7-cycles**. This works because 3·2 ≡ −1 (mod 7), i.e. 3 ≡ −2⁻¹.
+
+| u | inside a plane | α(plane) | edges plane c to c+1 |
+|---|---|---|---|
+| **(1,1,3)** | 7 disjoint C7 (degree 2) | **21** | **147** (minimum) |
+| (1,2,3) | 7 disjoint C7 | 21 | 196 |
+| (1,1,1) | connected, degree 6 | 14 | 294 |
+| (0,1,1) | connected, degree 8 | 10 | 294 |
+| (0,0,1), the coordinate layer | C7², degree 8 | 10 | 441 (maximum) |
+
+The (1,1,3) slab therefore turns a 3-dimensional frustrated problem into a chain of four planes of independent
+cycles with the sparsest possible inter-plane coupling. This is a concrete mechanism behind the direction law,
+and a possible route to proving the slab principle: in C7^m, a direction with one ±3 breaks planes into
+lower-dimensional pieces with minimal coupling.
