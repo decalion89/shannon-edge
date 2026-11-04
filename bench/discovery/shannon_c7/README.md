@@ -654,3 +654,31 @@ the C7³ unbiased maxima also lean towards slabs.
 4·343 = 1372 points. `slab_mip.py` solves the maximum independent set inside the slab exactly, warm-started
 from a 108-set. Running for u = (3,0,1,1) (the 2026 sets' direction) and u = (4,1,1,0) (one of ours). A proven
 optimum of 108 would show that no 109 lives in that slab family; a 109 would be a new record.
+
+**Exhaustive slab scan in C7³ (`slab_scan3.py`, 40 of 57 directions so far).** Exact maximum independent
+set inside the slab {⟨u,x⟩ ∈ {0,1,2,3}} for each direction, grouped by |u| up to coordinate
+permutations and per-coordinate signs. Rescaling u by k ≠ ±1 is *not* a symmetry: it scrambles the four
+planes. As a sanity check, all directions in a class give the same value.
+
+| abs(u) | max in slab |
+|---|---|
+| **(1,1,3)** | **33 = α(C7³)** (only class reaching it) |
+| (1,2,3) | 32 |
+| (0,1,3), (1,3,3) | 31 |
+| (1,1,1), (1,1,2), (1,2,2) | 28 |
+| (0,1,1) | 25 |
+| (0,1,2) | 21 |
+| (0,0,1), coordinate layers | 20 |
+
+**Direction law (empirical).** Record sets concentrate in slabs normal to vectors with a single entry ±3
+and the other entries ±1 or 0:
+
+| set | direction |
+|---|---|
+| C7³ optimum | (1,1,3) |
+| C7^4 108-sets | (3,0,1,1), (4,1,1,0), (0,3,6,6), (4,6,1,1) |
+| C7^5 367 record | (1,0,1,1,4) |
+| our C7^5 366 | (6,1,1,0,3) |
+
+Note 3 ≡ −2⁻¹ (mod 7), where 2 is the minimal distinguishable step of C7. The coordinate axes, where
+classical layer arguments look, are the worst slab direction.
