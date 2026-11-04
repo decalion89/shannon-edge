@@ -624,3 +624,9 @@ coordinate profiles. Consequences:
 
 The domain-wall ILP (368 with the one-wall pattern in all five coordinates) reached its 30-minute limit
 at the root node with no verdict. Its premise, rigidity, is now suspect anyway.
+
+**Unbiased C7^4 test.** Three random maximal sets (sizes 81, 78, 82), followed by exact LNS (regions ≤ 1400,
+25 minutes each, no symmetry), end at **103, 102 and 103**. They never reach 105, let alone 108. 108-sets are
+apparently reachable only from structured (cyclic-descended) starts. So the layer pattern of the 108-sets
+cannot be checked on an unbiased sample with this method, and the C7^4 rigidity stays "suspect". The gap
+between structure-free search (≈ 103) and structured constructions (108) shows how narrow the 108 optimum is.
