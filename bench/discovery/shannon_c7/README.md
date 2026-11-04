@@ -747,3 +747,16 @@ lower-dimensional pieces with minimal coupling.
 (1,2,3) → 32 (exact) and (1,3,3) → 31 (exact). So, verified over all 19 direction classes with exact MILP
 optima: **the slab {⟨u,x⟩ ∈ {0,1,2,3}} of C7³ contains a maximum independent set (33) if and only if
 |u| = (1,1,3) up to coordinate permutation and signs.**
+
+**Plane structure in C7^4 (`slab_planes4.py`):**
+
+| u | in-plane structure | α(plane) | edges plane c to c+1 |
+|---|---|---|---|
+| (0,1,1,3), used by the 108-sets | 7 components of 49 | 70 (exact) | 3087 |
+| (0,0,1,3) | 7 components of 49 | 70 (exact) | 3087 |
+| **(1,1,1,3)** | connected, degree 8 | **98 (exact) = 2/7 of the plane** | 3430 |
+| (1,1,2,3) | connected, degree 10 | ≥ 98 (time limit) | 3773 |
+| (0,0,0,1), coordinate layer | = C7³ | 33 | 9261 |
+
+A single (1,1,1,3)-plane holds 98 independent points, density exactly 2/7, close to the whole-space record 108.
+Exact slab MILPs for u = (1,1,1,3) and (1,1,2,3) are running. A slab optimum > 108 would be a new record.
