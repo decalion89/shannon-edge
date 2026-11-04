@@ -425,3 +425,14 @@ m = 5 (n = 360–420, target > 367) and m = 6 (n = 1100–1500, target > 1120, t
 
 The balanced-plateau LNS reduced the imbalance of the 367 record from 124.6 to 108.6 and of the
 366-set from 221 to 115, but neither grew: balance is necessary but not sufficient.
+
+**Law-guided scan, m = 5, n = 360…420, all a with a⁵ ≡ −1 (mod n).** Only **n = 382** works: 355
+with uniform cuts and 36–37 conflicts, for a ∈ {7, 273, 333, 343}. Every other negacyclic n gives
+at most 281. The law singles out the 2018 record's modulus with no prior knowledge.
+
+**Symmetry of the record.** The projected 367-set has a trivial stabiliser in
+Aut(C7^5) (`stabiliser5.py`). The negacyclic symmetry lives in Z_382^5, before projection, and
+the per-coordinate cuts break it. New idea (`symmetric_cuts.py`): use the same cut on every
+coordinate, symmetric under x ↦ −x. The projected set then keeps the rotate-and-negate symmetry,
+and the cut has only 3 free parameters. Exhaustive scans around the uniform cut are running for
+(m, n) = (5, 382) and (6, 905).
