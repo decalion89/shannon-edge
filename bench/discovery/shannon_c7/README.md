@@ -565,3 +565,15 @@ pattern (53,52,53,52,53,52,53) in all five coordinates? A SAT instance (CaDiCaL,
 cardinalities, 40-minute hard limit) is running. Fixing the pattern in every coordinate at once is
 a modelling choice motivated by the frustration picture, not a WLOG, so UNSAT would only exclude
 this pattern.
+
+The SAT encoding ran out of memory (std::bad_alloc: totalizer over 35 × 2401 literals). Reformulated
+as an ILP (`domainwall_ilp.py`): box constraints plus 35 linear layer equalities; HiGHS, 30-minute
+limit, running.
+
+**Frontier idea (unexplored).** Θ(C7) is the high-dimension limit of the close-packing density
+of hard cubes on a 7-periodic lattice with odd-period frustration. Hard-sphere packing in
+infinite dimension was solved, non-rigorously, by the replica method (Parisi, Kurchan, Urbani,
+Zamponi). Whether a replica treatment of frustrated cube packings could *predict* Θ(C7) is an
+open, speculative question. Two observations fit this view: α(C7^m)^{1/m} = 3, 3.162, 3.208,
+3.224, ≥ 3.258 is not smooth, which is suggestive of a change of ground-state structure; and
+maximum sets are many and inequivalent, i.e. ground-state entropy.
