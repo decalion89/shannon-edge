@@ -610,3 +610,14 @@ unique optimum at m = 3, glass-like degeneracy at m = 4.
 
 Caveat: the C7³ sample comes from a symmetry-restricted search. A bias check (random maximal starts
 plus exact LNS, no symmetry) is running.
+
+**Bias check (refutation).** 24 maximum 33-sets of C7³ from random maximal starts plus exact LNS (no
+symmetry restriction) are **24 distinct classes**, none equal to the class of the symmetric search. They
+show **14 different layer patterns**; the pattern (4,4,6,4,5,4,6) of round 14 appears in only 2 of 72
+coordinate profiles. Consequences:
+- C7³ is not "crystal-like": its maximum sets are highly degenerate.
+- The C7³ rigidity law of round 14 was an artefact of the symmetry-restricted sample. **Retracted.**
+- The C7^4 rigidity (pattern (15,15,16,15,16,15,16) in all six 108-sets) is now **downgraded to
+  suspect**. All six come from slices of cyclic-type constructions (ours from C7^5, Itty et al.'s
+  from C7^6) plus small LNS changes, so they may inherit their parents' structure. An unbiased
+  sample of 108-sets would be needed to test it. Random starts plus LNS have not reached 108 so far.
