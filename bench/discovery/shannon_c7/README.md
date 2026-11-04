@@ -760,3 +760,10 @@ optima: **the slab {⟨u,x⟩ ∈ {0,1,2,3}} of C7³ contains a maximum independ
 
 A single (1,1,1,3)-plane holds 98 independent points, density exactly 2/7, close to the whole-space record 108.
 Exact slab MILPs for u = (1,1,1,3) and (1,1,2,3) are running. A slab optimum > 108 would be a new record.
+
+**More results.**
+- Two (1,1,1,3)-planes of C7^4 together, each holding 98 alone: planes {0,2} give 93 and {0,3} give 98 (time-limited).
+  Dense planes conflict heavily (4116 and 4802 cross edges), so this is no shortcut above 108.
+- C7^5 slab-restricted exact LNS in the record's slab u = (1,0,1,1,4), starting from the record's 360 in-slab points:
+  final **365** and 364 after about 133k iterations each. Confined to the slab the search does not recover 367. The record
+  needs its 7 out-of-slab points, so in C7^5 the strict slab principle either fails for this slab or is beyond this search.
