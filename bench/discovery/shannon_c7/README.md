@@ -577,3 +577,22 @@ Zamponi). Whether a replica treatment of frustrated cube packings could *predict
 open, speculative question. Two observations fit this view: α(C7^m)^{1/m} = 3, 3.162, 3.208,
 3.224, ≥ 3.258 is not smooth, which is suggestive of a change of ground-state structure; and
 maximum sets are many and inequivalent, i.e. ground-state entropy.
+
+## Round 26: domain-wall energy is not monotone (a rigorous mini-result)
+
+Let the layer deficit be d_m = 7α(C7^{m−1})/2 − α(C7^m), the cost of the odd-cycle "wall", and
+e_m = d_m / α(C7^{m−1}) its energy per unit wall area. From exact values:
+
+- e_2 = 0.5/3 = 0.167
+- e_3 = 2/10 = 0.200
+- e_4 = (115.5 − α_4)/33 ≤ 0.227 (α_4 ≥ 108)
+- e_5 = (3.5 α_4 − α_5)/α_4, with α_5 ≥ 367
+
+**Claim: e_m cannot be non-decreasing for m = 3, 4, 5.** Proof:
+- If α_4 ≥ 109, then e_4 ≤ 6.5/33 < 0.2 = e_3.
+- If α_4 = 108, then e_4 = 0.227, and e_5 ≥ e_4 would need α_5 ≤ 378 − 0.227·108 ≈ 353.5,
+  contradicting α_5 ≥ 367 (Polak–Schrijver). ∎
+
+So the per-area cost of odd-cycle frustration must *drop* at m = 4 (if α(C7^4) ≥ 109) or at
+m = 5 (if α(C7^4) = 108), a transition-like change of regime in the hierarchy C7^m. Combined
+with the rigidity evidence for α(C7^4) = 108, the change would happen at m = 5.
