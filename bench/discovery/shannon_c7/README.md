@@ -694,3 +694,31 @@ to close the last unit.
 Gap found: the scan used one vector per line through 0, but rescaling changes the slab, so 9 |u|-classes
 were not covered: (2,2,2), (0,3,3), (2,3,3), (0,0,3), (0,2,3), (2,2,3), (3,3,3), (0,0,2), (0,2,2).
 `slab_scan3b.py` completes them.
+
+**C7³ slab scan, all 19 |u|-classes covered:**
+
+| \|u\| | max in slab |
+|---|---|
+| **(1,1,3)** | **33** |
+| (1,2,3)† | 32 |
+| (2,3,3) | 32 |
+| (2,2,3) | 32 |
+| (3,3,3) | 32 |
+| (0,1,3) | 31 |
+| (1,3,3)† | 31 |
+| (0,3,3) | 31 |
+| (0,2,3) | 31 |
+| (2,2,2) | 30 |
+| (0,0,3) | 30 |
+| (1,1,1) | 28 |
+| (1,1,2) | 28 |
+| (1,2,2) | 28 |
+| (0,2,2) | 28 |
+| (0,1,1) | 25 |
+| (0,1,2) | 21 |
+| (0,0,1) | 20 |
+| (0,0,2) | 20 |
+
+† time-limited. These two are re-solved with a 25-minute limit (`slab_scan3c.py`) to make the scan fully exact.
+
+Pending those two, **(1,1,3) is the unique direction class whose slab contains a maximum independent set of C7³.**
