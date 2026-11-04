@@ -447,3 +447,23 @@ and the cut has only 3 free parameters. Exhaustive scans around the uniform cut 
   per-coordinate cuts. Keeping the negacyclic symmetry costs about 10 points: the record needs to
   break it.
 - Symmetric cuts, C7^6, n = 905: best so far 749, versus 818 with uniform cuts. Same conclusion.
+
+## Round 20: partial symmetry breaking (`antipodal_cuts.py`, `paired_cuts.py`)
+
+The negacyclic map σ (rotate coordinates, negate one) has order 10, with subgroups {σ²}
+(order 5) and {−I} (antipodal). Keeping σ² already forces identical cuts on every
+coordinate, i.e. full symmetry (356). Keeping only −I allows an odd cut per coordinate
+(15 parameters).
+
+| symmetry kept | best (n = 382, a = 7) |
+|---|---|
+| full negacyclic (same odd cut everywhere) | 356 |
+| antipodal only | **363**, reached within 8 s in two independent runs |
+| none (free per-coordinate cuts) | 366 (ours), 367 (record) |
+
+Both antipodal runs converge to the same *pairing*: coordinates {0,3} share a cut, {2,4} share
+another, and coordinate 1 is alone (multipliers 1 ↔ 343, 49 ↔ 109, 7 alone, mod 382). Candidate
+breaking rule; the 9-parameter paired family is being searched exhaustively-locally.
+
+The SAT run for α(C7^4) ≥ 115 ignored its interrupt and was stopped after about 70 minutes with
+no verdict. It needs a hard external time limit if rerun.
