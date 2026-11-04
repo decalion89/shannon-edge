@@ -767,3 +767,8 @@ Exact slab MILPs for u = (1,1,1,3) and (1,1,2,3) are running. A slab optimum > 1
 - C7^5 slab-restricted exact LNS in the record's slab u = (1,0,1,1,4), starting from the record's 360 in-slab points:
   final **365** and 364 after about 133k iterations each. Confined to the slab the search does not recover 367. The record
   needs its 7 out-of-slab points, so in C7^5 the strict slab principle either fails for this slab or is beyond this search.
+
+**Slab MILPs for the dense-plane directions (28 min each).** u = (1,1,1,3): best 101, bound 129. u = (1,1,2,3): best 97,
+bound 136. Neither beats 108, and neither closes. Plane density alone does not make a good slab. The records' direction
+(0,1,1,3) (planes = 7 disjoint copies of C7², best 108, bound 109) is both the best and by far the most tractable
+one: its planes decompose into independent components with the weakest inter-plane coupling.
