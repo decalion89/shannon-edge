@@ -630,3 +630,27 @@ at the root node with no verdict. Its premise, rigidity, is now suspect anyway.
 apparently reachable only from structured (cyclic-descended) starts. So the layer pattern of the 108-sets
 cannot be checked on an unbiased sample with this method, and the C7^4 rigidity stays "suspect". The gap
 between structure-free search (≈ 103) and structured constructions (108) shows how narrow the 108 optimum is.
+
+## Round 28: the slab law (`slab_mip.py`): structure in a slanted direction
+
+For each set we take the Fourier direction u with the largest |1̂_A(u)|, and the 7 parallel planes
+⟨u,x⟩ = c (mod 7). We measure the largest fraction of the set lying in 4 cyclically consecutive planes:
+
+| sets | fraction in best 4-plane slab |
+|---|---|
+| six 108-sets of C7^4 (two sources) | **1.000 for every set** (3 of 7 planes empty) |
+| 367 record of C7^5 | 0.98; plane profile 54:126:122:58, about 1:2:2:1 |
+| unbiased C7^4 LNS results (102–103) | 0.81 |
+| random maximal sets of C7^4 (baseline) | 0.78 |
+| unbiased maximum 33-sets of C7³ | 0.94 |
+| random maximal sets of C7³ (baseline) | 0.88 |
+
+Unlike the coordinate-layer rigidity, this separates record sets from ordinary ones against a baseline:
+record sets of C7^4 live entirely inside a 4-plane slab, and sets that stall at 102–103 do not. The plane
+profile is roughly 1:2:2:1. Caveat: the 108-sets still all descend from cyclic-type constructions, though
+the C7³ unbiased maxima also lean towards slabs.
+
+**Exact test.** By translation symmetry the slab can be fixed to planes {0,1,2,3}, which leaves
+4·343 = 1372 points. `slab_mip.py` solves the maximum independent set inside the slab exactly, warm-started
+from a 108-set. Running for u = (3,0,1,1) (the 2026 sets' direction) and u = (4,1,1,0) (one of ours). A proven
+optimum of 108 would show that no 109 lives in that slab family; a 109 would be a new record.
