@@ -398,3 +398,30 @@ and m = 5 is the weakest step. The advantage of C7^5 (367) comes from over-packi
 not from a better lattice. Corrected hypothesis: the relevant per-dimension quantity is
 *repair efficiency* (points kept after projecting an over-dense cyclic set and repairing it
 exactly), not lattice density.
+
+## Round 19: the negacyclic law (`negacyclic_scan.py`)
+
+**Hidden arithmetic in the 2018 record.** 7⁵ + 1 = 16808 = 2³·11·191, and 382 = 2·191, so
+7⁵ ≡ −1 (mod 382). For g = (1, 7, …, 7⁴) mod 382 we get 7·g = (7, 49, 343, 109, −1): multiplying
+the cyclic set by 7 rotates the coordinates and flips one sign. The record is invariant
+under a hidden negacyclic symmetry.
+
+**Prediction test in C7^6 (a = 7, uniform cuts, exact repair):**
+
+| n | 7^6 mod n | conflicts | repaired |
+|---|---|---|---|
+| **905** | **−1** | **116** | **818 (90%)** |
+| 912 | +1 | 6458 | 179 |
+| 1032 | +1 | 12192 | 112 |
+| 1368 | +1 | 17892 | 140 |
+| 1810 | −1 | 9733 | 723 (too dense) |
+| 2353 | −1 | 52086 | 2 |
+| arbitrary n (round 10) | – | 4000–7000 | 286–437 |
+
+**Law (empirical).** Cyclic constructions repair efficiently when g is negacyclic,
+a^m ≡ −1 (mod n). The +1 (cyclic) case collapses. Generalisation: any multiplier a with
+a^m ≡ −1 (mod n), not only a = 7. A law-guided scan over exactly those (n, a) is running for
+m = 5 (n = 360–420, target > 367) and m = 6 (n = 1100–1500, target > 1120, the 2026 record).
+
+The balanced-plateau LNS reduced the imbalance of the 367 record from 124.6 to 108.6 and of the
+366-set from 221 to 115, but neither grew: balance is necessary but not sufficient.
