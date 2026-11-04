@@ -537,3 +537,31 @@ m = 3 and 4 are not cyclic, and products dominate at m = 6.
   the rigidity law seen in Fourier space, not a new law.
 - Individual sets show large peaks, up to 76.6 of 108: they are close to lattice cosets, a trace
   of their cyclic origin. The peaks are not shared across sets.
+
+## Round 25: the key, a geometric-frustration picture, and a domain-wall construction test
+
+**Synthesis.** Every loss measured tonight has the same root: 7 is odd. The examples:
+- 3 instead of 3.5 in C7;
+- odd girth 21, so 35 → 33 in C7³;
+- effective pair capacity 31 instead of 33, so 115 → 108 in C7^4.
+
+θ-type relaxations are blind to this parity (rounds 6–7). Every method that worked looks at it
+directly: odd girth, rigidity, descent, the negacyclic criterion. In physics terms this is
+**geometric frustration**. Odd cycles prevent a perfect arrangement, and the system concentrates
+the defect into **domain walls**.
+
+The six 108-sets realise exactly that picture. In every direction the layer pattern
+(15,15,16,15,16,15,16) gives pairs 31×6 and a single 30: a perfect structure with exactly one
+wall per direction, placed identically in all four sources. The 367 record of C7^5, in contrast,
+has disordered walls (adjacent-pair sums from 101 to 107).
+
+**Program.**
+- Upper bound: α = perfect structure minus the minimal wall cost. Proving that one wall per
+  direction costs at least what we observe would give α(C7^4) = 108.
+- Lower bound: construct sets with one ordered wall per direction instead of searching.
+
+**Test (`domainwall_sat.py`).** Is there a 368-set in C7^5 whose layers follow the one-wall
+pattern (53,52,53,52,53,52,53) in all five coordinates? A SAT instance (CaDiCaL, totalizer
+cardinalities, 40-minute hard limit) is running. Fixing the pattern in every coordinate at once is
+a modelling choice motivated by the frustration picture, not a WLOG, so UNSAT would only exclude
+this pattern.
