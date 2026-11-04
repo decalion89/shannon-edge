@@ -482,3 +482,14 @@ Another pairing reaches the same 363, so the specific pairing {0,3},{2,4},{1} is
 the convergence of the two free runs was a search coincidence. What survives: the antipodal
 partial breaking (≈ 363) sits between full symmetry (356) and no symmetry (366/367), and any
 reasonable 3-group cut structure captures most of the gain.
+
+## Round 21: bipartite fusion of near-optimal sets (`bipartite_fusion.py`)
+
+For independent sets A and B, the conflict graph of A ∪ τ(B) is bipartite: conflicts only run
+between A and τ(B). By König's theorem the maximum independent subset of the union is
+exactly |A| + |B| − ν, where ν is the maximum matching, so it can be computed in polynomial
+time. Searching over automorphisms τ of C7^5 (64.5M of them) for an overlay with ν ≤ 365 would
+give 368.
+
+60 s of record + ours: ν = 366 every time (fused 367). Longer runs (25 min each) are in
+progress for record + ours, record + record, and ours + ours.
