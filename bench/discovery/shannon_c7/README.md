@@ -596,3 +596,17 @@ e_m = d_m / α(C7^{m−1}) its energy per unit wall area. From exact values:
 So the per-area cost of odd-cycle frustration must *drop* at m = 4 (if α(C7^4) ≥ 109) or at
 m = 5 (if α(C7^4) = 108), a transition-like change of regime in the hierarchy C7^m. Combined
 with the rigidity evidence for α(C7^4) = 108, the change would happen at m = 5.
+
+**Pool and solve, 28-minute runs.** Both pools keep the warm-start 367: the 3613-point pool of 13 sets
+(bound 397) and the 2411-point pool of 8 record images (bound 431). No mixture found above 367;
+unresolved.
+
+## Round 27: ground-state degeneracy (a "crystal vs glass" probe)
+
+C7³: 30 maximum 33-sets from 30 independent symmetry-search runs all fall into **one** class up to
+Aut(C7³) (order 16,464), i.e. apparently a unique ground state. C7^4: the six 108-sets of round 14 are
+six **distinct** classes, each with a trivial stabiliser. Tentative physics reading: a crystal-like
+unique optimum at m = 3, glass-like degeneracy at m = 4.
+
+Caveat: the C7³ sample comes from a symmetry-restricted search. A bias check (random maximal starts
+plus exact LNS, no symmetry) is running.
