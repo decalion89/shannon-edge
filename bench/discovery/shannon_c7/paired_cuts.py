@@ -2,7 +2,7 @@
 """Paired breaking rule observed in antipodal_cuts.py (two independent runs): coordinates {0,3} share an odd cut,
 {2,4} share another, coordinate 1 has its own. 9 parameters. Best-improvement local search over the FULL
 neighbourhood (each parameter +-1..+-4) with exact repair, with random restarts.
-Usage: paired_cuts.py n a seconds seed"""
+Usage: paired_cuts.py n a seconds seed [pattern e.g. 01202]"""
 import sys
 import time
 import numpy as np
@@ -10,7 +10,7 @@ from overpack_repair import conflict_edges, mis
 
 n, a, secs, seed = int(sys.argv[1]), int(sys.argv[2]), float(sys.argv[3]), int(sys.argv[4])
 m = 5
-groups = [0, 1, 2, 0, 2]  # coordinate -> cut group
+groups = [int(c) for c in (sys.argv[5] if len(sys.argv) > 5 else "01202")]  # coordinate -> cut group
 rng = np.random.default_rng(seed)
 g = np.array([pow(a, i, n) for i in range(m)])
 W = (np.arange(n)[:, None] * g[None, :]) % n
