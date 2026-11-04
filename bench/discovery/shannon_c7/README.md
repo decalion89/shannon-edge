@@ -493,3 +493,15 @@ give 368.
 
 60 s of record + ours: ν = 366 every time (fused 367). Longer runs (25 min each) are in
 progress for record + ours, record + record, and ours + ours.
+
+## Round 22: pool and solve (`pool_mis.py`)
+
+Two-set fusion never gains: the maximum matching is perfect in every overlay tried, so Hall's
+condition holds for such dense sets. The generalisation: pour several near-optimal sets and
+random automorphic images of them into one pool, then solve the maximum independent set
+inside the pool exactly (HiGHS MILP with the 2^m box constraints), warm-started from the
+record. Mixtures of fragments can escape single-set local optima.
+
+First run: record + our 366 + 2 images of each, 2092 points. After 300 s the incumbent is 367
+(the warm start) and the bound is 387, unresolved. Longer runs (28 min) are in progress: one
+with all our good sets including the antipodal 363s, one with 6 images of the record only.
