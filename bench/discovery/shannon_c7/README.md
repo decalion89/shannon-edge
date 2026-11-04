@@ -688,3 +688,9 @@ the same direction class |u| = (0,1,1,3), gives best 106 with proven bound 109. 
 independent set inside a (0,1,1,3)-slab of C7^4, the slab family that contains every known 108-set, is
 **108 or 109** (exact MILP bound, versus the global ceiling 115). A 90-minute rerun for u = (3,0,1,1) is trying
 to close the last unit.
+
+**C7³ slab scan, first pass complete (57 line representatives).** Distribution of slab maxima:
+{33: 8, 32: 8, 31: 10, 28: 16, 25: 6, 21: 6, 20: 3}. All 8 directions reaching 33 have |u| = (1,1,3).
+Gap found: the scan used one vector per line through 0, but rescaling changes the slab, so 9 |u|-classes
+were not covered: (2,2,2), (0,3,3), (2,3,3), (0,0,3), (0,2,3), (2,2,3), (3,3,3), (0,0,2), (0,2,2).
+`slab_scan3b.py` completes them.
