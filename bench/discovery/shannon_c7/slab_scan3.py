@@ -26,8 +26,9 @@ for u in lines:
     r = np.concatenate([np.full(len(q), i) for i, q in enumerate(rows)])
     A = sp.csr_matrix((np.ones(len(r)), (r, np.concatenate(rows))), shape=(len(rows), len(S)))
     out = milp(c=-np.ones(len(S)), constraints=[LinearConstraint(A, -np.inf, 1)], integrality=np.ones(len(S)),
-               bounds=Bounds(0, 1), options={"time_limit": 120})
+               bounds=Bounds(0, 1), options={"time_limit": 60})
     res.append((int(round(-out.fun)), tuple(u.tolist()), out.status))
+    print(f"u={tuple(u.tolist())}: max in slab {res[-1][0]} ({'exact' if out.status == 0 else 'time limit'})", flush=True)
 res.sort(reverse=True)
 vals = [r[0] for r in res]
 print(f"{len(lines)} directions; max inside a slab: {max(vals)} (alpha(C7^3)=33); min {min(vals)}")
