@@ -1,0 +1,6 @@
+/target
+/corpora
+*.sedge
+!tests/fixtures/*.sedge
+*.out
+__pycache__/

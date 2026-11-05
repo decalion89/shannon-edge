@@ -1,0 +1,36 @@
+[package]
+name = "shannon-edge"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "Lossless compression by prediction: context mixing pushed toward the Shannon limit."
+license = "MIT"
+repository = "https://github.com/decalion89/shannon-edge"
+readme = "README.md"
+keywords = ["compression", "context-mixing", "entropy", "lossless", "arithmetic-coding"]
+categories = ["compression", "command-line-utilities"]
+
+[lib]
+name = "shannon_edge"
+path = "src/lib.rs"
+# rlib for Rust users, cdylib for the C ABI (Python, Go, Java, ...).
+crate-type = ["rlib", "cdylib"]
+
+[[bin]]
+name = "sedge"
+path = "src/main.rs"
+
+[features]
+# Measurement only: per-column ideal cost in the packet profile.
+colstats = []
+
+[dependencies]
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+debug = false
+
+[profile.test]
+opt-level = 3

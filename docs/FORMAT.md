@@ -1,0 +1,222 @@
+# `.sedge` container format — version 1
+
+All integers are little-endian.
+
+| Offset | Size | Field | Description |
+|---:|---:|---|---|
+| 0 | 4 | `magic` | ASCII `SEDG` |
+| 4 | 1 | `version` | Format version, currently `1` |
+| 5 | 1 | `method` | `0` stored, `1` context mixing (CM), `2` parallel blocks, `3` CM with dictionary, `4` CM with record model |
+| 6 | 1 | `mem_bits` | Model memory level, `16..=24` for CM, `0` otherwise |
+| 7 | 1 | `reserved` | Must be `0` |
+| 8 | 8 | `length` | Original size in bytes (v1: below 2^32 − 1) |
+| 16 | 4 | `crc32` | CRC-32 (IEEE, as in gzip/zip/PNG) of the original data |
+| 20 | … | `payload` | Stored bytes, or the arithmetic-coded CM stream |
+
+## Methods
+
+* **Stored (`0`)** — the payload is the original data. The compressor uses it
+  whenever CM would not make the file smaller, so no input ever grows by more
+  than the 20-byte header.
+* **CM (`1`)** — the payload is the output of a 32-bit binary arithmetic coder
+  driven by the model in `src/model.rs`, with hashed context tables of
+  `2^mem_bits` slots. The decoder must allocate the same tables, so
+  `mem_bits` also sets the decoder's memory use (≈140 MiB at 22).
+* **CM with dictionary (`3`)** — like CM, but before coding, the model reads
+  a dictionary that both sides hold (it is never stored in the stream), so
+  it starts out knowing that kind of data. The payload starts with the
+  dictionary's CRC-32 (4 bytes) and length (4 bytes), followed by the CM
+  stream. Decoding without the dictionary fails with `DictionaryRequired`;
+  with a different one, with `DictionaryMismatch`. Priming means the model
+  processes `dict + data` and only `data` is coded, so its match model can
+  also copy straight from the dictionary.
+
+* **CM with record model (`4`)** — for data made of fixed-length records
+  (telemetry packets, table rows, image scanlines). The payload starts with
+  the record length `r` (u32, `1..=65536`), followed by the CM stream of a
+  model in which two contexts (word bigram and sparse) are replaced by
+  column contexts: the byte at the same position of the previous record,
+  alone and with its left neighbour and the previous byte. The compressor
+  detects `r` (byte-repeat period with clearly fewer mismatches than other
+  periods) and keeps it only if a trial on a sample compresses better;
+  `-r` forces or disables it.
+
+* **Parallel blocks (`2`)** — the input was split into fixed-size blocks,
+  each compressed independently so that blocks can be encoded and decoded on
+  different cores. Payload layout:
+
+  | Size | Field |
+  |---:|---|
+  | 4 | `block_size` used by the compressor (informational) |
+  | 4 | `n`, number of blocks (≥ 1) |
+  | 4 × n | byte length of each block stream |
+  | … | the `n` block streams, back to back |
+
+  Each block stream is a complete method-0, 1, 3 or 4 stream with its own
+  20-byte header and CRC (nesting method 2 is invalid). The decoded blocks,
+  concatenated, must have exactly `length` bytes and match the outer CRC.
+  The compressed bytes depend only on the data, `mem_bits` and `block_size`,
+  never on how many threads were used. With a dictionary, every block is
+  primed with the same dictionary, so blocks stay independent. If the
+  blocked result would not be smaller than the input, the whole input is
+  stored instead.
+
+## Session frames
+
+Messages of a `Session` (a sender and a receiver that both keep learning)
+use a compact frame instead of the 20-byte header, because they are meant
+for small records:
+
+| Size | Field |
+|---:|---|
+| 1 | `0xE0` + kind: `0` stored, `1` coded |
+| 1–5 | original length, LEB128 varint |
+| 2 | sequence number, low 16 bits, little-endian |
+| 4 | CRC-32 of the original record |
+| … | payload: the record itself (stored), or the coded record |
+
+**Lean frames** (a session option both sides must share) are `0xD0` +
+kind, then the LEB128 length, then the payload: no sequence number and no
+CRC, for links that already guarantee integrity and order.
+
+Coded payloads use a minimal arithmetic-coder flush: trailing bytes the
+decoder would pad with zeros anyway are omitted, at most 4 of them
+(`coder::MAX_IMPLIED_ZEROS`). Record *n* is coded with
+the model after records *0..n-1* (and the starting dictionary, if any);
+stored records are not learned from, on either side. A frame whose sequence
+number is not the next expected one fails with `SessionOutOfSync`; a frame
+that fails its CRC is rejected and its updates are rolled back.
+
+A session may use the record model (`with_record_len`, a parameter both
+sides share; never sent).
+
+Both sides bound the history with the same window `W` (a session
+parameter, default 32 MiB, never sent): right after a record is learned, if
+the history exceeds `2W` bytes, its oldest `len - W` bytes are dropped and
+the match model's pointers shifted accordingly.
+
+## Flight frames
+
+A `FlightSession` (the integer telemetry profile) sends each packet of
+samples as: the sample count (LEB128), then the arithmetic-coded samples
+with a minimal flush. No checksum and no sequence number: the link layer
+must guarantee integrity and order. Both ends must use the same
+`bits_per_sample` and `table_bits`; the test `golden_flight_stream_is_stable`
+pins the coded bytes, so any change to the flight model is a format change.
+
+## Packet frames
+
+A `PacketSession` (packet profile) sends each fixed-length packet as just
+its arithmetic-coded payload with a minimal flush: no length, checksum or
+sequence number — the packet length is a session parameter and the link
+layer delimits packets and guarantees integrity and order. Both ends must
+use the same `packet_len` and `table_bits`; `golden_packet_stream_is_stable`
+pins the coded bytes. Version 2 (`PacketSession::v2`) is a different model
+with the same framing; both ends must agree on the version (it is not
+signalled in the stream), and `golden_packet_v2_stream_is_stable` pins it.
+Key packets and epochs (`with_key_interval`, `with_epochs`, `prime`) change
+the coded bytes and must also match on both ends.
+
+The fast packet profile (`packet_fast::FastPacketSession`) uses the same
+framing (one payload per packet, minimal flush, no header) with its own
+model; `golden_fast_stream_is_stable` pins it. Changed bytes are coded as
+multi-symbol ranges on the binary coder's interval (`encode_freq`: one
+32-bit division per symbol, r = (x2 − x1) / total, symbol range
+[x1 + r·cum, x1 + r·(cum + freq))); when the interval is narrower than the
+frequency total (r = 0), both ends fall back to eight bits at probability
+1/2.
+
+Model version 2 of the fast profile changes the coded bytes; the golden
+stream is now 2,064 bytes, 0x1b52_626d_bcc3_1761. It has two parts:
+* **"Same as above?" flags:** each context keeps a fast estimate (rate
+  2^-4) and a slow, state-counted one (rate 1/(n+1.5) while young,
+  settling at 2^-7), and codes with their average.
+* **Ground-learned windows** (`learn_windows`, `with_layout_windows`):
+  one byte per column selects the table's (increment, limit) pair among 7.
+  The default layout keeps (32, 2^15).
+
+## Record transforms (`fields::RecordTransform`, uplink format)
+
+A record transform is learned on the ground and runs before a packet codec;
+the receiver inverts it after decoding. Serialised, little-endian:
+
+| Bytes | Content |
+|---:|---|
+| 8 | magic `SEDGREL1` |
+| 2 | number of fields F |
+| 2·F | per field: width in bytes; flags (bit 0 integer, bit 1 signed, bit 2 big-endian, bit 3 field delta; other bits 0) |
+| 2 | number of relations R |
+| 8·R | per relation: target, i, j (u16 each), a, b (i8 each) |
+
+Field offsets follow from the widths, in order. Integer fields are 1, 2, 4
+or 8 bytes wide.
+
+Sender, per record:
+1. For every relation, replace field t by
+   r = x_t − ⌊(a·x_i + b·x_j)/2⌋ mod 2^bits. The values are sign-extended
+   if the field is signed, the arithmetic is two's-complement, and the
+   floor is an arithmetic shift.
+2. For every field with the delta flag, replace the value v (after step
+   1) by the zigzag of (v − v_prev) taken mod 2^bits, where v_prev is the
+   previous record's value after step 1. The first record, and the first
+   after `reset`, is sent unchanged.
+
+The receiver undoes step 2, then step 1, in reverse relation order.
+
+Loading rejects:
+* an index out of range;
+* a relation on a non-integer field;
+* a target used twice, or used as a predictor of another relation;
+* trailing bytes.
+So the inverse never reads a field it has not yet restored. Relations are
+stateless and survive packet loss. Deltas chain records, so a lost record
+breaks them until the next `reset`.
+
+## Primed-model files (`.sedgem`)
+
+A saved `PrimedModel`: the model state after reading a dictionary. It is a
+cache for speed, not a stream format — `.sedge` streams never depend on
+whether a model file or the raw dictionary was used.
+
+| Size | Field |
+|---:|---|
+| 8 | magic `SEDGMODL` |
+| 1 | format version (`1`) |
+| 1 | memory level (`16..=24`) |
+| 2 | reserved, `0` |
+| 4 | CRC-32 of the dictionary |
+| 4 | dictionary length `d` |
+| d | the dictionary |
+| … | model state, little-endian, in the order written by `Predictor::save` |
+| 4 | CRC-32 of everything above |
+
+Loading verifies both CRCs and range-checks every index and pointer; any
+mismatch is `BadModel`. The state layout is tied to the model version: a
+model change that bumps the format version also invalidates model files.
+
+## Integrity
+
+The decoder always recomputes the CRC-32 of its output and rejects the stream
+(`ChecksumMismatch`) if it differs. Inconsistent block tables are rejected
+(`BadBlockTable`). Corrupted or truncated payloads never
+cause a panic: the arithmetic decoder reads missing bytes as zeros and the
+checksum catches the result.
+
+The declared length is untrusted. A valid payload never makes the decoder
+read more than `coder::MAX_OVERRUN` (7) bytes past its end: 4 bytes of
+look-ahead, minus at least one flush byte, plus at most 4 implied zeros. The
+decoder stops with `Truncated` as soon as it reads further, and reserves
+memory for at most a bounded expansion of the payload, so a header that
+announces gigabytes over a few bytes of payload costs a few bytes of
+decoding, not gigabytes of memory. (Found by fuzzing, `fuzz/`.)
+
+## Determinism and versioning
+
+The CM payload is defined by the exact model arithmetic. The model therefore
+uses integer arithmetic only, so every platform produces and accepts the same
+bytes. The test `golden_v1_stream_is_reproduced_exactly` pins a reference
+stream (`tests/fixtures/golden-v1.sedge`) in CI on Linux, macOS and Windows.
+
+**Any change to the model that changes its output is a format change.** It
+must bump `FORMAT_VERSION`, and the decoder must keep supporting every
+earlier version, so files compressed today stay readable.

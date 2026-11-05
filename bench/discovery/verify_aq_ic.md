@@ -1,0 +1,452 @@
+# Independent verification: "Almost-Quantum Correlations Violate Information Causality" (arXiv:2610.41444)
+
+**The claim.** Das Bhowmik and Banik (v1, 30 Oct 2026) claim to settle a
+problem open since 2015. Almost-quantum (AQ) correlations, the "1+AB"
+level of the NPA hierarchy and the best-known supra-quantum candidate,
+**violate information causality (IC), without bound**. They use one
+explicit box, one bit of communication and a zero-error block
+certification protocol.
+
+**Status when checked (3 Nov 2026).** Four days old, not peer-reviewed,
+no independent replication found. Another recent preprint still lists
+the question as open (arXiv:2610.06604).
+
+The script is `bench/discovery/verify_aq_ic.py`; its output is below.
+
+```
+(A) explicit AQ realisation of p* (max errors: commutation on psi, probabilities, projector):
+    N=  1: 6.5e-17  1.1e-16  1.1e-16
+    N=  2: 6.5e-17  1.1e-16  1.1e-16
+    N=  3: 6.5e-17  1.1e-16  1.1e-16
+    N=  5: 6.5e-17  1.1e-16  1.1e-16
+    N= 10: 6.5e-17  1.1e-16  1.1e-16
+    N= 30: 6.5e-17  1.1e-16  1.1e-16
+    N= 60: 6.5e-17  1.1e-16  1.1e-16
+(B) information-causality sum, exact vs the paper's bound:
+    k=18, N=757,693: exact I = 1.000000272, bound = 1.000000186  (IC requires I <= 1)
+    k=18, N=757,692: exact I = 1.000000048, bound = 0.999999962  (IC requires I <= 1)
+    k=18, N=4,194,304: exact I = 1.058823496, bound = 1.058823410  (IC requires I <= 1)
+    k=24, N=402,653,184: exact I = nan, bound = 1.411764706  (IC requires I <= 1)
+    k=30, N=503,316,480: exact I = nan, bound = 0.660381160  (IC requires I <= 1)
+(C) NPA level 1+AB feasibility of p* (status, min eigenvalue of the moment matrix):
+    N=2: optimal, min eig -2.23e-09
+    N=3: optimal, min eig -7.39e-09
+    N=4: optimal, min eig -1.61e-09
+    N=5: optimal, min eig -1.22e-09
+    N=6: optimal, min eig -1.26e-09
+(D) max sum_x p(0,0|x,x) over certificate boxes (p(0,0|x,y)=0 for x!=y):
+    N=3: level 1+AB 1.0000 (optimal); level 2 1.0000 (optimal)  [paper: quantum <= 1]
+    N=4: level 1+AB 1.0000 (optimal); level 2 1.0000 (optimal)  [paper: quantum <= 1]
+/home/user/shannon-edge/bench/discovery/verify_aq_ic.py:136: UserWarning: Solution may be inaccurate. Try another solver, adjusting the solver settings, or solve with verbose=True for more information.
+  prob.solve(solver="CLARABEL")
+    N=5: level 1+AB 1.0000 (optimal); level 2 1.0000 (optimal_inaccurate)  [paper: quantum <= 1]
+```
+
+## Findings
+
+**(A) The explicit AQ realisation is correct.** The paper's Appendix A
+gives vectors ψ, u_x, v_x, w_x and the projectors onto span{u_x, w_x}
+and span{v_y, w_y}. Built in numbers for N = 1 to 60 settings, they
+satisfy:
+* every AQ condition: commutation on ψ for all outcome pairs, and
+  projectors;
+* the box table: p(0,0|x,y) = δ_xy/17 and marginals 3/17;
+* to machine precision (~10⁻¹⁶).
+
+The construction is the same for every N, since each setting uses its
+own basis vectors f_x, g_x. At N = 60 the box gives
+Σ_x p(0,0|x,x) = 60/17 ≈ 3.5.
+
+**(B) The violation holds with the exact mutual information**, not only
+with the paper's lower bound I ≥ k·W:
+* at their threshold (k = 18, N = 757,693), exact I = 1.000000272 > 1;
+* the exact threshold is one setting lower, N = **757,692**
+  (I = 1.000000048), where the paper's bound gives 0.99999996;
+* over k, the smallest violating N is at k = 18;
+* the growth is unbounded: at N = 2²², I = 1.0588.
+
+**(C) Independent check of AQ membership by semidefinite programming.**
+The NPA level-1+AB moment matrix for p* is feasible for N = 2–6 and
+N = 12, with minimum eigenvalue ≈ −10⁻⁹, i.e. solver tolerance. This
+agrees with (A) by a different method. Larger N was too slow for this
+solver.
+
+**(D) The contrast with quantum theory.** For "certificate boxes"
+(p(0,0|x,y) = 0 for x ≠ y), the maximum of Σ_x p(0,0|x,x) is 1.0000
+for N = 3–5, at NPA level 2 (an outer bound on quantum) and at level
+1+AB.
+* This is consistent with the companion paper's quantum bound
+  Σ ≤ 1 (s ≤ 1/N).
+* At small N the AQ box is not separated, since N/17 < 1.
+* By (A), the AQ maximum must exceed 1 from N = 18. The separation
+  appears only with many settings, as the paper says.
+
+## Verdict
+
+Every computational ingredient checked here **reproduces**:
+* the AQ realisation, also confirmed independently by SDP for small N;
+* the protocol's information sum, now with exact mutual information
+  and a threshold one setting lower.
+
+**Not verified here:**
+* the companion paper's quantum bound for general N; only N ≤ 5 was
+  checked numerically, at NPA level 2;
+* the paper's interpretation.
+
+The logical step from the zero-error RABC protocol to the IC sum is
+elementary: a fair bit, and a never-wrong guess made with probability
+t, carry h(t) − h(2t)/2 bits. We checked that formula in the exact
+computation.
+
+**On this evidence, the claim stands:** the best-known supra-quantum
+candidate set violates information causality. IC therefore
+distinguishes quantum correlations from their nearest known neighbour.
+If confirmed by the community, this strengthens IC as a candidate
+law of nature. That is the principle behind the robustness of our
+telemetry floor (`bench/discovery/limit/README.md`, section 5).
+
+## Follow-up: can the violation be made cheaper? (`aq_cert_max.py`)
+
+**Open question.** The authors list the "economy of the violation" as
+open: their box certifies with s = 1/17 and needs N ≥ 757,692
+settings. A larger almost-quantum certification rate s would need far
+fewer: about 370,000 settings at s = 1/16, and about 21,000 at
+s = 1/12.
+
+**Method.** Maximum s at NPA level 1+AB for certificate boxes:
+* p(0,0|x,y) = 0 for x ≠ y, and p(0,0|x,x) = s;
+* the SDP is symmetrised over relabellings of the settings;
+* solvers: CLARABEL for N ≤ 10, SCS for N > 10.
+
+| N | max s | N·s (quantum: ≤ 1) | max s − 1/17 |
+|---:|---:|---:|---:|
+| 2–8 | 1/N | 1.000 | |
+| 9 | 0.1123 | 1.011 | 0.0535 |
+| 10 | 0.1037 | 1.037 | 0.0449 |
+| 12 | 0.0928 | 1.113 | 0.0340 |
+| 14 | 0.0861 | 1.206 | 0.0273 |
+| 16 | 0.0816 | 1.306 | 0.0228 |
+| 20 | 0.0760 | 1.520 | 0.0172 |
+| 24 | 0.0726 | 1.742 | 0.0138 |
+
+**Findings:**
+* **The almost-quantum set first beats quantum certification at
+  N = 9.** For N ≤ 8 its maximum rate equals the quantum bound 1/N
+  exactly. These solves are "optimal_inaccurate"; a high-precision
+  re-check is running.
+* **The maximum rate decreases towards 1/17.** The excess over 1/17
+  behaves like ≈ 0.33/N, i.e. N·(s − 1/17) = 0.33 at N = 20–24. The
+  optimal marginals tend to 0.165–0.176, near the paper's 3/17.
+* Within the paper's own family of vector constructions (Appendix A,
+  generalised with free parameters), the optimum is exactly 1/17
+  (numerical search: 1/17.0015).
+* **Consequence.** At the hundreds of thousands of settings a violation
+  needs, the best certification rate is 1/17 to within ~10⁻⁶. The
+  paper's box is **asymptotically optimal** for this one-bit,
+  one-use certificate protocol.
+* A cheaper violation must therefore come from a **different
+  protocol**: several box uses, more bits, or non-certificate
+  behaviours, as the authors suggest. It cannot come from a better
+  certificate box.
+
+**Caveat.** This is numerical evidence for N ≤ 24 plus an
+extrapolation, not a proof for all N.
+
+## An exact formula for the almost-quantum certification rate (`aq_cert_sym.py`)
+
+**The reduction.** The level-1+AB moment matrix is invariant under
+relabelling the settings. As an S_N-module, its index space
+{1, A_x, B_y, A_x B_y} splits into:
+* 5 copies of the trivial representation;
+* 5 copies of the standard representation;
+* one copy each of S^(N−2,2) and S^(N−2,1,1).
+
+So positivity reduces to two 5×5 blocks and two scalars.
+* Their entries are linear in the 16 moment classes, with coefficients
+  polynomial in N.
+* The coefficients were obtained exactly by enumeration at N = 4–9 and
+  interpolation, then checked at N = 10, 11 with 0 failures.
+* The reduced SDP reproduces the full SDP at every N where both were
+  run.
+
+**Formula, conjectured from the exact rational values** (e.g.
+1/s = 721/81, 241/25, 97/9, 49/4, 329/25 and 124/9 at
+N = 9, 10, 12, 16, 20, 24):
+
+    s_AQ(N) = 1/N                         for N <= 8
+    s_AQ(N) = N^2 / (17 N^2 - 80 N + 64)  for N >= 8,   i.e. 1/s = 17 - 80/N + 64/N^2
+
+It matches the reduced SDP to ≤ 2·10⁻⁹ at N = 6, 7, 8, 9, 11, 13, 14,
+15, 17, 30, 50 and 100.
+
+**Structure:**
+* The two branches meet **tangentially** at N = 8:
+  N³ − 17N² + 80N − 64 = (N − 1)(N − 8)².
+  This double root is why the almost-quantum advantage over the quantum
+  bound 1/N appears exactly from **N = 9**.
+* The advantage grows as
+  N·s_AQ − 1 = (N − 1)(N − 8)² / (17N² − 80N + 64) ≈ N/17.
+* s_AQ(N) → **1/17** as N → ∞, from above:
+  s_AQ − 1/17 ≈ (80/289)/N.
+  This **explains the paper's 1/17**: it is the asymptotic
+  almost-quantum certification rate, and their box attains the limit
+  for every N.
+
+**Cheapest violation with this protocol.** Use the optimal certificate
+box at each N instead of the 1/17 box. With the exact mutual
+information, IC is violated from **N = 757,665** settings (k = 18). That
+compares with 757,692 for the 1/17 box (exact) and 757,693 in the
+paper (bound). The certificate route cannot be made materially cheaper.
+
+**Status.** A conjecture with exact rational agreement on 12 values of
+N up to 100. A proof would follow from exact dual certificates of the
+two reduced 5×5 blocks, which is not yet done.
+
+### Achievability proved symbolically for every N ≥ 8 (`aq_cert_proof.py`)
+
+**The moments.** The numerical optimum has an exact closed form. Its one
+undetermined moment is pinned down because the feasible window
+collapses to a point. With d = 17N² − 80N + 64:
+
+    <A_x> = <B_y> = (3N^2 - 18N + 16)/d        (-> 3/17, the paper's marginal)
+    <A_x B_x> = s = N^2/d,  <A_x B_y> = 0 (x != y)
+    <A_x A_y> = <B_x B_y> = (3N^2 - 28N + 32)/(2d)
+    <A_x A_y B_x B_y> = N^2 (N - 8) / ((5N - 8) d)
+    all other moment classes = 0
+
+**The proof.**
+* Positivity is shown block by block. For each symmetric block, every
+  elementary symmetric function of its eigenvalues is computed in
+  closed form, as a rational function of N, by sympy.
+* Each is shown ≥ 0 for N ≥ 8: no real root of numerator or
+  denominator above 8, and the right sign at N = 9.
+* The factorised forms contain (N − 8) and (N − 1) factors, matching
+  the tangency at N = 8.
+
+**Output:**
+
+```
+trivial block:
+  T e_1 = (16*N**5 - 153*N**4 + 405*N**3 - 728*N**2 + 960*N - 512)/((5*N - 8)*(17*N**2 - 80*N + 64))   -> >= 0 for N >= 8
+  T e_2 = N**2*(N - 8)*(N - 1)*(57*N**5 - 457*N**4 + 1620*N**3 - 4800*N**2 + 7424*N - 4096)/(4*(5*N - 8)*(17*N**2 - 80*N + 64)**2)   -> >= 0 for N >= 8
+  T e_3 = 3*N**4*(N - 8)**2*(N - 1)**2*(3*N - 8)*(N**4 + 33*N**2 - 80*N + 64)/(4*(5*N - 8)*(17*N**2 - 80*N + 64)**3)   -> >= 0 for N >= 8
+  T e_4 = 0   -> >= 0 for N >= 8
+  T e_5 = 0   -> >= 0 for N >= 8
+standard block:
+  S e_1 = 2*N*(19*N**2 - 64*N + 64)/((5*N - 8)*(17*N**2 - 80*N + 64))   -> >= 0 for N >= 8
+  S e_2 = N**2*(N - 8)*(33*N**2 - 80*N + 64)/((5*N - 8)*(17*N**2 - 80*N + 64)**2)   -> >= 0 for N >= 8
+  S e_3 = 0   -> >= 0 for N >= 8
+  S e_4 = 0   -> >= 0 for N >= 8
+  S e_5 = 0   -> >= 0 for N >= 8
+(N-2,2) scalar = 0: >= 0;  (N-2,1,1) scalar = 0: >= 0
+ACHIEVABILITY PROVED for all N >= 8
+```
+
+**Result.** For every N ≥ 8 there is an almost-quantum certificate box
+with certification rate s = N²/(17N² − 80N + 64).
+* This is **strictly above 1/17 at every finite N**, so it improves on
+  the box of arXiv:2610.41444 for each fixed N.
+* It also exceeds the quantum bound 1/N for every N ≥ 9.
+
+Membership in the AQ set follows because NPA level 1+AB is the AQ set
+(Navascués et al. 2015).
+
+**Still open here:** the matching upper bound, i.e. that no AQ box does
+better. It holds numerically to ≤ 2·10⁻⁹ for N ≤ 100. A proof needs
+exact dual certificates for the reduced blocks.
+
+**Proof assumptions to note:**
+* The S_N block reduction, which reproduces the full SDP numerically.
+* The interpolated coefficient polynomials: exact by enumeration at
+  N = 4–9, checked at N = 10 and 11.
+
+## Prior art: the formula is already published (checked after deriving it)
+
+The companion paper, Gazi et al., "An Unbounded Separation of
+Almost-Quantum and Commuting-Operator Correlations in Zero-Error
+Communication", arXiv:2610.41448 (30 Oct 2026), **already contains the
+result above**. Its Theorem "Optimal AQ equality certification" states
+η^eq_AQ(N) = N²/(17N² − 80N + 64) for N ≥ 8 (and 1/N for N ≤ 8). It
+includes:
+* the (N − 1)(N − 8)² gap;
+* the same optimal primal point, including
+  ω = N²(N − 8)/((5N − 8)Δ_N);
+* a symmetry reduction;
+* an explicit dual certificate, i.e. the upper bound that was still
+  missing here.
+
+The paper was not read before the derivation above. The formula, the
+primal point and the achievability proof here are therefore an
+**independent rediscovery**: an independent check of their theorem, not
+a new result.
+
+**Possibly not in either paper.** The cheapest IC violation obtainable
+with the protocol of arXiv:2610.41444 when using, at each N, the optimal
+certificate box of arXiv:2610.41448 is N = 757,665 settings (k = 18,
+exact mutual information). That is a direct combination of the two
+papers.
+
+**Open problems the companion paper lists, and natural next targets:**
+* the almost-quantum optimum of the full one-bit task, which certifies
+  equality and inequality and abstains otherwise; only the lower bound
+  N²/(19N² − 80N + 64) is known;
+* whether boxes with more outcomes, or settings that depend on the
+  message, beat the binary-box optimum.
+
+## Step 1 on the open one-bit task: a single two-sided certificate box (`aq_twosided.py`)
+
+**Idea.** The open problem is the zero-error one-bit equality task.
+Instead of mixing a certificate of equality with a classical
+certificate of inequality, as the companion paper does (giving
+N²/(19N² − 80N + 64) → 1/19), let one binary box certify both:
+* Alice sends M = a;
+* Bob answers "equal" on (M, b) = (0, 0) and "different" on (0, 1),
+  and abstains on M = 1.
+
+Zero error needs p(0,0|x,y) = 0 for x ≠ y and p(0,1|x,x) = 0. The
+worst-case success is then p_A(0).
+
+**Result.** Maximised over the AQ set with the symmetry-reduced SDP, the
+value is **exactly 1/N** at every N tested (3, 4, 8, 10, 16, 30 and
+100), the same as shared randomness and quantum theory.
+* A single two-sided binary box gives **no post-quantum advantage at
+  all**.
+* It falls below the companion's mixed protocol for N ≥ 14.
+* So the almost-quantum advantage in the one-bit task needs the
+  certificates to come from different branches (mixing), or more
+  structure: more outcomes, or settings chosen after the message. The
+  latter is the companion paper's open question and the next step.
+
+## Step 2 on the open one-bit task: message-dependent settings (`aq_adaptive.py`)
+
+**Protocol** (a single AQ box; Bob's setting depends on Alice's bit):
+* Bob has 2N settings (t, c).
+* Alice inputs s and sends M = a.
+* Bob inputs (t, M):
+  * if M = 0, he answers "equal" on b = 0;
+  * if M = 1, he answers "different" on b = 0.
+* Zero error requires p(0,0|x,(t,0)) = 0 for x ≠ t and
+  p(1,0|t,(t,1)) = 0.
+* The worst case is min(q, r), with q = p(0,0|s,(s,0)) and
+  r = p(1,0|s,(t,1)) for s ≠ t.
+
+This is the setting arXiv:2610.41448 lists as open: "Whether a single AQ
+box can certify both equality and inequality more efficiently than the
+mixture, and whether boxes with more outcomes or message-dependent
+settings improve on Theorem [optimal], is also open."
+
+**Numerical result** (NPA level 1+AB, symmetrised; CLARABEL for N ≤ 8,
+SCS at eps 1e-7 for N = 10, 12, 20):
+
+| N | worst case min(q, r) | N²/(17N² − 80N + 64) | published one-bit lower bound N²/(19N² − 80N + 64) | quantum 1/N |
+|---:|---:|---:|---:|---:|
+| 3, 5 | 1/N | — | — | 1/N |
+| 8 | 0.124999 | 0.125000 | 0.10000 | 0.12500 |
+| 10 | 0.1037344 | 0.1037344 | 0.08591 | 0.10000 |
+| 12 | 0.0927835 | 0.0927835 | 0.07826 | 0.08333 |
+| 16 | 0.081633 | 0.0816327 | 0.07018 | 0.06250 |
+| 20 | 0.0759878 | 0.0759878 | 0.06596 | 0.05000 |
+
+* The worst case equals the equality-certification optimum
+  **N²/(17N² − 80N + 64)** to the solver's precision, while the
+  inequality branch has slack (r ≥ q).
+* **The upper bound is rigorous.** The equality branch alone is a
+  binary-outcome AQ equality certificate, so min(q, r) ≤ q ≤ η^eq_AQ(N)
+  by the companion paper's theorem.
+* **Conjecture:** for this protocol class, the one-bit AQ optimum is
+  exactly N²/(17N² − 80N + 64), tending to 1/17. That beats the
+  published 1/19 mixture: a single box with message-dependent settings
+  certifies both answers more efficiently.
+
+**Rigour status: numerical, not yet a proof.**
+* An attempt to round an interior solution to exact rationals
+  (`aq_adaptive_cert.py`) failed to certify positivity.
+* The cause: the zero-error constraints force exactly null vectors in
+  the moment matrix:
+  * A_x B_{t,0} ψ = 0 for x ≠ t;
+  * (1 − A_t) B_{t,1} ψ = 0.
+* The smallest eigenvalue is therefore 0 by construction, and rounding
+  cannot certify it.
+* A rigorous certificate needs either a reduced formulation that
+  eliminates these null directions, or an explicit vector construction
+  like Appendix A of arXiv:2610.41444.
+* A first attempt at a construction (Bob's second family projecting
+  onto w_t) works only when ⟨w_x, w_y⟩ = 0 for x ≠ y, which the optimal
+  point does not satisfy.
+
+Next: an explicit construction, then a search for prior art before any
+claim.
+
+## The outermost limit: relativity alone (`ns_onebit.py`)
+
+The same one-bit zero-error equality task, over **all nonsignalling
+boxes** (only "no faster-than-light signalling" assumed), solved as a
+linear program.
+
+**Result: the optimum is 1.000** for N = 2, 3, 4, 6, 10 and 16. With
+relativity alone, one bit decides equality of arbitrarily large labels
+perfectly. This is consistent with van Dam's result that nonsignalling
+(PR-type) boxes make communication complexity trivial.
+
+**The map for this task:**
+
+| Theory | Worst-case success with one bit, zero error |
+|---|---|
+| Nonsignalling (relativity only) | 1 (perfect) |
+| NPA level 1 / macroscopic locality | ≥ certificates → 1/8 (arXiv:2610.41448) |
+| Almost-quantum | ≥ N²/(17N² − 80N + 64) → 1/17 (adaptive, numerical; general optimum being computed) |
+| Quantum and classical | 1/N → 0 (arXiv:2610.41448) |
+
+The whole gap between 1 and 1/N is allowed by relativity but absent from
+nature. Why nature sits at 1/N, rather than anywhere above it, is the
+open foundational question that principles such as information
+causality try to answer.
+
+## The next rung of the NPA ladder: level 2 already gives the quantum value (`npa_ladder.py`)
+
+The equality-certification rate (binary-outcome boxes with p(0,0|x,y) = 0 for
+x ≠ y, maximise s = p(0,0|x,x)) is known exactly at two rungs of the NPA
+hierarchy (arXiv:2610.41448): level 1 gives N/[8(N−2)] → 1/8, and level
+1+AB (almost-quantum) gives N²/(17N² − 80N + 64) → 1/17. The quantum value
+is 1/N. As far as we could find, level 2 (all words of length ≤ 2, adding
+the vectors A_x A_z ψ and B_y B_w ψ) had not been computed for this task.
+
+Symmetrised level-2 SDP (40 moment classes, SCS, eps 1e-7):
+
+| N | level 2 max s | N·s | AQ (1+AB) | quantum |
+|---|---|---|---|---|
+| 6 | 0.1666667 | 1.00000 | 0.1666667 | 1/6 |
+| 8 | 0.1250000 | 1.00000 | 0.1250000 | 1/8 |
+| 10 | 0.1000000 | 1.00000 | 0.1037344 | 1/10 |
+| 12 | 0.0833333 | 1.00000 | 0.0927835 | 1/12 |
+| 14 | 0.0714286 | 1.00000 | 0.0861160 | 1/14 |
+
+**Result (numerical, N = 6 … 14):** level 2 equals the quantum value 1/N
+to solver precision. The whole post-quantum certification gap closes at
+the second rung: 1/8 (level 1) → 1/17 (level 1+AB) → 1/N (level 2 =
+quantum). The paper's quantum proof (packing lemma, sum rule using a
+third label) therefore appears to need only second-order moments. This is
+a numerical observation, not a proof; a level-2 dual certificate would
+turn it into one. An ablation (1+AB plus only the A_x A_z block, or only
+the B_y B_w block) is running to identify which vectors close the gap.
+
+## A noise-robust version of the exact-zero witness (`npa_robust.py`)
+
+The witness Σₓ p(0,0|x,x) ≤ 1 (arXiv:2610.41448) needs exact zeros
+p(0,0|x,y) = 0 for x ≠ y, which no experiment can certify. For symmetric
+boxes with off-diagonal entries equal to ε, NPA level 2 gives an upper bound
+on the quantum value of S = Σₓ p(0,0|x,x). Results for N = 10:
+
+| ε | S ≤ (level 2, bounds quantum) | AQ maximum | AQ − level 2 |
+|---|---|---|---|
+| 0 | 1.00000 | 1.03734 | 0.0373 |
+| 0.0005 | 1.04314 | 1.06859 | 0.0255 |
+| 0.001 | 1.08310 | 1.09959 | 0.0165 |
+| 0.002 | 1.15574 | 1.16097 | 0.0052 |
+| 0.005 | 1.33666 | 1.33666 | 0 |
+| 0.01 | 1.57238 | 1.57238 | 0 |
+
+At N = 10 the post-quantum window is fragile. The quantum bound rises
+about 0.96·N(N−1) per unit ε near ε = 0, and the separation disappears
+for ε ≳ 0.005. An experimental test would need larger N, where the AQ
+value at ε = 0 grows like N/17. N = 20 is running.

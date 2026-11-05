@@ -1,0 +1,2998 @@
+[
+{
+"coefs": [
+2,
+4,
+2,
+1,
+3,
+1,
+0,
+2,
+0
+],
+"proof": "r c ab.s r ad."
+},
+{
+"coefs": [
+2,
+3,
+3,
+1,
+5,
+2,
+0,
+2,
+0
+],
+"proof": "rs cd ab.t r ad."
+},
+{
+"coefs": [
+3,
+6,
+3,
+1,
+6,
+3,
+0,
+3,
+0
+],
+"proof": "rs cd ab.t r ad."
+},
+{
+"coefs": [
+2,
+4,
+2,
+1,
+2,
+0,
+0,
+2,
+3
+],
+"proof": "rs bd ac.t c adr."
+},
+{
+"coefs": [
+2,
+3,
+3,
+2,
+2,
+0,
+0,
+2,
+0
+],
+"proof": "rs cd ab.t b acr."
+},
+{
+"coefs": [
+4,
+6,
+4,
+3,
+4,
+2,
+1,
+4,
+0
+],
+"proof": "rs cd ab.t b adr."
+},
+{
+"coefs": [
+2,
+5,
+2,
+1,
+2,
+0,
+0,
+2,
+0
+],
+"proof": "rs ad bc.t c abr."
+},
+{
+"coefs": [
+2,
+4,
+3,
+1,
+2,
+0,
+0,
+2,
+0
+],
+"proof": "rs ad bc.t b acr."
+},
+{
+"coefs": [
+2,
+4,
+1,
+2,
+2,
+3,
+0,
+2,
+0
+],
+"proof": "rs cd ab.t a bcs."
+},
+{
+"coefs": [
+3,
+7,
+4,
+1,
+4,
+1,
+0,
+3,
+0
+],
+"proof": "r c ab.s r ac.t r ad."
+},
+{
+"coefs": [
+4,
+6,
+11,
+3,
+6,
+2,
+0,
+4,
+0
+],
+"proof": "r c ab.s c abr.t a bdrs."
+},
+{
+"coefs": [
+3,
+6,
+3,
+1,
+4,
+1,
+0,
+3,
+5
+],
+"proof": "rs bd ac.tu cs adr."
+},
+{
+"coefs": [
+7,
+8,
+12,
+12,
+7,
+5,
+5,
+7,
+0
+],
+"proof": "rs cd ab.tu (cr)(cs) ab."
+},
+{
+"coefs": [
+5,
+14,
+9,
+1,
+7,
+2,
+0,
+5,
+0
+],
+"proof": "rs cd ab.tu cd ar."
+},
+{
+"coefs": [
+6,
+7,
+11,
+11,
+6,
+3,
+3,
+6,
+0
+],
+"proof": "rs cd ab.tu (cr)(dr) ab."
+},
+{
+"coefs": [
+3,
+4,
+6,
+3,
+6,
+2,
+0,
+3,
+0
+],
+"proof": "r c ab.st cd abr.u (cr) at."
+},
+{
+"coefs": [
+11,
+23,
+28,
+3,
+11,
+7,
+5,
+11,
+0
+],
+"proof": "r a bc.st cd abr.u b acrt."
+},
+{
+"coefs": [
+5,
+6,
+8,
+7,
+5,
+3,
+2,
+5,
+0
+],
+"proof": "r c ab.st cd abr.u b acrt."
+},
+{
+"coefs": [
+6,
+12,
+6,
+3,
+6,
+4,
+3,
+6,
+0
+],
+"proof": "r b ac.st cd ab.u b act."
+},
+{
+"coefs": [
+4,
+5,
+16,
+4,
+10,
+6,
+0,
+4,
+0
+],
+"proof": "r a bc.st ca bdr.u (at) bdr."
+},
+{
+"coefs": [
+3,
+6,
+5,
+1,
+5,
+3,
+0,
+3,
+0
+],
+"proof": "r c ab.st ac bdr.u r ads."
+},
+{
+"coefs": [
+4,
+13,
+7,
+1,
+4,
+2,
+2,
+4,
+0
+],
+"proof": "r b ac.st cd ab.u a bcrs."
+},
+{
+"coefs": [
+4,
+5,
+7,
+6,
+4,
+1,
+1,
+4,
+0
+],
+"proof": "r c ab.st cd ab.u b acrs."
+},
+{
+"coefs": [
+4,
+8,
+4,
+1,
+10,
+6,
+0,
+4,
+0
+],
+"proof": "r c ab.st bc ad.u r as."
+},
+{
+"coefs": [
+5,
+16,
+13,
+1,
+5,
+1,
+1,
+5,
+0
+],
+"proof": "r a bc.st cd abr.u s acr."
+},
+{
+"coefs": [
+5,
+6,
+11,
+11,
+5,
+1,
+1,
+5,
+0
+],
+"proof": "r c ab.st cd ab.u (cs) abr."
+},
+{
+"coefs": [
+2,
+3,
+4,
+1,
+4,
+5,
+0,
+2,
+0
+],
+"proof": "rs cd ab.t c abrs.u a dst."
+},
+{
+"coefs": [
+4,
+5,
+6,
+4,
+4,
+2,
+4,
+4,
+0
+],
+"proof": "rs cd ab.t d abrs.u b acrt."
+},
+{
+"coefs": [
+4,
+7,
+4,
+2,
+4,
+1,
+1,
+4,
+7
+],
+"proof": "rs bd ac.t c adr.u a rst."
+},
+{
+"coefs": [
+2,
+3,
+3,
+1,
+2,
+3,
+2,
+2,
+0
+],
+"proof": "rs cd ab.t d abrs.u a bcrt."
+},
+{
+"coefs": [
+4,
+10,
+2,
+3,
+9,
+9,
+0,
+4,
+0
+],
+"proof": "rs cd ab.t c as.u r bdst."
+},
+{
+"coefs": [
+4,
+7,
+3,
+4,
+5,
+5,
+0,
+4,
+0
+],
+"proof": "rs cd ab.t a bdr.u c abrst."
+},
+{
+"coefs": [
+3,
+5,
+4,
+2,
+3,
+0,
+0,
+3,
+4
+],
+"proof": "rs bd ac.t c abs.u b acrst."
+},
+{
+"coefs": [
+5,
+14,
+11,
+1,
+5,
+2,
+2,
+5,
+0
+],
+"proof": "rs cd ab.t a bcr.u a bcrt."
+},
+{
+"coefs": [
+6,
+15,
+10,
+2,
+6,
+0,
+0,
+6,
+11
+],
+"proof": "rs bd ac.t c adr.u a bcrt."
+},
+{
+"coefs": [
+11,
+31,
+18,
+3,
+13,
+4,
+0,
+11,
+0
+],
+"proof": "rs cd ab.t c ar.u d art."
+},
+{
+"coefs": [
+18,
+38,
+31,
+6,
+18,
+6,
+6,
+18,
+0
+],
+"proof": "rs cd ab.t a bcr.u b acrt."
+},
+{
+"coefs": [
+4,
+9,
+3,
+2,
+8,
+4,
+0,
+4,
+0
+],
+"proof": "rs cd ab.t c as.u r bst."
+},
+{
+"coefs": [
+5,
+12,
+3,
+3,
+10,
+9,
+0,
+5,
+0
+],
+"proof": "rs cd ab.t c as.u r bdst."
+},
+{
+"coefs": [
+8,
+19,
+6,
+4,
+9,
+14,
+0,
+8,
+0
+],
+"proof": "rs cd ab.t a bdr.u a bdrt."
+},
+{
+"coefs": [
+3,
+5,
+4,
+2,
+4,
+1,
+0,
+3,
+0
+],
+"proof": "rs cd ab.t d ar.u b acrt."
+},
+{
+"coefs": [
+7,
+19,
+8,
+1,
+9,
+8,
+2,
+7,
+0
+],
+"proof": "rs cd ab.t d ar.u c art."
+},
+{
+"coefs": [
+6,
+16,
+2,
+9,
+6,
+11,
+0,
+6,
+0
+],
+"proof": "rs cd ab.t a bdr.u b acrt."
+},
+{
+"coefs": [
+7,
+8,
+11,
+11,
+7,
+7,
+7,
+7,
+0
+],
+"proof": "rs cd ab.t c abrs.u (dr) abt."
+},
+{
+"coefs": [
+5,
+8,
+10,
+3,
+5,
+1,
+1,
+5,
+0
+],
+"proof": "rs cd ab.t c ar.u b acrt."
+},
+{
+"coefs": [
+4,
+10,
+10,
+1,
+4,
+1,
+4,
+4,
+0
+],
+"proof": "rs cd ab.t a bcr.u b adrt."
+},
+{
+"coefs": [
+8,
+9,
+14,
+14,
+8,
+8,
+8,
+8,
+0
+],
+"proof": "rs cd ab.t c abrs.u (dr) abt."
+},
+{
+"coefs": [
+3,
+5,
+4,
+1,
+8,
+5,
+0,
+3,
+0
+],
+"proof": "rs cd ab.t c as.u a bdst."
+},
+{
+"coefs": [
+6,
+11,
+10,
+2,
+6,
+6,
+9,
+6,
+0
+],
+"proof": "rs cd ab.t d abr.u a bcrt."
+},
+{
+"coefs": [
+7,
+19,
+11,
+2,
+7,
+5,
+10,
+7,
+0
+],
+"proof": "rs cd ab.t b adr.u a bcrt."
+},
+{
+"coefs": [
+6,
+13,
+10,
+2,
+6,
+2,
+2,
+6,
+0
+],
+"proof": "rs cd ab.t a bcr.u b acrt."
+},
+{
+"coefs": [
+9,
+12,
+16,
+7,
+9,
+13,
+11,
+9,
+0
+],
+"proof": "rs cd ab.t (dr) ab.u a bcrt."
+},
+{
+"coefs": [
+7,
+8,
+16,
+16,
+7,
+3,
+3,
+7,
+0
+],
+"proof": "rs cd ab.t (cr) ab.u c abrt."
+},
+{
+"coefs": [
+5,
+9,
+4,
+4,
+5,
+3,
+1,
+5,
+0
+],
+"proof": "rs cd ab.t a bcs.u (cs) abrt."
+},
+{
+"coefs": [
+8,
+17,
+7,
+3,
+16,
+8,
+0,
+8,
+0
+],
+"proof": "rs cd ab.t c as.u c bst."
+},
+{
+"coefs": [
+3,
+9,
+2,
+2,
+3,
+0,
+0,
+3,
+0
+],
+"proof": "rs bd ac.t b ar.u c abrt."
+},
+{
+"coefs": [
+9,
+17,
+15,
+3,
+9,
+15,
+5,
+9,
+0
+],
+"proof": "rs cd ab.t d abrs.u a bcrt."
+},
+{
+"coefs": [
+3,
+4,
+5,
+4,
+4,
+1,
+0,
+3,
+0
+],
+"proof": "rs cd ab.t a bcr.u a bdst."
+},
+{
+"coefs": [
+7,
+16,
+12,
+2,
+7,
+4,
+3,
+7,
+0
+],
+"proof": "rs cd ab.t a bcr.u b adst."
+},
+{
+"coefs": [
+3,
+5,
+6,
+2,
+3,
+0,
+0,
+3,
+0
+],
+"proof": "rs ad bc.t a cr.u b acrt."
+},
+{
+"coefs": [
+6,
+11,
+10,
+2,
+6,
+9,
+4,
+6,
+0
+],
+"proof": "rs cd ab.t d abrs.u a bcrt."
+},
+{
+"coefs": [
+6,
+7,
+13,
+13,
+6,
+2,
+2,
+6,
+0
+],
+"proof": "rs cd ab.t (cr) ab.u c abrst."
+},
+{
+"coefs": [
+10,
+23,
+16,
+3,
+10,
+5,
+5,
+10,
+0
+],
+"proof": "rs cd ab.t a bcr.u d abst."
+},
+{
+"coefs": [
+4,
+5,
+9,
+6,
+6,
+3,
+0,
+4,
+0
+],
+"proof": "rs cd ab.t a bcr.u a bdst."
+},
+{
+"coefs": [
+9,
+19,
+8,
+4,
+15,
+7,
+0,
+9,
+0
+],
+"proof": "rs cd ab.t c as.u s act."
+},
+{
+"coefs": [
+10,
+11,
+22,
+22,
+10,
+9,
+9,
+10,
+0
+],
+"proof": "rs cd ab.t (cr) ab.u (dr) abt."
+},
+{
+"coefs": [
+5,
+20,
+15,
+1,
+5,
+0,
+0,
+5,
+0
+],
+"proof": "rs ad bc.t (ar) bc.u (ar) bct."
+},
+{
+"coefs": [
+4,
+8,
+11,
+1,
+4,
+4,
+4,
+4,
+0
+],
+"proof": "rs cd ab.t a bcr.u s abcdt."
+},
+{
+"coefs": [
+7,
+16,
+12,
+2,
+7,
+3,
+4,
+7,
+0
+],
+"proof": "rs cd ab.t a bcr.u a bdst."
+},
+{
+"coefs": [
+4,
+9,
+8,
+1,
+4,
+3,
+2,
+4,
+0
+],
+"proof": "rs cd ab.t a bcr.u b adst."
+},
+{
+"coefs": [
+6,
+12,
+5,
+5,
+6,
+3,
+0,
+6,
+0
+],
+"proof": "rs cd ab.t a bcs.u c abrt."
+},
+{
+"coefs": [
+7,
+12,
+10,
+3,
+14,
+6,
+0,
+7,
+0
+],
+"proof": "rs cd ab.t c as.u r act."
+},
+{
+"coefs": [
+13,
+24,
+16,
+5,
+26,
+10,
+0,
+13,
+0
+],
+"proof": "rs cd ab.t c as.u s act."
+},
+{
+"coefs": [
+6,
+14,
+4,
+3,
+12,
+11,
+0,
+6,
+0
+],
+"proof": "rs cd ab.t c as.u c bdt."
+},
+{
+"coefs": [
+10,
+18,
+11,
+7,
+13,
+3,
+0,
+10,
+0
+],
+"proof": "rs cd ab.t a bdr.u r abcdt."
+},
+{
+"coefs": [
+12,
+22,
+14,
+5,
+23,
+9,
+0,
+12,
+0
+],
+"proof": "rs cd ab.t r ad.u a bdrt."
+},
+{
+"coefs": [
+4,
+14,
+9,
+1,
+4,
+0,
+0,
+4,
+0
+],
+"proof": "rs ad bc.t (ar) bc.u c abrt."
+},
+{
+"coefs": [
+6,
+11,
+10,
+2,
+6,
+8,
+5,
+6,
+0
+],
+"proof": "rs cd ab.t d abrs.u a bcrt."
+},
+{
+"coefs": [
+5,
+11,
+4,
+2,
+10,
+8,
+0,
+5,
+0
+],
+"proof": "rs cd ab.t c as.u c bdt."
+},
+{
+"coefs": [
+8,
+14,
+13,
+4,
+12,
+8,
+0,
+8,
+0
+],
+"proof": "rs cd ab.t a bcs.u a bdrt."
+},
+{
+"coefs": [
+10,
+20,
+9,
+6,
+12,
+7,
+0,
+10,
+0
+],
+"proof": "rs cd ab.t a bcs.u c abrt."
+},
+{
+"coefs": [
+8,
+17,
+9,
+5,
+8,
+0,
+0,
+8,
+0
+],
+"proof": "rs ad bc.t c abr.u c abrt."
+},
+{
+"coefs": [
+3,
+8,
+1,
+4,
+6,
+7,
+0,
+3,
+0
+],
+"proof": "rs cd ab.t c as.u t cs."
+},
+{
+"coefs": [
+8,
+9,
+15,
+15,
+8,
+6,
+6,
+8,
+0
+],
+"proof": "rs cd ab.t (cr) ab.u (dr) abt."
+},
+{
+"coefs": [
+7,
+8,
+21,
+21,
+7,
+2,
+2,
+7,
+0
+],
+"proof": "rs cd ab.t (cr) ab.u (cr) abt."
+},
+{
+"coefs": [
+5,
+6,
+15,
+15,
+5,
+0,
+0,
+5,
+0
+],
+"proof": "rs cd ab.t (cr) ab.u (cr) abt."
+},
+{
+"coefs": [
+5,
+6,
+5,
+5,
+5,
+10,
+10,
+5,
+0
+],
+"proof": "rs cd ab.t (cs) ab.u (ds) abt."
+},
+{
+"coefs": [
+9,
+10,
+19,
+19,
+9,
+7,
+7,
+9,
+0
+],
+"proof": "rs cd ab.t (cr) ab.u (dr) abt."
+},
+{
+"coefs": [
+6,
+7,
+17,
+17,
+6,
+1,
+1,
+6,
+0
+],
+"proof": "rs cd ab.t (cr) ab.u (cr) abt."
+},
+{
+"coefs": [
+10,
+17,
+11,
+11,
+10,
+0,
+0,
+10,
+0
+],
+"proof": "rs cd ab.t b acr.u b acrt."
+},
+{
+"coefs": [
+4,
+9,
+3,
+2,
+5,
+7,
+0,
+4,
+0
+],
+"proof": "rs cd ab.t a bcs.u (at) bcs."
+},
+{
+"coefs": [
+4,
+6,
+5,
+4,
+4,
+4,
+0,
+4,
+0
+],
+"proof": "rs cd ab.t a bcs.u (bt) acr."
+},
+{
+"coefs": [
+4,
+5,
+10,
+9,
+4,
+0,
+0,
+4,
+0
+],
+"proof": "rs cd ab.t (cr) ab.u b acrt."
+},
+{
+"coefs": [
+3,
+4,
+5,
+5,
+3,
+0,
+0,
+3,
+0
+],
+"proof": "rs cd ab.t b acr.u t bcr."
+},
+{
+"coefs": [
+6,
+13,
+5,
+3,
+8,
+0,
+2,
+6,
+10
+],
+"proof": "rs bd ac.t c adr.u t rs."
+},
+{
+"coefs": [
+3,
+4,
+4,
+5,
+4,
+1,
+0,
+3,
+0
+],
+"proof": "rs cd ab.t a bcr.u t acs."
+},
+{
+"coefs": [
+7,
+25,
+18,
+1,
+13,
+6,
+0,
+7,
+0
+],
+"proof": "rs cd ab.t c ar.u t ad."
+},
+{
+"coefs": [
+10,
+17,
+8,
+9,
+10,
+4,
+2,
+10,
+0
+],
+"proof": "rs cd ab.t a bcs.u a bcst."
+},
+{
+"coefs": [
+9,
+16,
+14,
+4,
+15,
+9,
+0,
+9,
+0
+],
+"proof": "rs cd ab.t a bcs.u (rt) ad."
+},
+{
+"coefs": [
+9,
+10,
+18,
+18,
+9,
+8,
+8,
+9,
+0
+],
+"proof": "rs cd ab.t (cr) ab.u (cs) abt."
+},
+{
+"coefs": [
+7,
+15,
+6,
+3,
+12,
+7,
+0,
+7,
+0
+],
+"proof": "rs cd ab.t c as.u t cs."
+},
+{
+"coefs": [
+3,
+6,
+5,
+1,
+3,
+1,
+3,
+3,
+0
+],
+"proof": "rs cd ab.t c abrs.u t adr."
+},
+{
+"coefs": [
+5,
+9,
+6,
+2,
+10,
+5,
+0,
+5,
+0
+],
+"proof": "rs cd ab.t c as.u t abc."
+},
+{
+"coefs": [
+7,
+35,
+28,
+1,
+11,
+4,
+0,
+7,
+0
+],
+"proof": "rs cd ab.t r ac.u s at."
+},
+{
+"coefs": [
+4,
+7,
+5,
+1,
+13,
+8,
+0,
+4,
+0
+],
+"proof": "rs cd ab.t c as.u t ad."
+},
+{
+"coefs": [
+7,
+19,
+2,
+11,
+7,
+12,
+1,
+7,
+0
+],
+"proof": "rs cd ab.t a bcs.u b acrt."
+},
+{
+"coefs": [
+4,
+13,
+9,
+1,
+4,
+0,
+0,
+4,
+7
+],
+"proof": "rs bd ac.t c abs.u t ar."
+},
+{
+"coefs": [
+4,
+13,
+10,
+1,
+4,
+0,
+0,
+4,
+0
+],
+"proof": "rs ad bc.t (ar) bc.u b acrt."
+},
+{
+"coefs": [
+3,
+8,
+5,
+1,
+3,
+0,
+0,
+3,
+0
+],
+"proof": "rs ad bc.t b acr.u t abr."
+},
+{
+"coefs": [
+3,
+6,
+2,
+2,
+4,
+0,
+1,
+3,
+5
+],
+"proof": "rs bd ac.t c adr.u t rs."
+},
+{
+"coefs": [
+4,
+9,
+8,
+1,
+4,
+2,
+3,
+4,
+0
+],
+"proof": "rs cd ab.t a bcr.u a bdst."
+},
+{
+"coefs": [
+5,
+7,
+11,
+6,
+5,
+2,
+0,
+5,
+0
+],
+"proof": "rs cd ab.t (cr) ab.u t adr."
+},
+{
+"coefs": [
+5,
+10,
+5,
+1,
+15,
+10,
+0,
+5,
+0
+],
+"proof": "rs cd ab.t c as.u t ad."
+},
+{
+"coefs": [
+4,
+11,
+7,
+1,
+4,
+4,
+5,
+4,
+0
+],
+"proof": "rs cd ab.t b acs.u t ar."
+},
+{
+"coefs": [
+8,
+17,
+7,
+4,
+10,
+0,
+2,
+8,
+12
+],
+"proof": "rs bd ac.t c adr.u t rs."
+},
+{
+"coefs": [
+7,
+8,
+9,
+9,
+7,
+14,
+14,
+7,
+0
+],
+"proof": "rs cd ab.t (cs) ab.u (ds) abt."
+},
+{
+"coefs": [
+4,
+5,
+10,
+6,
+7,
+2,
+0,
+4,
+0
+],
+"proof": "rs cd ab.t (cr) ab.u (rt) ad."
+},
+{
+"coefs": [
+10,
+26,
+3,
+16,
+10,
+18,
+1,
+10,
+0
+],
+"proof": "rs cd ab.t a bdr.u b acrt."
+},
+{
+"coefs": [
+9,
+12,
+22,
+10,
+13,
+10,
+0,
+9,
+0
+],
+"proof": "rs cd ab.t (cr) ab.u a bdst."
+},
+{
+"coefs": [
+3,
+7,
+2,
+2,
+3,
+0,
+0,
+3,
+2
+],
+"proof": "rs bd ac.t c abs.u t bcr."
+},
+{
+"coefs": [
+7,
+9,
+16,
+10,
+10,
+2,
+0,
+7,
+0
+],
+"proof": "rs cd ab.t (cr) ab.u (rt) ad."
+},
+{
+"coefs": [
+6,
+9,
+6,
+4,
+6,
+3,
+4,
+6,
+0
+],
+"proof": "rs cd ab.t b acs.u t bcr."
+},
+{
+"coefs": [
+4,
+8,
+2,
+5,
+4,
+0,
+0,
+4,
+4
+],
+"proof": "rs bd ac.t c abs.u (at) bcr."
+},
+{
+"coefs": [
+13,
+37,
+22,
+3,
+17,
+6,
+0,
+13,
+0
+],
+"proof": "rs cd ab.t c ar.u d art."
+},
+{
+"coefs": [
+8,
+10,
+23,
+12,
+8,
+1,
+4,
+8,
+0
+],
+"proof": "rs cd ab.t (cr) ab.u a bcst."
+},
+{
+"coefs": [
+6,
+7,
+7,
+7,
+6,
+11,
+11,
+6,
+0
+],
+"proof": "rs cd ab.t (cs) ab.u (ds) abt."
+},
+{
+"coefs": [
+11,
+29,
+3,
+19,
+11,
+21,
+2,
+11,
+0
+],
+"proof": "rs cd ab.t a bcs.u b acrt."
+},
+{
+"coefs": [
+9,
+12,
+8,
+13,
+9,
+9,
+2,
+9,
+0
+],
+"proof": "rs cd ab.t a bcs.u a bcrt."
+},
+{
+"coefs": [
+4,
+7,
+5,
+2,
+8,
+2,
+0,
+4,
+0
+],
+"proof": "rs cd ab.t r ad.u r adt."
+},
+{
+"coefs": [
+4,
+11,
+7,
+1,
+4,
+1,
+7,
+4,
+0
+],
+"proof": "rs cd ab.t b acs.u a bcrt."
+},
+{
+"coefs": [
+8,
+14,
+6,
+7,
+8,
+4,
+2,
+8,
+0
+],
+"proof": "rs cd ab.t a bcs.u c abrst."
+},
+{
+"coefs": [
+6,
+8,
+6,
+5,
+6,
+4,
+5,
+6,
+0
+],
+"proof": "rs cd ab.t b adr.u t bdr."
+},
+{
+"coefs": [
+7,
+13,
+5,
+6,
+7,
+5,
+1,
+7,
+0
+],
+"proof": "rs cd ab.t a bdr.u r abcdt."
+},
+{
+"coefs": [
+12,
+16,
+25,
+18,
+12,
+3,
+0,
+12,
+0
+],
+"proof": "rs cd ab.t (cr) ab.u t acs."
+},
+{
+"coefs": [
+8,
+12,
+9,
+5,
+8,
+4,
+8,
+8,
+0
+],
+"proof": "rs cd ab.t b acs.u t bcr."
+},
+{
+"coefs": [
+5,
+6,
+14,
+9,
+5,
+1,
+2,
+5,
+0
+],
+"proof": "rs cd ab.t (cr) ab.u a bdrt."
+},
+{
+"coefs": [
+15,
+27,
+45,
+5,
+15,
+27,
+11,
+15,
+0
+],
+"proof": "rs cd ab.t (cs) ab.u a bcrt."
+},
+{
+"coefs": [
+10,
+18,
+12,
+4,
+21,
+7,
+0,
+10,
+0
+],
+"proof": "rs cd ab.t r ad.u r adt."
+},
+{
+"coefs": [
+9,
+17,
+9,
+6,
+11,
+4,
+0,
+9,
+0
+],
+"proof": "rs cd ab.t a bcs.u c abrst."
+},
+{
+"coefs": [
+11,
+29,
+16,
+3,
+15,
+6,
+0,
+11,
+0
+],
+"proof": "rs cd ab.t s ac.u r act."
+},
+{
+"coefs": [
+18,
+22,
+51,
+30,
+18,
+3,
+6,
+18,
+0
+],
+"proof": "rs cd ab.t (cr) ab.u a bcst."
+},
+{
+"coefs": [
+3,
+6,
+6,
+1,
+3,
+1,
+1,
+3,
+0
+],
+"proof": "rs ad bc.t b ars.u b acr."
+},
+{
+"coefs": [
+18,
+32,
+13,
+16,
+18,
+13,
+2,
+18,
+0
+],
+"proof": "rs cd ab.t a bcs.u (bt) acs."
+},
+{
+"coefs": [
+6,
+14,
+9,
+2,
+6,
+2,
+3,
+6,
+0
+],
+"proof": "rs cd ab.t a bcr.u (ds) abt."
+},
+{
+"coefs": [
+14,
+24,
+13,
+14,
+14,
+11,
+0,
+14,
+0
+],
+"proof": "rs cd ab.t a bcs.u (bt) acr."
+},
+{
+"coefs": [
+5,
+9,
+5,
+4,
+6,
+2,
+0,
+5,
+0
+],
+"proof": "rs cd ab.t a bcs.u c abrt."
+},
+{
+"coefs": [
+6,
+17,
+2,
+9,
+9,
+3,
+0,
+6,
+0
+],
+"proof": "rs cd ab.t c br.u t ad."
+},
+{
+"coefs": [
+4,
+11,
+7,
+1,
+4,
+2,
+6,
+4,
+0
+],
+"proof": "rs cd ab.t b acs.u t ar."
+},
+{
+"coefs": [
+18,
+30,
+20,
+12,
+37,
+15,
+0,
+18,
+0
+],
+"proof": "rs cd ab.t c as.u b acrt."
+},
+{
+"coefs": [
+8,
+10,
+22,
+13,
+8,
+1,
+2,
+8,
+0
+],
+"proof": "rs cd ab.t (cr) ab.u a bdrt."
+},
+{
+"coefs": [
+5,
+8,
+3,
+5,
+5,
+5,
+2,
+5,
+0
+],
+"proof": "rs cd ab.t a bcs.u t acr."
+},
+{
+"coefs": [
+9,
+19,
+7,
+5,
+12,
+8,
+0,
+9,
+0
+],
+"proof": "rs cd ab.t a bcs.u t as."
+},
+{
+"coefs": [
+4,
+5,
+4,
+4,
+4,
+6,
+5,
+4,
+0
+],
+"proof": "rs cd ab.t (dr) ab.u b adst."
+},
+{
+"coefs": [
+14,
+28,
+10,
+13,
+14,
+0,
+0,
+14,
+11
+],
+"proof": "rs bd ac.t c abs.u (at) bcr."
+},
+{
+"coefs": [
+7,
+15,
+6,
+4,
+8,
+6,
+0,
+7,
+0
+],
+"proof": "rs cd ab.t a bdr.u r abcdt."
+},
+{
+"coefs": [
+7,
+18,
+26,
+2,
+7,
+2,
+1,
+7,
+0
+],
+"proof": "rs da bc.t (as) bc.u a bdst."
+},
+{
+"coefs": [
+11,
+19,
+34,
+4,
+11,
+20,
+8,
+11,
+0
+],
+"proof": "rs cd ab.t (cs) ab.u a bcrt."
+},
+{
+"coefs": [
+4,
+5,
+5,
+4,
+4,
+3,
+3,
+4,
+0
+],
+"proof": "rs cd ab.t b acr.u (dr) ab."
+},
+{
+"coefs": [
+5,
+13,
+8,
+1,
+8,
+3,
+0,
+5,
+0
+],
+"proof": "rs cd ab.t c ar.u r ad."
+},
+{
+"coefs": [
+6,
+7,
+15,
+12,
+6,
+2,
+3,
+6,
+0
+],
+"proof": "rs cd ab.t (cr) ab.u a bcst."
+},
+{
+"coefs": [
+14,
+21,
+17,
+9,
+14,
+6,
+12,
+14,
+0
+],
+"proof": "rs cd ab.t b acs.u t bcr."
+},
+{
+"coefs": [
+3,
+5,
+2,
+4,
+3,
+2,
+0,
+3,
+0
+],
+"proof": "rs cd ab.t a bdr.u t ar."
+},
+{
+"coefs": [
+4,
+7,
+4,
+3,
+6,
+2,
+0,
+4,
+0
+],
+"proof": "rs cd ab.t d ar.u a bcr."
+},
+{
+"coefs": [
+19,
+32,
+21,
+12,
+40,
+17,
+0,
+19,
+0
+],
+"proof": "rs cd ab.t c as.u b acrt."
+},
+{
+"coefs": [
+10,
+20,
+9,
+7,
+11,
+5,
+0,
+10,
+0
+],
+"proof": "rs cd ab.t a bcs.u c abrt."
+},
+{
+"coefs": [
+8,
+21,
+34,
+2,
+8,
+3,
+2,
+8,
+0
+],
+"proof": "rs ad bc.t (ar) bc.u r abst."
+},
+{
+"coefs": [
+6,
+8,
+6,
+7,
+6,
+2,
+1,
+6,
+0
+],
+"proof": "rs cd ab.t b adr.u a bcr."
+},
+{
+"coefs": [
+4,
+10,
+2,
+3,
+5,
+1,
+0,
+4,
+4
+],
+"proof": "rs bd ac.t b adr.u c abr."
+},
+{
+"coefs": [
+4,
+5,
+9,
+7,
+5,
+1,
+0,
+4,
+0
+],
+"proof": "rs ad bc.t a bdr.u a cr."
+},
+{
+"coefs": [
+5,
+8,
+5,
+3,
+5,
+4,
+4,
+5,
+0
+],
+"proof": "rs cd ab.t b acs.u t bcr."
+},
+{
+"coefs": [
+4,
+13,
+1,
+9,
+4,
+7,
+0,
+4,
+0
+],
+"proof": "rs cd ab.t a bdr.u t bc."
+},
+{
+"coefs": [
+9,
+25,
+12,
+3,
+11,
+4,
+0,
+9,
+0
+],
+"proof": "rs cd ab.t d ar.u c art."
+},
+{
+"coefs": [
+5,
+6,
+7,
+6,
+5,
+4,
+4,
+5,
+0
+],
+"proof": "rs cd ab.t b acr.u (dr) ab."
+},
+{
+"coefs": [
+6,
+9,
+9,
+5,
+8,
+2,
+0,
+6,
+0
+],
+"proof": "rs cd ab.t b acr.u r ad."
+},
+{
+"coefs": [
+7,
+11,
+6,
+6,
+7,
+3,
+2,
+7,
+0
+],
+"proof": "rs cd ab.t a bdr.u b adr."
+},
+{
+"coefs": [
+4,
+9,
+5,
+1,
+7,
+3,
+0,
+4,
+0
+],
+"proof": "rs cd ab.t c ar.u r ad."
+},
+{
+"coefs": [
+9,
+18,
+7,
+6,
+12,
+9,
+0,
+9,
+0
+],
+"proof": "rs cd ab.t a bdr.u t ad."
+},
+{
+"coefs": [
+3,
+7,
+2,
+2,
+3,
+4,
+0,
+3,
+0
+],
+"proof": "rs cd ab.t a bdr.u r abcdt."
+},
+{
+"coefs": [
+7,
+14,
+6,
+4,
+10,
+7,
+0,
+7,
+0
+],
+"proof": "rs cd ab.t a bcs.u t as."
+},
+{
+"coefs": [
+6,
+8,
+8,
+5,
+6,
+2,
+1,
+6,
+0
+],
+"proof": "rs cd ab.t b acr.u b acs."
+},
+{
+"coefs": [
+9,
+24,
+31,
+2,
+9,
+12,
+3,
+9,
+0
+],
+"proof": "rs ad bc.t a bdr.u (ar) bct."
+},
+{
+"coefs": [
+9,
+24,
+43,
+2,
+9,
+4,
+3,
+9,
+0
+],
+"proof": "rs ad bc.t (ar) bc.u r abst."
+},
+{
+"coefs": [
+5,
+9,
+7,
+2,
+5,
+3,
+2,
+5,
+0
+],
+"proof": "rs cd ab.t a bcr.u b acs."
+},
+{
+"coefs": [
+13,
+20,
+8,
+14,
+13,
+12,
+6,
+13,
+0
+],
+"proof": "rs cd ab.t a bdr.u t acr."
+},
+{
+"coefs": [
+5,
+7,
+7,
+4,
+5,
+1,
+2,
+5,
+0
+],
+"proof": "rs cd ab.t b acr.u b adr."
+},
+{
+"coefs": [
+21,
+32,
+24,
+13,
+21,
+10,
+18,
+21,
+0
+],
+"proof": "rs cd ab.t b acs.u t bcr."
+},
+{
+"coefs": [
+5,
+10,
+3,
+6,
+5,
+0,
+0,
+5,
+2
+],
+"proof": "rs bd ac.t c adr.u a bcr."
+},
+{
+"coefs": [
+6,
+11,
+6,
+3,
+12,
+6,
+0,
+6,
+0
+],
+"proof": "rs cd ab.t a bcr.u r ad."
+},
+{
+"coefs": [
+20,
+34,
+17,
+18,
+20,
+5,
+4,
+20,
+0
+],
+"proof": "rs cd ab.t a bcs.u a bcst."
+},
+{
+"coefs": [
+24,
+40,
+17,
+24,
+24,
+13,
+6,
+24,
+0
+],
+"proof": "rs cd ab.t a bdr.u d abst."
+},
+{
+"coefs": [
+5,
+11,
+14,
+1,
+5,
+6,
+6,
+5,
+0
+],
+"proof": "rs cd ab.t a bcr.u (ds) abt."
+},
+{
+"coefs": [
+7,
+18,
+2,
+21,
+7,
+1,
+7,
+7,
+3
+],
+"proof": "rs bd ac.t b adr.u (br) act."
+},
+{
+"coefs": [
+8,
+10,
+14,
+13,
+8,
+2,
+1,
+8,
+0
+],
+"proof": "rs cd ab.t b acs.u (cr) ab."
+},
+{
+"coefs": [
+5,
+8,
+6,
+5,
+5,
+2,
+0,
+5,
+0
+],
+"proof": "rs cd ab.t b acr.u a bdr."
+},
+{
+"coefs": [
+19,
+29,
+22,
+12,
+19,
+8,
+16,
+19,
+0
+],
+"proof": "rs cd ab.t b acs.u t bcr."
+},
+{
+"coefs": [
+4,
+6,
+5,
+4,
+6,
+2,
+0,
+4,
+0
+],
+"proof": "rs cd ab.t a bcr.u r ad."
+},
+{
+"coefs": [
+26,
+43,
+25,
+21,
+26,
+6,
+7,
+26,
+0
+],
+"proof": "rs cd ab.t b acs.u b acst."
+},
+{
+"coefs": [
+11,
+19,
+28,
+4,
+11,
+20,
+12,
+11,
+0
+],
+"proof": "rs cd ab.t (cs) ab.u a bcrt."
+},
+{
+"coefs": [
+5,
+10,
+19,
+1,
+5,
+8,
+8,
+5,
+0
+],
+"proof": "rs cd ab.t a bcr.u (ds) abt."
+},
+{
+"coefs": [
+7,
+13,
+6,
+7,
+7,
+3,
+0,
+7,
+0
+],
+"proof": "rs cd ab.t a bdr.u r abcdt."
+},
+{
+"coefs": [
+36,
+61,
+35,
+29,
+36,
+6,
+11,
+36,
+0
+],
+"proof": "rs cd ab.t b acs.u b acst."
+},
+{
+"coefs": [
+6,
+9,
+8,
+4,
+6,
+2,
+5,
+6,
+0
+],
+"proof": "rs cd ab.t b adr.u t bcr."
+},
+{
+"coefs": [
+10,
+12,
+18,
+17,
+10,
+4,
+3,
+10,
+0
+],
+"proof": "rs cd ab.t b adr.u (cr) ab."
+},
+{
+"coefs": [
+14,
+36,
+45,
+4,
+14,
+17,
+2,
+14,
+0
+],
+"proof": "rs ad bc.t r abs.u (ar) bct."
+},
+{
+"coefs": [
+14,
+22,
+10,
+5,
+16,
+20,
+7,
+14,
+0
+],
+"proof": "rs cd ab.t s ac.u b acst."
+},
+{
+"coefs": [
+3,
+6,
+5,
+1,
+6,
+2,
+0,
+3,
+0
+],
+"proof": "rs cd ab.t c ar.u r ad."
+},
+{
+"coefs": [
+11,
+19,
+30,
+4,
+11,
+20,
+10,
+11,
+0
+],
+"proof": "rs cd ab.t (cs) ab.u a bcrt."
+},
+{
+"coefs": [
+20,
+34,
+20,
+16,
+20,
+3,
+6,
+20,
+0
+],
+"proof": "rs cd ab.t b acs.u b acst."
+},
+{
+"coefs": [
+16,
+42,
+51,
+4,
+16,
+19,
+4,
+16,
+0
+],
+"proof": "rs ad bc.t a bdr.u (ar) bct."
+},
+{
+"coefs": [
+15,
+25,
+15,
+12,
+15,
+3,
+4,
+15,
+0
+],
+"proof": "rs cd ab.t b acs.u b acst."
+},
+{
+"coefs": [
+8,
+21,
+2,
+25,
+8,
+2,
+9,
+8,
+1
+],
+"proof": "rs bd ac.t b adr.u (br) act."
+},
+{
+"coefs": [
+47,
+79,
+37,
+41,
+50,
+15,
+9,
+47,
+0
+],
+"proof": "rs cd ab.t a bcs.u a bcst."
+},
+{
+"coefs": [
+25,
+66,
+81,
+6,
+25,
+30,
+7,
+25,
+0
+],
+"proof": "rs ad bc.t r abs.u (ar) bct."
+},
+{
+"coefs": [
+20,
+30,
+14,
+15,
+24,
+8,
+7,
+20,
+0
+],
+"proof": "rs cd ab.t b adr.u b adrt."
+}
+]

@@ -1,0 +1,127 @@
+# Half the link, every anomaly kept? Error-bounded telemetry on ESA-ADB (pre-registration)
+
+Committed before any error-bounded run on ESA data.
+
+**Why.** On ESA Mission 1, 43–63% of lossless bits go to the four finest
+levels of each value (`near_lossless.md`), largely sensor noise.
+Agencies send everything losslessly so that no fault signature is lost.
+This tests whether an error-bounded link keeps the anomaly detection
+intact while sending far fewer bits.
+
+**Data and protocol.** ESA-ADB Mission 1 lightweight (channels 41–46),
+the ESA-ADB split, scored with ESA-ADB's own metric code (`--official`),
+as in `esa_adb.md`.
+
+**Reconstruction.** For each channel, a closed-loop quantiser on the
+values (as in `bench/analysis/near_lossless.py`):
+* r_t = r_{t−1} + 2δ·round((v_t − r_{t−1})/(2δ)), so |v_t − r_t| ≤ δ
+  holds for every sample (real-valued channels, hence 2δ rather than
+  the integer 2δ+1);
+* δ = K × robust noise σ, where σ = 1.4826·MAD(first differences)/√2 is
+  estimated on the training part only (before the validation start).
+
+The detector then runs on the reconstructed values (`--near-lossless K`).
+
+**Budgets.**
+* **Primary: K = 1**, the "safe ≤ 1 σ" level of the Venus Express study.
+* Reported as well: K = 0.5.
+
+**Measures.**
+* **Bits:** the flight profile's total cost over all samples of the six
+  channels, reconstructed vs lossless.
+* **Detection:** the corrected event-wise F0.5 (official) for two
+  rules, on reconstructed vs lossless data:
+  * the trained rule (q = 1.0, chosen on validation);
+  * the training-free Kraft auto rule.
+
+**Success, all required at K = 1:**
+* bits saved ≥ 40%;
+* |ΔF0.5| ≤ 0.01 for both rules.
+
+Anything else is reported as it is.
+
+## Result (run once per budget; the full outputs are in `bench/results/data/esa_nl_k{0,1,05}.md`)
+
+| Budget | Bits, 6 channels | Saved | F0.5 trained rule (q = 1.0) | F0.5 Kraft auto |
+|---|---:|---:|---:|---:|
+| Lossless | 45.27 MB | — | 0.690 (20 TP, 0 FP) | 0.705 (21 TP, 0 FP) |
+| **K = 1 (primary)** | **19.39 MB** | **57.2%** | 0.703 (26 TP, **4 FP**) | **0.674** (19 TP) |
+| K = 0.5 | 29.20 MB | 35.5% | 0.665 (23 TP, 4 FP) | 0.657 (18 TP) |
+
+**Verdict at K = 1: refuted.**
+* The bits condition holds: 57.2% saved, well above 40%.
+* The detection condition fails: the trained rule moves by +0.013 and
+  Kraft auto by −0.031, both outside ±0.01.
+
+**What changed.** The detector runs on reconstructed values, and the
+reconstruction changes the statistics it sees.
+* The trained rule now raises 4 false detections; it finds more events
+  but less cleanly.
+* Kraft auto loses two of its 21 events.
+
+At K = 0.5 both rules lose more, so the effect is not monotone in the
+error bound. Quantisation to a lattice reshapes the surprise rather
+than just removing noise.
+
+**What this means.** A uniform error bound halves the link, but it does
+**not** leave anomaly detection unchanged. The version designed for this
+keeps rare values exact (surprise-adaptive, `near_lossless.md`), and it
+is not what was tested here. Any test of it has to be pre-registered
+separately.
+
+## Second test, pre-registered before its run: error bound + rare values kept exact
+
+**Variant** (`--near-lossless K --rare-exact`).
+* A sample is **rare** when its lossless flight-profile cost reaches the
+  (1 − 2^−10) quantile of the costs on the training part, the rarity
+  rule of `near_lossless.md`.
+* Rare samples are sent exactly. All others use the same closed-loop
+  error bound as above.
+* The receiver needs one flag per sample. Its cost is counted with an
+  adaptive binary code (KT) and added to the bits.
+
+**Budget:** K = 1 only.
+
+**Criteria (unchanged):**
+* bits saved ≥ 40%, flags included;
+* |ΔF0.5| ≤ 0.01 for the trained rule (q = 1.0) and for Kraft auto,
+  official metric code.
+
+**Order:**
+1. Mission 1 lightweight (channels 41–46). It is not fresh data for the
+   uniform bound, but it is for this variant.
+2. **Confirmation on Mission 2 lightweight** (channels 18–28, split
+   2001-10-01, validation from 2001-07-01), never used in any
+   error-bounded test.
+
+The claim holds only if both missions pass.
+
+### Result of the rare-exact variant (Mission 1, run once; `bench/results/data/esa_nl_k1_rare.md`)
+
+| | Bits (flags included) | Saved | F0.5 trained (q = 1.0) | F0.5 Kraft auto |
+|---|---:|---:|---:|---:|
+| Lossless | 45.27 MB | — | 0.690 | 0.705 |
+| K = 1, rare values exact | 19.91 MB | 56.0% | **0.638** (2 FP) | **0.047** (1,017 FP) |
+
+**Refuted, and worse than the uniform bound.** The Mission 2
+confirmation is therefore not run: the claim needed both missions.
+
+**Why it collapses.** The rare samples kept exact fall off the
+quantisation lattice that every other sample sits on. To a detector run
+on the *reconstructed* data, each of them is a value that the lattice
+never produces, so it is maximally surprising. Kraft auto fires on
+almost all of them: 1,017 false detections. Keeping rare values exact
+makes the reconstructed stream *more* anomalous, not less.
+
+**The lesson, a design point and not a rescue.** Re-running anomaly
+detection on lossy reconstructed telemetry is the wrong architecture.
+The surprise is computed **on board, on the exact values**, before any
+quantisation. Its alarms are a tiny stream that can be sent
+losslessly. With that architecture, on-board detection is unchanged by
+construction.
+
+That is a different claim from the one tested here, with its own
+limit: ground methods that need exact values everywhere (e.g. a
+ground Sub-PCA) see only the error-bounded data. How much they keep is
+the triage question of `tsbad.md` (62% of Sub-PCA at a 10% link). It
+should not be presented as having passed this test.
