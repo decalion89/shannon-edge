@@ -804,3 +804,9 @@ argument.
 
 Final, all 24 sets: distance 0 for 6 sets (25% already lie in a (1,1,3)-slab); 12 of 24 are within 2 points; the
 largest distance is 11. The conclusion above is unchanged.
+
+**Independent certification attempt (SAT with DRAT proof, `slab109_sat.py`): aborted.** Glucose 4 with proof logging on
+the 1372-variable slab instance (28,126 edge clauses plus a sequential-counter cardinality ≥ 109, 302,306 clauses) ran
+about 40 minutes without a verdict. Its growing proof filled the session disk, so the run was stopped. The slab
+result (max 108) therefore still rests on the HiGHS branch-and-bound bound alone. Certification needs a
+stronger encoding (symmetry breaking, a better cardinality encoding) or a proof format written to larger storage.
