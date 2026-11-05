@@ -772,3 +772,18 @@ Exact slab MILPs for u = (1,1,1,3) and (1,1,2,3) are running. A slab optimum > 1
 bound 136. Neither beats 108, and neither closes. Plane density alone does not make a good slab. The records' direction
 (0,1,1,3) (planes = 7 disjoint copies of C7², best 108, bound 109) is both the best and by far the most tractable
 one: its planes decompose into independent components with the weakest inter-plane coupling.
+
+## Round 30: inside the records' slab, the maximum is exactly 108
+
+90-minute run of `slab_mip.py` for u = (3,0,1,1), warm-started from a 108-set: best 108, **proven dual bound 108.00**.
+HiGHS reports "time limit reached", but the gap is closed: the objective is integral, so 109 is excluded. Hence:
+
+> **The maximum independent set of C7^4 contained in a 4-plane slab of direction class |u| = (0,1,1,3) is exactly 108.**
+
+This is the slab family that contains every known 108-set, from both independent sources. Together with the
+exhaustive C7³ result (a slab of class (1,1,3) contains a maximum set), this supports the conjecture
+α(C7^4) = 108. It does **not** prove it: that would need the slab principle in C7^4 (some maximum set lies in such a
+slab), or an argument covering all other slab classes and non-slab sets.
+
+Caveats before any public claim: the bound comes from a MILP solver's branch-and-bound and should be confirmed
+independently, e.g. by a second solver, an exported certificate, or a SAT encoding with a DRAT proof.
