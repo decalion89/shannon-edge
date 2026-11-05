@@ -801,3 +801,6 @@ maximum set inside some (1,1,3)-slab (all 12 directions × 7 offsets):
 33 points (a third of the set). Direct compression, one point at a time towards a slab, is therefore not a uniform proof
 strategy for the slab principle. If it is true, a proof must allow passing through intermediate optima, or use another
 argument.
+
+Final, all 24 sets: distance 0 for 6 sets (25% already lie in a (1,1,3)-slab); 12 of 24 are within 2 points; the
+largest distance is 11. The conclusion above is unchanged.
