@@ -787,3 +787,17 @@ slab), or an argument covering all other slab classes and non-slab sets.
 
 Caveats before any public claim: the bound comes from a MILP solver's branch-and-bound and should be confirmed
 independently, e.g. by a second solver, an exported certificate, or a SAT encoding with a DRAT proof.
+
+## Round 31: compression test, i.e. how far are maximum sets from slab optima? (`slab_distance3.py`)
+
+For 22 unbiased maximum 33-sets of C7³ we computed the exact minimum number of points to change to reach a
+maximum set inside some (1,1,3)-slab (all 12 directions × 7 offsets):
+
+| distance (points) | 0 | 1 | 2 | 4 | 5 | 6 | 7 | 9 | 11 |
+|---|---|---|---|---|---|---|---|---|---|
+| sets | 4 | 2 | 4 | 2 | 1 | 3 | 3 | 1 | 2 |
+
+10 of 22 sets are within 2 points of a slab optimum and 4 already lie in a slab. Others are far: 7, 9 and up to 11 of
+33 points (a third of the set). Direct compression, one point at a time towards a slab, is therefore not a uniform proof
+strategy for the slab principle. If it is true, a proof must allow passing through intermediate optima, or use another
+argument.
